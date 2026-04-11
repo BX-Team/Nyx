@@ -1,0 +1,13 @@
+diff --git a/dist/workerMiddleware.js b/dist/workerMiddleware.js
+index 5925339d288397e45121f381a9bc3c01496d3206..10bcece793cbfc9bd83ff7b171ef09bce6939f3d 100644
+--- a/dist/workerMiddleware.js
++++ b/dist/workerMiddleware.js
+@@ -43,7 +43,7 @@ function workerMiddleware(middlewares, config, options) {
+     const works = index_1.getWorks(options);
+     // clear cacheDir
+     if (fs.existsSync(exports.cacheDir)) {
+-        fs.rmdirSync(exports.cacheDir, { recursive: true, force: true });
++        fs.rmSync(exports.cacheDir, { recursive: true, force: true });
+     }
+     for (const work of works) {
+         middlewares.use(config.base + options.publicPath + '/' + getFilenameByEntry(work.entry), function (req, res, next) {

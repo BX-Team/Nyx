@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nyx",
+  "version": "1.0.0",
+  "identifier": "org.bxteam.nyx",
+  "app": {
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https://ipc.localhost tauri: http://127.0.0.1:*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src * data: blob:; frame-src http://127.0.0.1:*;"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["clash", "mihomo", "nyx"]
+      }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERGMjhCNjdDNjJCREQ2NTQKUldSVTFyMWlmTFlvMzYza3NVZWZLc0FzcXlrWnJVU2FBb0VVR0dSamlNNlBIdGNJazdCYmJVZzcK",
+      "endpoints": [
+        "https://github.com/BX-Team/Nyx/releases/download/updater/update.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "bun run web:dev",
+    "beforeBuildCommand": "bun run web:build",
+    "removeUnusedCommands": true
+  },
+  "bundle": {
+    "active": true,
+    "longDescription": "Nyx Mihomo GUI",
+    "shortDescription": "Nyx",
+    "publisher": "BX Team",
+    "copyright": "GNU General Public License v3.0",
+    "category": "Developer Tools",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

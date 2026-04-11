@@ -1,0 +1,247 @@
+name: Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 1.2.3)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  set-release-version:
+    name: Set Release Version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Validate version format
+        shell: bash
+        run: |
+          if ! [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: ${{ inputs.version }}"
+            echo "Expected semver format, e.g. 1.2.3 or 1.2.3-rc.1"
+            exit 1
+          fi
+
+      - name: Set Version
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          sed -i "s/^  \"version\": \".*\",/  \"version\": \"$VERSION\",/" package.json
+          sed -i "s/^  \"version\": \".*\",/  \"version\": \"$VERSION\",/" src-tauri/tauri.conf.json
+
+      - name: Commit Changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore(release): bump version to ${{ inputs.version }}'
+
+  prepare:
+    name: Prepare Release Metadata
+    runs-on: ubuntu-latest
+    needs: set-release-version
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      previous_tag: ${{ steps.prev_tag.outputs.latest_tag }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Compute release tag
+        id: meta
+        shell: bash
+        run: echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+
+      - name: Find previous release tag
+        id: prev_tag
+        shell: bash
+        run: |
+          latest_tag="$(git tag --list 'v*' --sort=-version:refname | head -n 1)"
+          if [ -z "$latest_tag" ]; then
+            latest_tag="v${{ inputs.version }}"
+          fi
+          echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create local release tag for changelog diff
+        shell: bash
+        run: git tag -f "v${{ inputs.version }}" "${GITHUB_SHA}"
+
+      - name: Build Changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          mode: COMMIT
+          fromTag: ${{ steps.prev_tag.outputs.latest_tag }}
+          toTag: v${{ inputs.version }}
+          configuration: '.github/changelog_configuration.json'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: [prepare, set-release-version]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            arch: x64
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            bundles: nsis
+            arch: arm64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage
+            arch: x86_64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build and upload Tauri artifacts
+        id: tauri_build
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: Nyx ${{ needs.prepare.outputs.tag }}
+          releaseBody: Draft release. Changelog and metadata will be finalized after all targets complete.
+          releaseDraft: true
+          prerelease: ${{ inputs.prerelease }}
+          tauriScript: bun
+          includeUpdaterJson: false
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Build portable archive (Windows only)
+        if: runner.os == 'Windows'
+        id: portable
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          $arch = "${{ matrix.arch }}"
+          $releaseDir = "target/${{ matrix.target }}/release"
+          $portableDir = "$releaseDir/portable"
+          $portableZip = "$releaseDir/bundle/nsis/Nyx_${version}_${arch}_portable.zip"
+
+          New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+          New-Item -ItemType Directory -Force -Path "$portableDir/data" | Out-Null
+          New-Item -ItemType File -Force -Path "$portableDir/PORTABLE" | Out-Null
+          Copy-Item "$releaseDir/nyx.exe" "$portableDir/Nyx.exe" -Force
+          Compress-Archive -Path "$portableDir/*" -DestinationPath $portableZip -Force
+
+          "zip_path=$portableZip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Upload portable archive
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          files: ${{ steps.portable.outputs.zip_path }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  updater:
+    name: Publish updater/update.json
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Generate update.json from release assets
+        run: bun scripts/updater.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_NOTES: ${{ needs.prepare.outputs.changelog }}
+
+      - name: Publish update.json to updater tag
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: updater
+          name: updater
+          body: Auto-generated updater metadata file.
+          draft: false
+          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: update.json
+
+  publish:
+    name: Publish release
+    needs: [prepare, build, updater]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release with changelog
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Nyx ${{ needs.prepare.outputs.tag }}
+          body: ${{ needs.prepare.outputs.changelog }}
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+          token: ${{ secrets.GITHUB_TOKEN }}

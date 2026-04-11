@@ -1,0 +1,81 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.10/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": ["**", "!**/bun.lock", "!**/*.json"]
+  },
+  "formatter": {
+    "enabled": true,
+    "useEditorconfig": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 120,
+    "attributePosition": "auto",
+    "bracketSpacing": true,
+    "includes": ["**", "!**/bun.lock", "!**/*.json"]
+  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "a11y": {},
+      "complexity": {
+        "noForEach": "off"
+      },
+      "correctness": {
+        "noUndeclaredVariables": "off",
+        "useImportExtensions": "off",
+        "noUnknownPseudoClass": "off"
+      },
+      "nursery": {
+        "useExplicitType": "off"
+      },
+      "performance": {
+        "useTopLevelRegex": "off"
+      },
+      "style": {
+        "noImplicitBoolean": "off",
+        "useNamingConvention": "off",
+        "useBlockStatements": "off",
+        "noDefaultExport": "off",
+        "useExplicitLengthCheck": "off",
+        "useDefaultSwitchClause": "off",
+        "useConsistentCurlyBraces": "off",
+        "useComponentExportOnlyModules": "off",
+        "noProcessEnv": "off",
+        "noNestedTernary": "off"
+      },
+      "suspicious": {
+        "noConsole": "off",
+        "noReactSpecificProps": "off",
+        "noArrayIndexKey": "off"
+      },
+      "security": {
+        "noSecrets": "off"
+      }
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "jsxQuoteStyle": "single",
+      "arrowParentheses": "asNeeded",
+      "quoteProperties": "asNeeded",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  }
+}
