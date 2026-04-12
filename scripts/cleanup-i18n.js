@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
-import { resolve, join, basename, extname, dirname } from 'node:path';
-import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, extname, join, resolve } from 'node:path';
+import { ModuleKind, ScriptTarget, transpileModule } from 'typescript';
 
 const ROOT_DIR = resolve(__dirname, '..');
 const LOCALES_DIR = resolve(ROOT_DIR, 'src/locales');

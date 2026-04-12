@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import { FilePenLine, FileText, RefreshCcw } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import useSWR from 'swr';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,6 @@ import { getRuntimeConfig, mihomoRuleProviders, mihomoUpdateRuleProviders } from
 import SettingCard from '../base/base-setting-card';
 import SettingItem from '../base/base-setting-item';
 import Viewer from './viewer';
-import { toast } from 'sonner';
 
 const RuleProvider: React.FC = () => {
   const { t } = useTranslation();
