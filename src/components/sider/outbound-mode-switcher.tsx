@@ -45,7 +45,7 @@ const OutboundModeSwitcher: React.FC = () => {
   const onChangeMode = async (newMode: OutboundMode): Promise<void> => {
     await patchControledMihomoConfig({ mode: newMode });
     if (newMode === 'global') {
-      const firstSelector = groups.find(g => g.type === 'Selector');
+      const firstSelector = groups?.find(g => g.type === 'Selector');
       const currentProxy = firstSelector?.now;
       if (currentProxy && currentProxy !== 'DIRECT') {
         await mihomoChangeProxy('GLOBAL', currentProxy);

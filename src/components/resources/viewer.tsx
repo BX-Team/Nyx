@@ -41,7 +41,7 @@ const Viewer: React.FC<Props> = props => {
           if (!behavior) {
             try {
               const runtimeConfig = await getRuntimeConfig();
-              const provider = runtimeConfig['rule-providers']?.[title];
+              const provider = runtimeConfig['rule-providers']?.providers?.[title];
               ruleBehavior = provider?.behavior || 'domain';
             } catch {
               ruleBehavior = 'domain';
@@ -62,7 +62,13 @@ const Viewer: React.FC<Props> = props => {
           const parsedYaml = yaml.load(fileContent);
           if (parsedYaml && typeof parsedYaml === 'object') {
             const yamlObj = parsedYaml as Record<string, unknown>;
-            const payload = yamlObj[privderType]?.[title]?.payload;
+            const providerObj = yamlObj[privderType];
+            const providerMap =
+              providerObj && typeof providerObj === 'object'
+                ? (providerObj as Record<string, Record<string, unknown>>)
+                : undefined;
+            const targetObj = providerMap?.[title];
+            const payload = targetObj?.payload;
             if (payload) {
               if (privderType === 'proxy-providers') {
                 setCurrData(
@@ -78,7 +84,6 @@ const Viewer: React.FC<Props> = props => {
                 );
               }
             } else {
-              const targetObj = yamlObj[privderType]?.[title];
               if (targetObj) {
                 setCurrData(yaml.dump(targetObj));
               } else {

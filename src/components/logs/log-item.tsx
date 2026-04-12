@@ -6,6 +6,7 @@ const colorMap = {
   warning: 'text-warning',
   info: 'text-primary',
   debug: 'text-muted-foreground',
+  silent: 'text-muted-foreground',
 };
 const LogItem: React.FC<ControllerLog & { index: number }> = props => {
   const { type, payload, time, index } = props;

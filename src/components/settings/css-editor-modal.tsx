@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { BaseEditor } from '@/components/monaco/monaco-editor-lazy';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { readTheme } from '@/utils/ipc';
+import { getFileStr } from '@/utils/ipc';
 
 interface Props {
   theme: string;
@@ -18,7 +18,7 @@ const CSSEditorModal: React.FC<Props> = props => {
 
   useEffect(() => {
     if (theme) {
-      readTheme(theme).then(css => {
+      getFileStr(theme).then(css => {
         setCurrData(css);
       });
     }

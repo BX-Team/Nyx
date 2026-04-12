@@ -2,6 +2,7 @@ import { t } from 'i18next';
 import metaSchema from 'meta-json-schema/schemas/meta-json-schema.json';
 import * as monaco from 'monaco-editor';
 import { errorHandler } from 'monaco-editor/esm/vs/base/common/errors.js';
+import type { JSONSchema } from 'monaco-yaml';
 import { configureMonacoYaml } from 'monaco-yaml';
 import { nanoid } from 'nanoid';
 import { useTheme } from 'next-themes';
@@ -96,7 +97,7 @@ const monacoInitialization = (): void => {
               description: forceOverrideDescription,
             },
           },
-        },
+        } as unknown as JSONSchema,
       },
     ],
   });

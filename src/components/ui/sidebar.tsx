@@ -68,7 +68,14 @@ function SidebarProvider({
         _setOpen(openState);
       }
 
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
+      if (typeof window !== 'undefined' && 'cookieStore' in window && window.cookieStore) {
+        void window.cookieStore.set({
+          name: SIDEBAR_COOKIE_NAME,
+          value: String(openState),
+          path: '/',
+          expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000,
+        });
+      }
     },
     [setOpenProp, open],
   );

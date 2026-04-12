@@ -93,12 +93,11 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     if (isSelected) {
-      if (connectionStartTime === null) {
-        connectionStartTime = Date.now();
-      }
-      setElapsed(Math.floor((Date.now() - connectionStartTime) / 1000));
+      const startTime = connectionStartTime ?? Date.now();
+      connectionStartTime = startTime;
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
       const interval = setInterval(() => {
-        setElapsed(Math.floor((Date.now() - connectionStartTime!) / 1000));
+        setElapsed(Math.floor((Date.now() - startTime) / 1000));
       }, 1000);
       return () => clearInterval(interval);
     } else {

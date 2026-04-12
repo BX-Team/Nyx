@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,9 @@ const InterfaceModal: React.FC<Props> = props => {
   const { onClose } = props;
   const { t } = useTranslation();
   const [info, setInfo] = useState<Record<string, NetworkInterfaceInfo[]>>({});
-  const getInfo = async (): Promise<void> => {
+  const getInfo = useCallback(async (): Promise<void> => {
     setInfo(await getInterfaces());
-  };
+  }, []);
 
   useEffect(() => {
     getInfo();

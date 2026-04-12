@@ -9,7 +9,7 @@ import { registerShortcut } from '@/utils/ipc';
 import SettingCard from '../base/base-setting-card';
 import SettingItem from '../base/base-setting-item';
 
-const keyMap = {
+const keyMap: Record<string, string> = {
   Backquote: '`',
   Backslash: '\\',
   BracketLeft: '[',

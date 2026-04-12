@@ -87,7 +87,7 @@ const Connections: React.FC = () => {
 
   const [tab, setTab] = useState('active');
   const [isPaused, setIsPaused] = useState(false);
-  const unlistenRef = useRef<(() => void) | undefined>();
+  const unlistenRef = useRef<(() => void) | undefined>(undefined);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'list' | 'table'>(connectionViewMode);
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(connectionTableColumns));
@@ -172,8 +172,12 @@ const Connections: React.FC = () => {
       }
     };
 
-    activeConnections.forEach(conn => addToGroup(conn, true));
-    closedConnections.forEach(conn => addToGroup(conn, false));
+    activeConnections.forEach(conn => {
+      addToGroup(conn, true);
+    });
+    closedConnections.forEach(conn => {
+      addToGroup(conn, false);
+    });
 
     const groups: ProcessGroup[] = Array.from(groupMap.values()).map(g => ({
       ...g,
@@ -245,6 +249,8 @@ const Connections: React.FC = () => {
               return (a.downloadSpeed || 0) - (b.downloadSpeed || 0);
             case 'process':
               return (a.metadata.process || '').localeCompare(b.metadata.process || '');
+            default:
+              return 0;
           }
         } else {
           switch (connectionOrderBy) {
@@ -260,6 +266,8 @@ const Connections: React.FC = () => {
               return (b.downloadSpeed || 0) - (a.downloadSpeed || 0);
             case 'process':
               return (b.metadata.process || '').localeCompare(a.metadata.process || '');
+            default:
+              return 0;
           }
         }
       });
@@ -407,7 +415,9 @@ const Connections: React.FC = () => {
     if (processingAppNames.current.size >= 3 || appNameRequestQueue.current.size === 0) return;
 
     const pathsToProcess = Array.from(appNameRequestQueue.current).slice(0, 3);
-    pathsToProcess.forEach(path => appNameRequestQueue.current.delete(path));
+    pathsToProcess.forEach(path => {
+      appNameRequestQueue.current.delete(path);
+    });
 
     const promises = pathsToProcess.map(async path => {
       if (processingAppNames.current.has(path)) return;
@@ -435,7 +445,9 @@ const Connections: React.FC = () => {
     if (processingIcons.current.size >= 5 || iconRequestQueue.current.size === 0) return;
 
     const pathsToProcess = Array.from(iconRequestQueue.current).slice(0, 5);
-    pathsToProcess.forEach(path => iconRequestQueue.current.delete(path));
+    pathsToProcess.forEach(path => {
+      iconRequestQueue.current.delete(path);
+    });
 
     const promises = pathsToProcess.map(async path => {
       if (processingIcons.current.has(path)) return;

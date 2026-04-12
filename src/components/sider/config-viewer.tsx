@@ -1,11 +1,10 @@
 import { t } from 'i18next';
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
-import useSWR from 'swr';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { getCurrentProfileStr, getProfileConfig, getRawProfileStr, getRuntimeConfigStr } from '@/utils/ipc';
+import { getCurrentProfileStr, getRawProfileStr, getRuntimeConfigStr } from '@/utils/ipc';
 import { BaseEditor } from '../monaco/monaco-editor-lazy';
 
 interface Props {
@@ -18,8 +17,6 @@ const ConfigViewer: React.FC<Props> = ({ onClose }) => {
   const [isDiff, setIsDiff] = useState(false);
   const [isRaw, setIsRaw] = useState(false);
   const [sideBySide, setSideBySide] = useState(false);
-
-  const { data: config } = useSWR('getProfileConfig', getProfileConfig);
 
   const fetchConfigs = useCallback(async () => {
     setRuntimeConfig(await getRuntimeConfigStr());

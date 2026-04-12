@@ -63,7 +63,7 @@ const ProxyProvider: React.FC = () => {
     return Object.values(data.providers)
       .filter(provider => provider.vehicleType !== 'Compatible')
       .sort((a, b) => {
-        const order = { File: 1, Inline: 2, HTTP: 3 };
+        const order: Record<string, number> = { File: 1, Inline: 2, HTTP: 3 };
         return (order[a.vehicleType] || 4) - (order[b.vehicleType] || 4);
       });
   }, [data]);

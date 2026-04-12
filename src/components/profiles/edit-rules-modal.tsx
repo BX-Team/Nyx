@@ -963,8 +963,8 @@ const EditRulesModal: React.FC<Props> = props => {
       rule =>
         rule.type.toLowerCase().includes(lowerSearch) ||
         rule.payload.toLowerCase().includes(lowerSearch) ||
-        (rule.proxy && rule.proxy.toLowerCase().includes(lowerSearch)) ||
-        (rule.additionalParams && rule.additionalParams.some(param => param.toLowerCase().includes(lowerSearch))),
+        rule.proxy?.toLowerCase().includes(lowerSearch) ||
+        rule.additionalParams?.some(param => param.toLowerCase().includes(lowerSearch)),
     );
   }, [deferredSearchTerm, rules]);
 
@@ -1016,7 +1016,9 @@ const EditRulesModal: React.FC<Props> = props => {
         newRuleIndices.add(actualPosition);
 
         ruleIndices.clear();
-        newRuleIndices.forEach(idx => ruleIndices.add(idx));
+        newRuleIndices.forEach(idx => {
+          ruleIndices.add(idx);
+        });
       });
 
       return { updatedRules, ruleIndices };
@@ -1049,7 +1051,9 @@ const EditRulesModal: React.FC<Props> = props => {
         newRuleIndices.add(actualPosition);
 
         ruleIndices.clear();
-        newRuleIndices.forEach(idx => ruleIndices.add(idx));
+        newRuleIndices.forEach(idx => {
+          ruleIndices.add(idx);
+        });
       });
 
       return { updatedRules, ruleIndices };
@@ -1067,7 +1071,7 @@ const EditRulesModal: React.FC<Props> = props => {
         const parsed = yaml.load(content) as Record<string, unknown> | undefined;
         let initialRules: RuleItem[] = [];
 
-        if (parsed && parsed.rules && Array.isArray(parsed.rules)) {
+        if (parsed?.rules && Array.isArray(parsed.rules)) {
           initialRules = parsed.rules.map((rule: string) => parseRuleStringToItem(rule));
         }
 
@@ -1077,15 +1081,15 @@ const EditRulesModal: React.FC<Props> = props => {
           if (Array.isArray(parsed['proxy-groups'])) {
             groups.push(
               ...((parsed['proxy-groups'] as Array<Record<string, unknown>>)
-                .map(group => (group && typeof group['name'] === 'string' ? (group['name'] as string) : ''))
+                .map(group => (group && typeof group.name === 'string' ? (group.name as string) : ''))
                 .filter(Boolean) as string[]),
             );
           }
 
-          if (Array.isArray(parsed['proxies'])) {
+          if (Array.isArray(parsed.proxies)) {
             groups.push(
-              ...((parsed['proxies'] as Array<Record<string, unknown>>)
-                .map(proxy => (proxy && typeof proxy['name'] === 'string' ? (proxy['name'] as string) : ''))
+              ...((parsed.proxies as Array<Record<string, unknown>>)
+                .map(proxy => (proxy && typeof proxy.name === 'string' ? (proxy.name as string) : ''))
                 .filter(Boolean) as string[]),
             );
           }
@@ -1126,7 +1130,9 @@ const EditRulesModal: React.FC<Props> = props => {
               );
 
               allRules = updatedRules;
-              ruleIndices.forEach(index => newPrependRules.add(index));
+              ruleIndices.forEach(index => {
+                newPrependRules.add(index);
+              });
             }
 
             if (ruleData.append && Array.isArray(ruleData.append)) {
@@ -1147,7 +1153,9 @@ const EditRulesModal: React.FC<Props> = props => {
               );
 
               allRules = updatedRules;
-              ruleIndices.forEach(index => newAppendRules.add(index));
+              ruleIndices.forEach(index => {
+                newAppendRules.add(index);
+              });
             }
 
             if (ruleData.delete && Array.isArray(ruleData.delete)) {
@@ -1242,9 +1250,7 @@ const EditRulesModal: React.FC<Props> = props => {
       editingRule.payload.trim() !== '' &&
       !validateRulePayload(editingRule.type, editingRule.payload)
     ) {
-      toast.error(
-        (t('profile.editRules.invalidPayload') || 'Invalid payload') + ': ' + getRuleExample(editingRule.type),
-      );
+      toast.error(`${t('profile.editRules.invalidPayload') || 'Invalid payload'}: ${getRuleExample(editingRule.type)}`);
       return;
     }
 
@@ -1270,11 +1276,29 @@ const EditRulesModal: React.FC<Props> = props => {
     try {
       const prependRuleStrings = Array.from(prependRules)
         .filter(index => !deletedRules.has(index) && index < rules.length)
-        .map(index => convertRuleToString(rules[index]));
+        .map(index => {
+          const rule = rules[index];
+          const parts = [rule.type];
+          if (rule.payload) parts.push(rule.payload);
+          if (rule.proxy) parts.push(rule.proxy);
+          if (rule.additionalParams && rule.additionalParams.length > 0) {
+            parts.push(...rule.additionalParams);
+          }
+          return parts.join(',');
+        });
 
       const appendRuleStrings = Array.from(appendRules)
         .filter(index => !deletedRules.has(index) && index < rules.length)
-        .map(index => convertRuleToString(rules[index]));
+        .map(index => {
+          const rule = rules[index];
+          const parts = [rule.type];
+          if (rule.payload) parts.push(rule.payload);
+          if (rule.proxy) parts.push(rule.proxy);
+          if (rule.additionalParams && rule.additionalParams.length > 0) {
+            parts.push(...rule.additionalParams);
+          }
+          return parts.join(',');
+        });
 
       const deletedRuleStrings = Array.from(deletedRules)
         .filter(index => index < rules.length && !prependRules.has(index) && !appendRules.has(index))
@@ -1299,7 +1323,7 @@ const EditRulesModal: React.FC<Props> = props => {
       await setRuleStr(id, ruleYaml);
       return true;
     } catch (e) {
-      toast.error(t('profile.editRules.saveError') + ': ' + (e instanceof Error ? e.message : String(e)));
+      toast.error(`${t('profile.editRules.saveError')}: ${e instanceof Error ? e.message : String(e)}`);
       return false;
     }
   }, [prependRules, deletedRules, rules, appendRules, id, t]);
@@ -1340,13 +1364,13 @@ const EditRulesModal: React.FC<Props> = props => {
     });
   };
 
-  const getUpdatedIndexForInsertion = (index: number, insertPosition: number): number => {
+  const getUpdatedIndexForInsertion = useCallback((index: number, insertPosition: number): number => {
     if (index >= insertPosition) {
       return index + 1;
     } else {
       return index;
     }
-  };
+  }, []);
 
   const updateAllRuleIndicesAfterInsertion = useCallback(
     (
@@ -1387,7 +1411,7 @@ const EditRulesModal: React.FC<Props> = props => {
 
       return { newPrependRules, newAppendRules, newDeletedRules };
     },
-    [],
+    [getUpdatedIndexForInsertion],
   );
 
   const handleAddRule = useCallback(
@@ -1401,7 +1425,7 @@ const EditRulesModal: React.FC<Props> = props => {
         newRule.payload.trim() !== '' &&
         !validateRulePayload(newRule.type, newRule.payload)
       ) {
-        toast.error(t('profile.editRules.invalidPayload') + ': ' + getRuleExample(newRule.type));
+        toast.error(`${t('profile.editRules.invalidPayload')}: ${getRuleExample(newRule.type)}`);
         return;
       }
 
@@ -1435,7 +1459,12 @@ const EditRulesModal: React.FC<Props> = props => {
           if (newRuleItem.offset !== undefined) {
             insertPosition = Math.max(0, rules.length - newRuleItem.offset);
           } else {
-            const lastMatchIndex = rules.findLastIndex(r => r.type === 'MATCH');
+            const lastMatchIndex = (() => {
+              for (let i = rules.length - 1; i >= 0; i -= 1) {
+                if (rules[i].type === 'MATCH') return i;
+              }
+              return -1;
+            })();
             insertPosition = lastMatchIndex !== -1 ? lastMatchIndex : rules.length;
           }
 
@@ -1603,21 +1632,6 @@ const EditRulesModal: React.FC<Props> = props => {
       ) : null}
     </DragOverlay>
   );
-
-  const convertRuleToString = (rule: RuleItem): string => {
-    const parts = [rule.type];
-    if (rule.payload) parts.push(rule.payload);
-    if (rule.proxy) parts.push(rule.proxy);
-    if (rule.additionalParams && rule.additionalParams.length > 0) {
-      parts.push(...rule.additionalParams);
-    }
-
-    if (rule.offset !== undefined && rule.offset > 0) {
-      parts.unshift(rule.offset.toString());
-    }
-
-    return parts.join(',');
-  };
 
   const isRuleCustom = useCallback(
     (rule: RuleItem): boolean => {
