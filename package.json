@@ -8,7 +8,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "web:dev": "vite",
-    "web:build": "vite build",
+    "web:build": "tsc --noEmit && vite build",
     "release:updater": "bun scripts/updater.js",
     "i18n:cleanup": "bun scripts/cleanup-i18n.js",
     "format": "biome format .",
