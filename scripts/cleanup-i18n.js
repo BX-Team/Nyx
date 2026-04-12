@@ -131,7 +131,7 @@ function loadTsDefaultExport(filePath) {
   const fn = new Function('module', 'exports', transpiled);
   fn(module, module.exports);
 
-  const value = _default ?? module.exports;
+  const value = module.exports.default ?? module.exports;
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Locale in ${filePath} does not export an object`);
   }
