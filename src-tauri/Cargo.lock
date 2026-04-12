@@ -3043,6 +3043,7 @@ dependencies = [
  "env_logger",
  "futures-util",
  "if-addrs",
+ "libc",
  "log",
  "mihomo-rs",
  "once_cell",

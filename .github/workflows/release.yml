@@ -168,7 +168,7 @@ jobs:
           releaseBody: Draft release. Changelog and metadata will be finalized after all targets complete.
           releaseDraft: true
           prerelease: ${{ inputs.prerelease }}
-          tauriScript: bun
+          tauriScript: bun tauri
           includeUpdaterJson: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
