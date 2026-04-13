@@ -172,33 +172,6 @@ jobs:
           includeUpdaterJson: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
-      - name: Build portable archive (Windows only)
-        if: runner.os == 'Windows'
-        id: portable
-        shell: pwsh
-        run: |
-          $version = "${{ inputs.version }}"
-          $arch = "${{ matrix.arch }}"
-          $releaseDir = "target/${{ matrix.target }}/release"
-          $portableDir = "$releaseDir/portable"
-          $portableZip = "$releaseDir/bundle/nsis/Nyx_${version}_${arch}_portable.zip"
-
-          New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
-          New-Item -ItemType Directory -Force -Path "$portableDir/data" | Out-Null
-          New-Item -ItemType File -Force -Path "$portableDir/PORTABLE" | Out-Null
-          Copy-Item "$releaseDir/nyx.exe" "$portableDir/Nyx.exe" -Force
-          Compress-Archive -Path "$portableDir/*" -DestinationPath $portableZip -Force
-
-          "zip_path=$portableZip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
-      - name: Upload portable archive
-        if: runner.os == 'Windows'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          files: ${{ steps.portable.outputs.zip_path }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
   updater:
     name: Publish updater/update.json
     needs: [prepare, build]
