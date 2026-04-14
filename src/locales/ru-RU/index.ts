@@ -326,6 +326,11 @@ export default {
     adminRequired: 'Требуются права администратора',
     adminRequiredDesc: 'Для корректной работы приложения необходимо один раз запустить его от имени администратора',
     restartAsAdmin: 'Перезапустить от имени администратора',
+    firstRunTitle: 'Добро пожаловать в Nyx',
+    firstRunDesc:
+      'Для режима TUN (полный VPN-туннель) необходимо установить сервис Nyx. Хотите установить его сейчас?',
+    firstRunInstall: 'Установить сервис',
+    firstRunLater: 'Позже',
   },
   settings: {
     general: {
@@ -489,6 +494,7 @@ export default {
       stop: 'Остановить',
       start: 'Запустить',
       uninstall: 'Удалить',
+      noProfilesWarning: 'Добавьте профиль перед запуском сервиса',
     },
     interfaceModal: {
       title: 'Информация о сети',

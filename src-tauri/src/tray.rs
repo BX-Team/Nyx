@@ -86,9 +86,9 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
         }
         "restart-core" => {
             tauri::async_runtime::spawn({
-                let _ = app.clone();
+                let app = app.clone();
                 async move {
-                    let _ = crate::core::manager::restart_core().await;
+                    let _ = crate::commands::core::restart_core(app).await;
                 }
             });
         }
@@ -99,8 +99,7 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
             tauri::async_runtime::spawn({
                 let app = app.clone();
                 async move {
-                    let _ = crate::core::manager::stop_core().await;
-                    app.exit(0);
+                    crate::commands::utils::quit_app(app).await;
                 }
             });
         }

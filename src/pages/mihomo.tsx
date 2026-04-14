@@ -19,6 +19,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { useAppConfig } from '@/hooks/use-app-config';
 import { useControledMihomoConfig } from '@/hooks/use-controled-mihomo-config';
+import { useProfileConfig } from '@/hooks/use-profile-config';
 import {
   findSystemMihomo,
   initService,
@@ -59,6 +60,8 @@ const Mihomo: React.FC = () => {
   const { appConfig, patchAppConfig } = useAppConfig();
   const { core = 'mihomo', maxLogDays = 7 } = appConfig || {};
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig();
+  const { profileConfig } = useProfileConfig();
+  const hasProfiles = (profileConfig?.items?.length ?? 0) > 0;
   const { ipv6, 'log-level': logLevel = 'info' } = controledMihomoConfig || {};
 
   const [upgrading, setUpgrading] = useState(false);
@@ -137,6 +140,10 @@ const Mihomo: React.FC = () => {
         <ServiceModal
           onChange={setShowServiceModal}
           onInit={async () => {
+            if (!hasProfiles) {
+              toast.warning(t('mihomo.serviceModal.noProfilesWarning'));
+              return;
+            }
             await initService();
             toast.success(t('pages.mihomo.serviceInitSuccess'));
           }}
@@ -149,6 +156,10 @@ const Mihomo: React.FC = () => {
             toast.success(t('pages.mihomo.serviceUninstallSuccess'));
           }}
           onStart={async () => {
+            if (!hasProfiles) {
+              toast.warning(t('mihomo.serviceModal.noProfilesWarning'));
+              return;
+            }
             await startService();
             toast.success(t('pages.mihomo.serviceStartSuccess'));
           }}

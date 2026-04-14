@@ -327,6 +327,11 @@ export default {
     adminRequiredDesc:
       'For the application to work correctly, it needs to be run as administrator once to set up the task scheduler. After this, the application will start with elevated privileges automatically.',
     restartAsAdmin: 'Restart as Administrator',
+    firstRunTitle: 'Welcome to Nyx',
+    firstRunDesc:
+      'For TUN mode (full VPN tunneling), the Nyx service needs to be installed. Would you like to install it now?',
+    firstRunInstall: 'Install Service',
+    firstRunLater: 'Later',
   },
   settings: {
     general: {
@@ -490,6 +495,7 @@ export default {
       stop: 'Stop',
       start: 'Start',
       uninstall: 'Uninstall',
+      noProfilesWarning: 'Please add a profile before starting the service',
     },
     interfaceModal: {
       title: 'Network Information',

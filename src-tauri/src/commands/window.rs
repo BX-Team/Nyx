@@ -135,6 +135,16 @@ pub async fn needs_first_run_admin() -> bool {
     false
 }
 
+#[cfg(target_os = "windows")]
+pub fn is_elevated_sync() -> bool {
+    is_elevated()
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn is_elevated_sync() -> bool {
+    unsafe { libc::geteuid() == 0 }
+}
+
 #[tauri::command]
 pub async fn is_admin() -> bool {
     #[cfg(target_os = "windows")]
@@ -203,6 +213,7 @@ fn is_elevated() -> bool {
 pub async fn restart_as_admin(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::process::CommandExt;
         use std::process::Command;
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         Command::new("powershell")
@@ -214,6 +225,7 @@ pub async fn restart_as_admin(app: AppHandle) -> Result<(), String> {
                     exe.display()
                 ),
             ])
+            .creation_flags(0x08000000)
             .spawn()
             .map_err(|e| e.to_string())?;
         app.exit(0);
@@ -225,11 +237,7 @@ pub async fn restart_as_admin(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn open_dev_tools(app: AppHandle) {
-    #[cfg(debug_assertions)]
     if let Some(win) = app.get_webview_window("main") {
         win.open_devtools();
     }
-    
-    #[cfg(not(debug_assertions))]
-    let _ = app;
 }

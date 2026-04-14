@@ -4,6 +4,13 @@ use tauri::AppHandle;
 pub async fn restart_core(app: AppHandle) -> Result<(), String> {
     use tauri::Emitter;
     log::info!("[cmd::restart_core] called");
+
+    #[cfg(windows)]
+    if crate::commands::service::service_status().await == Ok("running".to_string()) {
+        log::info!("[cmd::restart_core] redirecting to service restart");
+        return crate::commands::service::restart_service(app).await;
+    }
+
     crate::core::streaming::stop_streaming();
     match crate::core::manager::restart_core().await {
         Ok(url) => {

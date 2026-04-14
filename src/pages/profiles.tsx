@@ -181,6 +181,8 @@ const Profiles: React.FC = () => {
           isCurrent={editingItem.id === current}
           updateProfileItem={async (item: ProfileItem) => {
             await addProfileItem(item);
+            setShowEditModal(false);
+            setEditingItem(null);
           }}
           onClose={() => {
             setShowEditModal(false);

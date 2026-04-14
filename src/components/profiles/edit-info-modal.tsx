@@ -1,6 +1,6 @@
 import { Check, ChevronDown, ClipboardPaste, FilePlus2, FileUp, MessageCircleQuestionMark } from 'lucide-react';
 import type React from 'react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -37,8 +37,6 @@ const EditInfoModal: React.FC<Props> = props => {
   const [urlTouched, setUrlTouched] = useState(false);
   const [localFileName, setLocalFileName] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const closeRef = useRef<HTMLButtonElement>(null);
-
   const isNew = !item.id;
   const isLocal = values.type === 'local';
   const urlInvalid = !isLocal && urlTouched && !!values.url && !isValidUrl(values.url);
@@ -53,7 +51,7 @@ const EditInfoModal: React.FC<Props> = props => {
       if (item.id && isCurrent) {
         await restartCore();
       }
-      closeRef.current?.click();
+      onClose();
     } catch (e) {
       toast.error(`${e}`);
     } finally {
@@ -120,7 +118,6 @@ const EditInfoModal: React.FC<Props> = props => {
       }}
     >
       <DialogContent className={cn('sm:max-w-none', 'w-120')} showCloseButton={false}>
-        <DialogClose ref={closeRef} className='hidden' />
         <DialogHeader className='app-drag'>
           <DialogTitle>{isNew ? t('profile.importRemoteConfig') : t('profile.editInfo')}</DialogTitle>
         </DialogHeader>

@@ -1,6 +1,6 @@
 use tauri::AppHandle;
 
-const SERVICE_NAME: &str = "NyxMihomo";
+const SERVICE_NAME: &str = "Nyx Service";
 const SERVICE_DISPLAY_NAME: &str = "Nyx Mihomo Service";
 
 #[cfg(windows)]
@@ -43,18 +43,20 @@ fn service_query_state() -> Result<Option<String>, String> {
 
     for line in text.lines() {
         let upper = line.to_ascii_uppercase();
-        if upper.contains("STATE") {
-            if upper.contains("RUNNING") {
-                return Ok(Some("running".to_string()));
-            }
-            if upper.contains("STOPPED") {
-                return Ok(Some("stopped".to_string()));
-            }
-            if upper.contains("START_PENDING") || upper.contains("CONTINUE_PENDING") {
-                return Ok(Some("running".to_string()));
-            }
-            if upper.contains("STOP_PENDING") || upper.contains("PAUSE_PENDING") {
-                return Ok(Some("stopped".to_string()));
+        if upper.contains("STATE") && upper.contains(':') && !upper.contains("WIN32_EXIT") {
+            if let Some(after_colon) = line.splitn(2, ':').nth(1) {
+                let trimmed = after_colon.trim();
+                if let Some(num_str) = trimmed.split_whitespace().next() {
+                    if let Ok(state_num) = num_str.parse::<u32>() {
+                        return Ok(Some(match state_num {
+                            1 => "stopped".to_string(),
+                            2 | 5 => "running".to_string(),
+                            3 | 6 | 7 => "stopped".to_string(),
+                            4 => "running".to_string(),
+                            _ => "unknown".to_string(),
+                        }));
+                    }
+                }
             }
         }
     }
@@ -109,17 +111,11 @@ async fn ensure_runtime_config() -> Result<(std::path::PathBuf, String), String>
 }
 
 #[cfg(windows)]
-fn build_service_binpath(binary: &std::path::Path, config: &std::path::Path) -> Result<String, String> {
+fn build_service_binpath() -> Result<String, String> {
     let service_host_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let work_dir = config
-        .parent()
-        .ok_or_else(|| "invalid config path (no parent directory)".to_string())?;
     Ok(format!(
-        "\"{}\" --nyx-service --core \"{}\" --work-dir \"{}\" --config \"{}\"",
-        service_host_exe.display(),
-        binary.display(),
-        work_dir.display(),
-        config.display()
+        "\"{}\" --nyx-service",
+        service_host_exe.display()
     ))
 }
 
@@ -145,16 +141,17 @@ fn sync_controller(url: &str, config: &std::path::Path) -> Result<(), String> {
 }
 
 #[cfg(windows)]
-fn ensure_service_installed_args(bin_path: &str) -> Result<(), String> {
+fn ensure_service_installed_args() -> Result<(), String> {
+    let bin_path = build_service_binpath()?;
     match service_query_state()? {
         Some(_) => {
             let out = run_sc(&[
                 "config".to_string(),
                 SERVICE_NAME.to_string(),
                 "binPath=".to_string(),
-                bin_path.to_string(),
+                bin_path,
                 "start=".to_string(),
-                "demand".to_string(),
+                "auto".to_string(),
                 "DisplayName=".to_string(),
                 SERVICE_DISPLAY_NAME.to_string(),
             ])?;
@@ -168,9 +165,9 @@ fn ensure_service_installed_args(bin_path: &str) -> Result<(), String> {
                 "create".to_string(),
                 SERVICE_NAME.to_string(),
                 "binPath=".to_string(),
-                bin_path.to_string(),
+                bin_path,
                 "start=".to_string(),
-                "demand".to_string(),
+                "auto".to_string(),
                 "DisplayName=".to_string(),
                 SERVICE_DISPLAY_NAME.to_string(),
             ])?;
@@ -236,14 +233,59 @@ async fn wait_for_service_state(expected_running: bool) -> Result<(), String> {
 }
 
 #[cfg(windows)]
+async fn send_ipc_request(req: &crate::service_host::IpcRequest) -> Result<(), String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::windows::named_pipe::ClientOptions;
+    
+    let mut client = ClientOptions::new().open(crate::service_host::IPC_PIPE_NAME).map_err(|e| e.to_string())?;
+    
+    let req_str = serde_json::to_string(req).map_err(|_e| "failed to serialize IPC request".to_string())?;
+    client.write_all(req_str.as_bytes()).await.map_err(|e| e.to_string())?;
+    
+    let mut buf = vec![0u8; 4096];
+    let n = client.read(&mut buf).await.map_err(|e| e.to_string())?;
+    let msg = String::from_utf8_lossy(&buf[..n]);
+    
+    if let Ok(res) = serde_json::from_str::<crate::service_host::IpcResponse>(&msg) {
+        match res {
+            crate::service_host::IpcResponse::Ok | crate::service_host::IpcResponse::Pong => Ok(()),
+            crate::service_host::IpcResponse::Error { message } => Err(message),
+        }
+    } else {
+        Err("invalid IPC response".to_string())
+    }
+}
+
+#[cfg(windows)]
 async fn start_windows_service(app: &tauri::AppHandle) -> Result<(), String> {
     use tauri::Emitter;
     let binary = ensure_core_binary().await?;
     let (config, url) = ensure_runtime_config().await?;
-    let bin_path = build_service_binpath(&binary, &config)?;
-    ensure_service_installed_args(&bin_path)?;
-    sc_start_service()?;
-    wait_for_service_state(true).await?;
+    let work_dir = config.parent().unwrap_or(std::path::Path::new("")).to_string_lossy().into_owned();
+
+    let state = service_query_state()?;
+    if state != Some("running".to_string()) {
+        if !crate::commands::window::is_elevated_sync() {
+            let bat_cmd = format!(
+                "@echo off\r\nchcp 65001 > nul\r\nsc.exe start {SERVICE_NAME}\r\n",
+                SERVICE_NAME = SERVICE_NAME
+            );
+            run_elevated_bat(&bat_cmd)?;
+        } else {
+            sc_start_service()?;
+        }
+        wait_for_service_state(true).await?;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+
+    let req = crate::service_host::IpcRequest::StartCore {
+        binary: binary.to_string_lossy().into_owned(),
+        work_dir,
+        config: config.to_string_lossy().into_owned(),
+    };
+
+    send_ipc_request(&req).await?;
+
     sync_controller(&url, &config)?;
     let _ = app.emit("core-started", ());
     let _ = app.emit("controled-mihomo-config-updated", ());
@@ -317,6 +359,16 @@ pub async fn service_status() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn test_service_connection() -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        if service_query_state()? != Some("running".to_string()) {
+            return Ok(false);
+        }
+        let req = crate::service_host::IpcRequest::Ping;
+        if send_ipc_request(&req).await.is_ok() {
+            return Ok(true);
+        }
+    }
     Ok(is_mihomo_running().await)
 }
 
@@ -338,14 +390,79 @@ pub async fn init_service(app: AppHandle) -> Result<(), String> {
     }
 }
 
+#[cfg(windows)]
+fn run_elevated_bat(bat_cmd: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    
+    let id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis().to_string())
+        .unwrap_or_default();
+        
+    let tmp_bat = std::env::temp_dir().join(format!("nyx_svc_{}.bat", id));
+    std::fs::write(&tmp_bat, bat_cmd).map_err(|e| e.to_string())?;
+
+    let ps1_cmd = format!(
+        "Start-Process -FilePath '{}' -Verb RunAs -WindowStyle Hidden -Wait",
+        tmp_bat.display().to_string().replace('\'', "''")
+    );
+    let tmp_ps1 = std::env::temp_dir().join(format!("nyx_svc_{}.ps1", id));
+    std::fs::write(&tmp_ps1, ps1_cmd).map_err(|e| e.to_string())?;
+
+    let out = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            &tmp_ps1.to_string_lossy(),
+        ])
+        .creation_flags(0x08000000)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let _ = std::fs::remove_file(&tmp_bat);
+    let _ = std::fs::remove_file(&tmp_ps1);
+
+    if !out.status.success() {
+        return Err(format!("service install (elevated) failed: {}", output_message(&out)));
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn install_service_elevated() -> Result<(), String> {
+    let action = match service_query_state()? {
+        Some(_) => "config",
+        None => "create",
+    };
+    let bin_path = build_service_binpath()?;
+
+    let bat_cmd = format!(
+        "@echo off\r\nchcp 65001 > nul\r\nsc.exe {action} {SERVICE_NAME} binPath= \"{bin_path}\" start= auto DisplayName= \"{SERVICE_DISPLAY_NAME}\"\r\nsc.exe start {SERVICE_NAME}\r\n",
+        action = action,
+        SERVICE_NAME = SERVICE_NAME,
+        bin_path = bin_path.replace('"', "\\\""),
+        SERVICE_DISPLAY_NAME = SERVICE_DISPLAY_NAME
+    );
+
+    run_elevated_bat(&bat_cmd)
+}
+
 #[tauri::command]
 pub async fn install_service() -> Result<(), String> {
     #[cfg(windows)]
     {
-        let binary = ensure_core_binary().await?;
-        let (config, _) = ensure_runtime_config().await?;
-        let bin_path = build_service_binpath(&binary, &config)?;
-        ensure_service_installed_args(&bin_path)
+        if !crate::commands::window::is_elevated_sync() {
+            return install_service_elevated();
+        }
+        ensure_service_installed_args()?;
+        let _ = sc_start_service();
+        Ok(())
     }
 
     #[cfg(not(windows))]
@@ -362,11 +479,16 @@ pub async fn uninstall_service() -> Result<(), String> {
         if service_query_state()?.is_none() {
             return Ok(());
         }
-        sc_stop_service()?;
-        wait_for_service_state(false).await?;
-        let out = run_sc(&["delete".to_string(), SERVICE_NAME.to_string()])?;
-        if !out.status.success() {
-            return Err(format!("failed to delete service: {}", output_message(&out)));
+        if !crate::commands::window::is_elevated_sync() {
+            let bat_cmd = format!("@echo off\r\nnet stop {SERVICE_NAME}\r\nsc.exe delete {SERVICE_NAME}\r\n", SERVICE_NAME = SERVICE_NAME);
+            run_elevated_bat(&bat_cmd)?;
+        } else {
+            sc_stop_service()?;
+            wait_for_service_state(false).await?;
+            let out = run_sc(&["delete".to_string(), SERVICE_NAME.to_string()])?;
+            if !out.status.success() {
+                return Err(format!("failed to delete service: {}", output_message(&out)));
+            }
         }
         return Ok(());
     }
@@ -407,14 +529,34 @@ pub async fn restart_service(app: AppHandle) -> Result<(), String> {
         if service_query_state()?.is_none() {
             return Err("service is not installed".to_string());
         }
+        
         let binary = ensure_core_binary().await?;
         let (config, url) = ensure_runtime_config().await?;
-        let bin_path = build_service_binpath(&binary, &config)?;
-        ensure_service_installed_args(&bin_path)?;
-        sc_stop_service()?;
-        wait_for_service_state(false).await?;
-        sc_start_service()?;
-        wait_for_service_state(true).await?;
+        let work_dir = config.parent().unwrap_or(std::path::Path::new("")).to_string_lossy().into_owned();
+
+        let state = service_query_state()?;
+        if state != Some("running".to_string()) {
+            if !crate::commands::window::is_elevated_sync() {
+                let bat_cmd = format!(
+                    "@echo off\r\nchcp 65001 > nul\r\nsc.exe start {SERVICE_NAME}\r\n",
+                    SERVICE_NAME = SERVICE_NAME
+                );
+                run_elevated_bat(&bat_cmd)?;
+            } else {
+                sc_start_service()?;
+            }
+            wait_for_service_state(true).await?;
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
+        let req = crate::service_host::IpcRequest::StartCore {
+            binary: binary.to_string_lossy().into_owned(),
+            work_dir,
+            config: config.to_string_lossy().into_owned(),
+        };
+
+        send_ipc_request(&req).await?;
+
         sync_controller(&url, &config)?;
         use tauri::Emitter;
         let _ = app.emit("core-started", ());
@@ -443,8 +585,12 @@ pub async fn stop_service() -> Result<(), String> {
         if service_query_state()?.is_none() {
             return Ok(());
         }
-        sc_stop_service()?;
-        wait_for_service_state(false).await?;
+        
+        let state = service_query_state()?;
+        if state == Some("running".to_string()) {
+            let req = crate::service_host::IpcRequest::StopCore;
+            let _ = send_ipc_request(&req).await;
+        }
         return Ok(());
     }
 

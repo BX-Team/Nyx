@@ -53,6 +53,7 @@ pub async fn open_uwp_tool(app: AppHandle) -> Result<(), String> {
 pub async fn setup_firewall() -> Result<(), String> {
     #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         std::process::Command::new("netsh")
             .args([
@@ -60,6 +61,7 @@ pub async fn setup_firewall() -> Result<(), String> {
                 "name=Nyx", "dir=in", "action=allow",
                 &format!("program={}", exe.display()),
             ])
+            .creation_flags(0x08000000)
             .output()
             .map_err(|e| e.to_string())?;
     }
@@ -77,7 +79,14 @@ pub async fn find_system_mihomo() -> Vec<String> {
         #[cfg(not(windows))]
         let cmd = "which";
 
-        if let Ok(out) = std::process::Command::new(cmd).arg(name).output() {
+        let mut command = std::process::Command::new(cmd);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x08000000);
+        }
+
+        if let Ok(out) = command.arg(name).output() {
             if out.status.success() {
                 let stdout = String::from_utf8_lossy(&out.stdout);
                 for line in stdout.lines() {

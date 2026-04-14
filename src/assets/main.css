@@ -118,7 +118,7 @@
 
 @font-face {
   font-family: "twemoji";
-  src: url("./twemoji.ttf");
+  src: url("/twemoji.ttf");
 }
 
 .app-nodrag {

@@ -98,12 +98,19 @@ pub async fn quit_without_core(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn quit_app(app: AppHandle) {
+    #[cfg(windows)]
+    let _ = crate::commands::service::stop_service().await;
+    
     let _ = crate::core::manager::stop_core().await;
     app.exit(0);
 }
 
 #[tauri::command]
 pub async fn not_dialog_quit(app: AppHandle) {
+    #[cfg(windows)]
+    let _ = crate::commands::service::stop_service().await;
+    
+    let _ = crate::core::manager::stop_core().await;
     app.exit(0);
 }
 

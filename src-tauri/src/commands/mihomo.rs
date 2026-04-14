@@ -185,10 +185,10 @@ pub async fn mihomo_upgrade_ui() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn mihomo_upgrade(core: Option<String>) -> Result<(), String> {
+pub async fn mihomo_upgrade(app: tauri::AppHandle, core: Option<String>) -> Result<(), String> {
     let selected = core.unwrap_or_else(|| "mihomo".to_string());
     crate::core::manager::install_core_for_core_type(&selected)
         .await
         .map_err(|e| e.to_string())?;
-    crate::core::manager::restart_core().await.map(|_| ()).map_err(|e| e.to_string())
+    crate::commands::core::restart_core(app).await
 }

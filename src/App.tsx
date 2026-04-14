@@ -49,6 +49,7 @@ const App: React.FC = () => {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [showProfileInstallConfirm, setShowProfileInstallConfirm] = useState(false);
   const [showAdminRequired, setShowAdminRequired] = useState(false);
+  const [showFirstRunPrompt, setShowFirstRunPrompt] = useState(false);
   const profileInstallConfirmedRef = useRef(false);
   const [profileInstallData, setProfileInstallData] = useState<{
     url: string;
@@ -89,6 +90,7 @@ const App: React.FC = () => {
         }),
       );
       unlisteners.push(await listen<void>('needs-admin-setup', () => setShowAdminRequired(true)));
+      unlisteners.push(await listen<void>('first-run', () => setShowFirstRunPrompt(true)));
       unlisteners.push(
         await listen<void>('shortcut-trigger-tun', async () => {
           try {
@@ -226,6 +228,27 @@ const App: React.FC = () => {
             await restartAsAdmin();
           }}
           className=''
+        />
+      )}
+      {showFirstRunPrompt && (
+        <ConfirmModal
+          title={t('modal.firstRunTitle')}
+          description={
+            <div>
+              <p className='text-sm'>{t('modal.firstRunDesc')}</p>
+            </div>
+          }
+          confirmText={t('modal.firstRunInstall')}
+          cancelText={t('modal.firstRunLater')}
+          onChange={open => {
+            if (!open) setShowFirstRunPrompt(false);
+          }}
+          onConfirm={() => {
+            setShowFirstRunPrompt(false);
+            import('pubsub-js').then(({ default: PubSub }) => {
+              PubSub.publish('open-service-modal');
+            });
+          }}
         />
       )}
       <HwidLimitAlert />

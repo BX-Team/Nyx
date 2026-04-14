@@ -27,7 +27,7 @@ import { useControledMihomoConfig } from '@/hooks/use-controled-mihomo-config';
 import { useGroups } from '@/hooks/use-groups';
 import { useProfileConfig } from '@/hooks/use-profile-config';
 import { calcTraffic } from '@/utils/calc';
-import { isAdmin, restartAsAdmin, restartCore, serviceStatus, updateTrayIcon } from '@/utils/ipc';
+import { isAdmin, restartAsAdmin, serviceStatus, updateTrayIcon } from '@/utils/ipc';
 
 const mainSwitchStorageKey = 'nyx-main-switch-connected';
 const mainSwitchEventName = 'nyx-main-switch-status';
@@ -185,18 +185,22 @@ const Home: React.FC = () => {
       if (enable) {
         const admin = await isAdmin();
         if (!admin) {
-          if (import.meta.env.DEV) {
-            toast.error(t('pages.home.tunRequiresAdminDev'), { duration: 10000 });
-          } else {
-            toast.error(t('pages.home.tunRequiresAdmin'), {
-              duration: 10000,
-              action: {
-                label: t('pages.home.restartAsAdmin'),
-                onClick: () => restartAsAdmin(),
-              },
-            });
+          // Skip admin requirement when service is running — it manages mihomo at SYSTEM level
+          const svcStatus = await serviceStatus();
+          if (svcStatus !== 'running') {
+            if (import.meta.env.DEV) {
+              toast.error(t('pages.home.tunRequiresAdminDev'), { duration: 10000 });
+            } else {
+              toast.error(t('pages.home.tunRequiresAdmin'), {
+                duration: 10000,
+                action: {
+                  label: t('pages.home.restartAsAdmin'),
+                  onClick: () => restartAsAdmin(),
+                },
+              });
+            }
+            return;
           }
-          return;
         }
         try {
           const svcStatus = await serviceStatus();
@@ -223,7 +227,6 @@ const Home: React.FC = () => {
       } else {
         await patchControledMihomoConfig({ tun: { enable: false } });
       }
-      await restartCore();
       await updateTrayIcon();
     } catch (e) {
       toast.error(`${e}`);

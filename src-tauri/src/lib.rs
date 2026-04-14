@@ -58,6 +58,14 @@ pub fn run() {
     log::info!("Nyx starting up");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            use tauri::Manager;
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.set_focus();
+                let _ = win.unminimize();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -303,6 +311,8 @@ pub fn run() {
                     })).unwrap_or_default();
                     let _ = std::fs::write(&config_path, defaults);
                     log::info!("created default app config");
+                    use tauri::Emitter;
+                    let _ = app.handle().emit("first-run", ());
                 }
             }
 
@@ -318,10 +328,19 @@ pub fn run() {
                 if use_service_mode {
                     match commands::service::service_status().await {
                         Ok(status) if status == "running" => {
-                            let _ = commands::service::test_service_connection().await;
                             use tauri::Emitter;
-                            let _ = handle.emit("core-started", ());
-                            core::streaming::start_streaming(&handle);
+                            let connected = commands::service::test_service_connection().await
+                                .unwrap_or(false);
+                            if connected {
+                                let _ = handle.emit("core-started", ());
+                                core::streaming::start_streaming(&handle);
+                            } else {
+                                log::warn!("service running but mihomo not reachable, restarting");
+                                if let Err(e) = commands::service::start_service(handle.clone()).await {
+                                    log::error!("failed to restart service on startup: {e}");
+                                    let _ = handle.emit("core-start-failed", e.to_string());
+                                }
+                            }
                             return;
                         }
                         Ok(status) if status == "stopped" => {

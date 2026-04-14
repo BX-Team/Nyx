@@ -484,6 +484,12 @@ async fn save_controller_to_overrides(url: &str) {
 }
 
 pub async fn stop_core() -> Result<()> {
+    #[cfg(windows)]
+    if crate::commands::service::service_status().await == Ok("running".to_string()) {
+        log::info!("[stop_core] mihomo relies on background service, skipping local stop");
+        return Ok(());
+    }
+
     log::info!("[stop_core] stopping mihomo...");
     match stop_mihomo().await {
         Ok(_) => log::info!("[stop_core] mihomo stopped"),
