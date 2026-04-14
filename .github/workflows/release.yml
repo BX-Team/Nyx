@@ -50,6 +50,7 @@ jobs:
         run: |
           VERSION="${{ inputs.version }}"
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          sed -i '/name = "nyx"/,/^version =/ s/^version = ".*/version = "'"$VERSION"'"/' src-tauri/Cargo.lock
           sed -i "s/^  \"version\": \".*\",/  \"version\": \"$VERSION\",/" package.json
           sed -i "s/^  \"version\": \".*\",/  \"version\": \"$VERSION\",/" src-tauri/tauri.conf.json
 
