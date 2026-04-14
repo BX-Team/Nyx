@@ -399,6 +399,9 @@ pub fn run() {
 
             let refresh_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                if let Err(e) = run_auto_refresh(&refresh_handle).await {
+                    log::warn!("auto-refresh (startup): {e}");
+                }
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                     if let Err(e) = run_auto_refresh(&refresh_handle).await {
