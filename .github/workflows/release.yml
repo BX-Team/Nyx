@@ -173,9 +173,24 @@ jobs:
           includeUpdaterJson: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
+  publish:
+    name: Publish release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release with changelog
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Nyx ${{ needs.prepare.outputs.tag }}
+          body: ${{ needs.prepare.outputs.changelog }}
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   updater:
     name: Publish updater/update.json
-    needs: [prepare, build]
+    needs: [prepare, publish]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -201,21 +216,6 @@ jobs:
           name: updater
           body: Auto-generated updater metadata file.
           draft: false
-          prerelease: false
+          prerelease: true
           token: ${{ secrets.GITHUB_TOKEN }}
           files: update.json
-
-  publish:
-    name: Publish release
-    needs: [prepare, build, updater]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish release with changelog
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Nyx ${{ needs.prepare.outputs.tag }}
-          body: ${{ needs.prepare.outputs.changelog }}
-          draft: false
-          prerelease: ${{ inputs.prerelease }}
-          token: ${{ secrets.GITHUB_TOKEN }}
