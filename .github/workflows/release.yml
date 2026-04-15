@@ -67,6 +67,7 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       previous_tag: ${{ steps.prev_tag.outputs.latest_tag }}
       changelog: ${{ steps.changelog.outputs.changelog }}
+      release_id: ${{ steps.create_release.outputs.id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -103,6 +104,23 @@ jobs:
           configuration: '.github/changelog_configuration.json'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push release tag
+        shell: bash
+        run: |
+          git tag -f "v${{ inputs.version }}" HEAD
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create draft release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: Nyx ${{ inputs.version }}
+          body: Draft release. Changelog and metadata will be finalized after all targets complete.
+          draft: true
+          prerelease: ${{ inputs.prerelease }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     name: Build (${{ matrix.target }})
@@ -164,14 +182,17 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ needs.prepare.outputs.tag }}
-          releaseName: Nyx ${{ needs.prepare.outputs.tag }}
-          releaseBody: Draft release. Changelog and metadata will be finalized after all targets complete.
-          releaseDraft: true
-          prerelease: ${{ inputs.prerelease }}
           tauriScript: bun tauri
           includeUpdaterJson: false
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          files: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*setup*
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*AppImage*
 
   publish:
     name: Publish release
