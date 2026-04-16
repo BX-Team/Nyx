@@ -1,14 +1,18 @@
 #[cfg(windows)]
 pub mod imp {
-    use std::ffi::OsString;
+    use std::ffi::{c_void, OsString};
     use std::io::Write;
     use std::path::{Path, PathBuf};
     use std::sync::mpsc;
     use std::time::Duration;
     use serde::{Deserialize, Serialize};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::windows::named_pipe::ServerOptions;
+    use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
     use tokio::process::Child;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::BOOL;
+    use windows::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
+    use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
     use windows_service::define_windows_service;
     use windows_service::service::{
         ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
@@ -18,6 +22,41 @@ pub mod imp {
 
     const SERVICE_NAME: &str = "Nyx Service";
     pub const IPC_PIPE_NAME: &str = r"\\.\pipe\nyx_mihomo_ipc";
+
+    fn build_pipe_security_attributes() -> Option<SECURITY_ATTRIBUTES> {
+        let sddl: Vec<u16> = "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGWGX;;;AU)\0"
+            .encode_utf16()
+            .collect();
+        let mut psd = PSECURITY_DESCRIPTOR::default();
+        unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                PCWSTR::from_raw(sddl.as_ptr()),
+                1,
+                &mut psd as *mut _,
+                None,
+            )
+            .ok()?;
+        }
+        Some(SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: psd.0,
+            bInheritHandle: BOOL(0),
+        })
+    }
+
+    fn create_pipe_server(first: bool) -> std::io::Result<NamedPipeServer> {
+        let mut opts = ServerOptions::new();
+        opts.first_pipe_instance(first);
+        match build_pipe_security_attributes() {
+            Some(mut sa) => unsafe {
+                opts.create_with_security_attributes_raw(
+                    IPC_PIPE_NAME,
+                    &mut sa as *mut SECURITY_ATTRIBUTES as *mut c_void,
+                )
+            },
+            None => opts.create(IPC_PIPE_NAME),
+        }
+    }
 
     #[derive(Serialize, Deserialize, Debug)]
     #[serde(tag = "action", rename_all = "SCREAMING_SNAKE_CASE")]
@@ -171,18 +210,16 @@ pub mod imp {
 
             let server_task = tokio::spawn(async move {
                 loop {
-                    let mut server = match ServerOptions::new().first_pipe_instance(true).create(IPC_PIPE_NAME) {
+                    let mut server = match create_pipe_server(true) {
                         Ok(s) => s,
-                        Err(_) => {
-                            match ServerOptions::new().first_pipe_instance(false).create(IPC_PIPE_NAME) {
-                                Ok(s) => s,
-                                Err(e) => {
-                                    log_to_file(&format!("failed to create pipe: {}", e));
-                                    tokio::time::sleep(Duration::from_secs(1)).await;
-                                    continue;
-                                }
+                        Err(_) => match create_pipe_server(false) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                log_to_file(&format!("failed to create pipe: {}", e));
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                continue;
                             }
-                        }
+                        },
                     };
 
                     if let Err(e) = server.connect().await {

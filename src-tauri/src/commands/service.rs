@@ -26,42 +26,31 @@ fn output_message(out: &std::process::Output) -> String {
 
 #[cfg(windows)]
 fn service_query_state() -> Result<Option<String>, String> {
-    let out = run_sc(&["query".to_string(), SERVICE_NAME.to_string()])?;
-    let text = format!(
-        "{}\n{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr)
-    );
+    use windows_service::service::{ServiceAccess, ServiceState};
+    use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 
-    if !out.status.success() && text.contains("1060") {
-        return Ok(None);
-    }
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+        .map_err(|e| format!("failed to open service manager: {e}"))?;
 
-    if !out.status.success() {
-        return Err(format!("failed to query service state: {}", output_message(&out)));
-    }
-
-    for line in text.lines() {
-        let upper = line.to_ascii_uppercase();
-        if upper.contains("STATE") && upper.contains(':') && !upper.contains("WIN32_EXIT") {
-            if let Some(after_colon) = line.splitn(2, ':').nth(1) {
-                let trimmed = after_colon.trim();
-                if let Some(num_str) = trimmed.split_whitespace().next() {
-                    if let Ok(state_num) = num_str.parse::<u32>() {
-                        return Ok(Some(match state_num {
-                            1 => "stopped".to_string(),
-                            2 | 5 => "running".to_string(),
-                            3 | 6 | 7 => "stopped".to_string(),
-                            4 => "running".to_string(),
-                            _ => "unknown".to_string(),
-                        }));
-                    }
-                }
-            }
+    let service = match manager.open_service(SERVICE_NAME, ServiceAccess::QUERY_STATUS) {
+        Ok(s) => s,
+        Err(windows_service::Error::Winapi(ref e)) if e.raw_os_error() == Some(1060) => {
+            return Ok(None);
         }
-    }
+        Err(e) => return Err(format!("failed to open service: {e}")),
+    };
 
-    Ok(Some("unknown".to_string()))
+    let status = service
+        .query_status()
+        .map_err(|e| format!("failed to query service status: {e}"))?;
+
+    Ok(Some(match status.current_state {
+        ServiceState::Running | ServiceState::StartPending | ServiceState::ContinuePending => {
+            "running".to_string()
+        }
+        ServiceState::Stopped | ServiceState::StopPending => "stopped".to_string(),
+        ServiceState::Paused | ServiceState::PausePending => "stopped".to_string(),
+    }))
 }
 
 #[cfg(windows)]
@@ -267,7 +256,7 @@ async fn start_windows_service(app: &tauri::AppHandle) -> Result<(), String> {
     if state != Some("running".to_string()) {
         if !crate::commands::window::is_elevated_sync() {
             let bat_cmd = format!(
-                "@echo off\r\nchcp 65001 > nul\r\nsc.exe start {SERVICE_NAME}\r\n",
+                "@echo off\r\nchcp 65001 > nul\r\nsc.exe start \"{SERVICE_NAME}\"\r\nif errorlevel 1 exit /b 1\r\n",
                 SERVICE_NAME = SERVICE_NAME
             );
             run_elevated_bat(&bat_cmd)?;
@@ -443,7 +432,7 @@ fn install_service_elevated() -> Result<(), String> {
     let bin_path = build_service_binpath()?;
 
     let bat_cmd = format!(
-        "@echo off\r\nchcp 65001 > nul\r\nsc.exe {action} {SERVICE_NAME} binPath= \"{bin_path}\" start= auto DisplayName= \"{SERVICE_DISPLAY_NAME}\"\r\nsc.exe start {SERVICE_NAME}\r\n",
+        "@echo off\r\nchcp 65001 > nul\r\nsc.exe {action} \"{SERVICE_NAME}\" binPath= \"{bin_path}\" start= auto DisplayName= \"{SERVICE_DISPLAY_NAME}\"\r\nif errorlevel 1 exit /b 1\r\nsc.exe start \"{SERVICE_NAME}\"\r\nif errorlevel 1 exit /b 1\r\n",
         action = action,
         SERVICE_NAME = SERVICE_NAME,
         bin_path = bin_path.replace('"', "\\\""),
@@ -480,7 +469,10 @@ pub async fn uninstall_service() -> Result<(), String> {
             return Ok(());
         }
         if !crate::commands::window::is_elevated_sync() {
-            let bat_cmd = format!("@echo off\r\nnet stop {SERVICE_NAME}\r\nsc.exe delete {SERVICE_NAME}\r\n", SERVICE_NAME = SERVICE_NAME);
+            let bat_cmd = format!(
+                "@echo off\r\nsc.exe stop \"{SERVICE_NAME}\"\r\nsc.exe delete \"{SERVICE_NAME}\"\r\nif errorlevel 1 exit /b 1\r\n",
+                SERVICE_NAME = SERVICE_NAME
+            );
             run_elevated_bat(&bat_cmd)?;
         } else {
             sc_stop_service()?;
@@ -538,7 +530,7 @@ pub async fn restart_service(app: AppHandle) -> Result<(), String> {
         if state != Some("running".to_string()) {
             if !crate::commands::window::is_elevated_sync() {
                 let bat_cmd = format!(
-                    "@echo off\r\nchcp 65001 > nul\r\nsc.exe start {SERVICE_NAME}\r\n",
+                    "@echo off\r\nchcp 65001 > nul\r\nsc.exe start \"{SERVICE_NAME}\"\r\nif errorlevel 1 exit /b 1\r\n",
                     SERVICE_NAME = SERVICE_NAME
                 );
                 run_elevated_bat(&bat_cmd)?;

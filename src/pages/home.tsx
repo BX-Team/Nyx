@@ -297,7 +297,9 @@ const Home: React.FC = () => {
                 )}
               </div>
               {currentProfile.announce && (
-                <div className='text-sm font-medium text-center mt-2'>{currentProfile.announce}</div>
+                <div className='text-sm font-medium text-center mt-2 whitespace-pre-line break-words'>
+                  {currentProfile.announce}
+                </div>
               )}
             </div>
           )}
