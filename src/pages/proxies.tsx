@@ -24,7 +24,13 @@ import { useAppConfig } from '@/hooks/use-app-config';
 import { useControledMihomoConfig } from '@/hooks/use-controled-mihomo-config';
 import { useGroups } from '@/hooks/use-groups';
 import { includesIgnoreCase } from '@/utils/includes';
-import { getImageDataURL, mihomoChangeProxy, mihomoCloseAllConnections, mihomoProxyDelay } from '@/utils/ipc';
+import {
+  getImageDataURL,
+  mihomoChangeProxy,
+  mihomoCloseAllConnections,
+  mihomoProxyDelay,
+  updateTrayIcon,
+} from '@/utils/ipc';
 
 const groupTypeColor: Record<string, string> = {
   Selector: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
@@ -49,6 +55,7 @@ const Proxies: React.FC = () => {
     autoCloseConnection = true,
     proxyCols = 'auto',
     delayTestConcurrency = 50,
+    delayTestUrl = 'https://cp.cloudflare.com',
     expandProxyGroups = false,
   } = appConfig || {};
   const [cols, setCols] = useState(1);
@@ -98,13 +105,17 @@ const Proxies: React.FC = () => {
         await mihomoCloseAllConnections();
       }
       mutate();
+      updateTrayIcon();
     },
     [autoCloseConnection, mutate],
   );
 
-  const onProxyDelay = useCallback(async (proxy: string, url?: string): Promise<ControllerProxiesDelay> => {
-    return await mihomoProxyDelay(proxy, url);
-  }, []);
+  const onProxyDelay = useCallback(
+    async (proxy: string, url?: string): Promise<ControllerProxiesDelay> => {
+      return await mihomoProxyDelay(proxy, url || delayTestUrl);
+    },
+    [delayTestUrl],
+  );
 
   const onGroupDelay = useCallback(
     async (index: number): Promise<void> => {
@@ -125,7 +136,7 @@ const Proxies: React.FC = () => {
       for (const proxy of allProxies[index]) {
         const promise = Promise.resolve().then(async () => {
           try {
-            await mihomoProxyDelay(proxy.name, groups[index].testUrl);
+            await mihomoProxyDelay(proxy.name, delayTestUrl || groups[index].testUrl);
           } catch {
           } finally {
             mutate();
@@ -147,7 +158,7 @@ const Proxies: React.FC = () => {
         return newDelaying;
       });
     },
-    [allProxies, groups, delayTestConcurrency, mutate],
+    [allProxies, groups, delayTestConcurrency, delayTestUrl, mutate],
   );
 
   const calcCols = useCallback((): number => {

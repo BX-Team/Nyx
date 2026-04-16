@@ -10,6 +10,7 @@ import ByPassEditorModal from '@/components/sysproxy/bypass-editor-modal';
 import PacEditorModal from '@/components/sysproxy/pac-editor-modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAppConfig } from '@/hooks/use-app-config';
 import { platform } from '@/utils/init';
@@ -51,7 +52,7 @@ const Sysproxy: React.FC = () => {
         ];
 
   const { appConfig, patchAppConfig } = useAppConfig();
-  const { sysProxy, onlyActiveDevice = false } = appConfig || ({ sysProxy: { enable: false } } as AppConfig);
+  const { sysProxy, affectVPNConnections = false } = appConfig || ({ sysProxy: { enable: false } } as AppConfig);
   const [changed, setChanged] = useState(false);
   const [values, originSetValues] = useState({
     enable: sysProxy.enable,
@@ -87,7 +88,7 @@ const Sysproxy: React.FC = () => {
     setChanged(false);
     if (values.enable) {
       try {
-        await triggerSysProxy(values.enable, onlyActiveDevice);
+        await triggerSysProxy(values.enable, affectVPNConnections);
       } catch (e) {
         toast.error(`${e}`);
         await patchAppConfig({ sysProxy: { enable: false } });
@@ -130,6 +131,21 @@ const Sysproxy: React.FC = () => {
         />
       )}
       <SettingCard className='sysproxy-settings'>
+        <SettingItem title={t('pages.sysproxy.affectVPNConnections')} divider>
+          <Switch
+            checked={affectVPNConnections}
+            onCheckedChange={async value => {
+              await patchAppConfig({ affectVPNConnections: value });
+              if (sysProxy.enable) {
+                try {
+                  await triggerSysProxy(sysProxy.enable, value);
+                } catch (e) {
+                  toast.error(`${e}`);
+                }
+              }
+            }}
+          />
+        </SettingItem>
         <SettingItem title={t('pages.sysproxy.proxyHost')} divider>
           <Input
             className='w-[50%]'

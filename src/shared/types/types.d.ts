@@ -1,15 +1,7 @@
 type OutboundMode = 'rule' | 'global' | 'direct';
 type LogLevel = 'info' | 'debug' | 'warning' | 'error' | 'silent';
 type SysProxyMode = 'auto' | 'manual';
-type CardStatus = 'col-span-2' | 'col-span-1' | 'hidden';
 type AppTheme = 'system' | 'light' | 'dark';
-type Priority =
-  | 'PRIORITY_LOW'
-  | 'PRIORITY_BELOW_NORMAL'
-  | 'PRIORITY_NORMAL'
-  | 'PRIORITY_ABOVE_NORMAL'
-  | 'PRIORITY_HIGH'
-  | 'PRIORITY_HIGHEST';
 
 type MihomoGroupType = 'Selector' | 'Fallback' | 'URLTest' | 'LoadBalance' | 'Relay';
 type MihomoProxyType =

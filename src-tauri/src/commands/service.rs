@@ -118,6 +118,17 @@ fn read_secret_from_config(config: &std::path::Path) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+#[cfg(windows)]
+fn read_max_log_days() -> u32 {
+    let path = crate::utils::dirs::app_config_path();
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_yaml::from_str::<serde_yaml::Value>(&s).ok())
+        .and_then(|v| v.get("maxLogDays").and_then(|x| x.as_u64()))
+        .map(|d| d as u32)
+        .unwrap_or(7)
+}
+
 #[cfg(not(windows))]
 fn read_secret_from_config(_config: &std::path::Path) -> Option<String> {
     None
@@ -271,6 +282,7 @@ async fn start_windows_service(app: &tauri::AppHandle) -> Result<(), String> {
         binary: binary.to_string_lossy().into_owned(),
         work_dir,
         config: config.to_string_lossy().into_owned(),
+        max_log_days: read_max_log_days(),
     };
 
     send_ipc_request(&req).await?;
@@ -548,6 +560,7 @@ pub async fn restart_service(app: AppHandle) -> Result<(), String> {
             binary: binary.to_string_lossy().into_owned(),
             work_dir,
             config: config.to_string_lossy().into_owned(),
+            max_log_days: read_max_log_days(),
         };
 
         send_ipc_request(&req).await?;

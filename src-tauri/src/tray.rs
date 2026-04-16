@@ -128,10 +128,23 @@ pub fn update_tray_icon(app: &AppHandle, enabled: bool) {
     }
 }
 
-pub fn update_tray_tooltip(app: &AppHandle, profile: &str, mode: &str, tun_enabled: bool) {
+pub fn update_tray_tooltip(
+    app: &AppHandle,
+    profile: &str,
+    mode: &str,
+    tun_enabled: bool,
+    proxy: &str,
+    show_info: bool,
+) {
     let Some(tray) = app.tray_by_id("main") else {
         return;
     };
+    
+    if !show_info {
+        let _ = tray.set_tooltip(Some("Nyx"));
+        return;
+    }
+
     let mode_label = match mode {
         "global" => "Global",
         "direct" => "Direct",
@@ -145,6 +158,12 @@ pub fn update_tray_tooltip(app: &AppHandle, profile: &str, mode: &str, tun_enabl
         format!("Profile: {profile}")
     };
     let tun_line = if tun_enabled { "TUN: On" } else { "TUN: Off" };
-    let tooltip = format!("Nyx\n{profile_line}\nMode: {mode_label}\n{tun_line}");
+    
+    let tooltip = if proxy.is_empty() {
+        format!("Nyx\n{profile_line}\nMode: {mode_label}\n{tun_line}")
+    } else {
+        format!("Nyx\n{profile_line}\nMode: {mode_label}\nProxy: {proxy}\n{tun_line}")
+    };
+    
     let _ = tray.set_tooltip(Some(&tooltip));
 }

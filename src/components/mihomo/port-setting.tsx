@@ -17,7 +17,7 @@ import SettingItem from '../base/base-setting-item';
 const PortSetting: React.FC = () => {
   const { t } = useTranslation();
   const { appConfig } = useAppConfig();
-  const { sysProxy, onlyActiveDevice = false } = appConfig || {};
+  const { sysProxy, affectVPNConnections = false } = appConfig || {};
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig();
   const {
     authentication = [],
@@ -72,7 +72,7 @@ const PortSetting: React.FC = () => {
                 onClick={async () => {
                   await onChangeNeedRestart({ 'mixed-port': mixedPortInput });
                   if (sysProxy?.enable) {
-                    await triggerSysProxy(true, onlyActiveDevice);
+                    await triggerSysProxy(true, affectVPNConnections);
                   }
                 }}
               >

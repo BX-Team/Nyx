@@ -65,9 +65,15 @@ pub mod imp {
             binary: String,
             work_dir: String,
             config: String,
+            #[serde(default = "default_max_log_days")]
+            max_log_days: u32,
         },
         StopCore,
         Ping,
+    }
+
+    fn default_max_log_days() -> u32 {
+        7
     }
 
     #[derive(Serialize, Deserialize, Debug)]
@@ -80,7 +86,8 @@ pub mod imp {
 
     pub fn log_to_file(msg: &str) {
         let log_dir = Path::new("C:\\ProgramData\\Nyx");
-        let log_path = log_dir.join("service.log");
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let log_path = log_dir.join(format!("{}.log", today));
         let _ = std::fs::create_dir_all(log_dir);
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
             use std::time::SystemTime;
@@ -89,6 +96,39 @@ pub mod imp {
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
             let _ = writeln!(f, "[{ts}] {msg}");
+        }
+    }
+
+    fn clean_old_logs(max_days: u32) {
+        if max_days == 0 {
+            return;
+        }
+
+        let today = chrono::Local::now().date_naive();
+        let cutoff = match today.checked_sub_signed(chrono::Duration::days(max_days as i64 - 1)) {
+            Some(d) => d,
+            None => return,
+        };
+
+        let log_dir = Path::new("C:\\ProgramData\\Nyx");
+        let Ok(entries) = std::fs::read_dir(log_dir) else {
+            return;
+        };
+
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("log") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let Ok(file_date) = chrono::NaiveDate::parse_from_str(stem, "%Y-%m-%d") else {
+                continue;
+            };
+            if file_date < cutoff {
+                let _ = std::fs::remove_file(&path);
+            }
         }
     }
 
@@ -154,7 +194,11 @@ pub mod imp {
 
                 while let Some(req) = rx.recv().await {
                     match req {
-                        IpcRequest::StartCore { binary, work_dir, config } => {
+                        IpcRequest::StartCore { binary, work_dir, config, max_log_days } => {
+                            let _ = tokio::task::spawn_blocking(move || {
+                                clean_old_logs(max_log_days);
+                            });
+
                             if let Some(mut child) = current_child.take() {
                                 let _ = child.kill().await;
                             }

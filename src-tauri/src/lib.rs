@@ -340,21 +340,15 @@ pub fn run() {
                         "proxyCols": "auto",
                         "autoCloseConnection": true,
                         "useWindowFrame": false,
-                        "proxyInTray": false,
+                        "proxyInTray": true,
                         "appTheme": "system",
                         "maxLogDays": 7,
                         "delayTestConcurrency": 50,
-                        "disableLoopbackDetector": false,
-                        "disableEmbedCA": false,
-                        "disableSystemCA": false,
-                        "disableNftables": false,
-                        "mainSwitchMode": "tun",
                         "sysProxy": {
                             "enable": false,
                             "mode": "manual"
                         },
                         "hosts": [],
-                        "safePaths": [],
                         "core": "mihomo",
                         "corePermissionMode": "service"
                     })).unwrap_or_default();

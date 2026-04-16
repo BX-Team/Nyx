@@ -9,7 +9,6 @@ import SettingCard from '@/components/base/base-setting-card';
 import SettingItem from '@/components/base/base-setting-item';
 import AdvancedSetting from '@/components/mihomo/advanced-settings';
 import ControllerSetting from '@/components/mihomo/controller-setting';
-import EnvSetting from '@/components/mihomo/env-setting';
 import PortSetting from '@/components/mihomo/port-setting';
 import ServiceModal from '@/components/mihomo/service-modal';
 import { Button } from '@/components/ui/button';
@@ -276,7 +275,6 @@ const Mihomo: React.FC = () => {
       </SettingCard>
       <PortSetting />
       <ControllerSetting />
-      <EnvSetting />
       <AdvancedSetting />
     </BasePage>
   );

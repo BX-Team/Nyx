@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Switch } from '@/components/ui/switch';
 import { useAppConfig } from '@/hooks/use-app-config';
 import { platform } from '@/utils/init';
-import { closeTrayIcon, isAlwaysOnTop, setAlwaysOnTop, showTrayIcon } from '@/utils/ipc';
+import { closeTrayIcon, isAlwaysOnTop, setAlwaysOnTop, showTrayIcon, updateTrayIcon } from '@/utils/ipc';
 import SettingCard from '../base/base-setting-card';
 import SettingItem from '../base/base-setting-item';
 
@@ -43,6 +43,7 @@ const AppearanceConfig: React.FC<AppearanceConfigProps> = () => {
             checked={proxyInTray}
             onCheckedChange={async value => {
               await patchAppConfig({ proxyInTray: value });
+              await updateTrayIcon();
             }}
           />
         </SettingItem>

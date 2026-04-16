@@ -108,20 +108,42 @@ pub async fn mihomo_unfixed_proxy(group: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn mihomo_proxy_delay(proxy: String, url: Option<String>) -> Result<Value, String> {
+    let config = crate::commands::config::get_app_config(None).await.unwrap_or(Value::Null);
+    let default_url = config.get("delayTestUrl")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("https://cp.cloudflare.com");
     let test_url = url
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "https://cp.cloudflare.com".to_string());
-    crate::core::api::proxy_delay(&proxy, &test_url, 5000)
+        .unwrap_or_else(|| default_url.to_string());
+    
+    let timeout = config.get("delayTestTimeout")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32)
+        .unwrap_or(5000);
+
+    crate::core::api::proxy_delay(&proxy, &test_url, timeout)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn mihomo_group_delay(group: String, url: Option<String>) -> Result<Value, String> {
+    let config = crate::commands::config::get_app_config(None).await.unwrap_or(Value::Null);
+    let default_url = config.get("delayTestUrl")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("https://cp.cloudflare.com");
     let test_url = url
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "https://cp.cloudflare.com".to_string());
-    crate::core::api::group_delay(&group, &test_url, 5000)
+        .unwrap_or_else(|| default_url.to_string());
+        
+    let timeout = config.get("delayTestTimeout")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u32)
+        .unwrap_or(5000);
+
+    crate::core::api::group_delay(&group, &test_url, timeout)
         .await
         .map_err(|e| e.to_string())
 }

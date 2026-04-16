@@ -20,7 +20,7 @@ const ProxySwitches: React.FC = () => {
   const { controledMihomoConfig, patchControledMihomoConfig } = useControledMihomoConfig();
   const { tun } = controledMihomoConfig || {};
   const { appConfig, patchAppConfig } = useAppConfig();
-  const { sysProxy, onlyActiveDevice = false } = appConfig || {};
+  const { sysProxy, affectVPNConnections = false } = appConfig || {};
   const { enable: sysProxyEnable, mode } = sysProxy || {};
   const { 'mixed-port': mixedPort } = controledMihomoConfig || {};
   const sysProxyDisabled = mixedPort === 0;
@@ -86,7 +86,7 @@ const ProxySwitches: React.FC = () => {
             onCheckedChange={async (enable: boolean) => {
               if (mode === 'manual' && sysProxyDisabled) return;
               try {
-                await triggerSysProxy(enable, onlyActiveDevice);
+                await triggerSysProxy(enable, affectVPNConnections);
                 await patchAppConfig({ sysProxy: { enable } });
                 await updateTrayIcon();
               } catch (e) {

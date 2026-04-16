@@ -1,9 +1,5 @@
 use std::path::PathBuf;
 
-pub fn is_portable() -> bool {
-    exe_dir().join("PORTABLE").exists()
-}
-
 pub fn exe_dir() -> PathBuf {
     std::env::current_exe()
         .unwrap_or_default()
@@ -13,16 +9,9 @@ pub fn exe_dir() -> PathBuf {
 }
 
 pub fn data_dir() -> PathBuf {
-    if is_portable() {
-        return exe_dir().join("data");
-    }
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("Nyx")
-}
-
-pub fn themes_dir() -> PathBuf {
-    data_dir().join("themes")
 }
 
 pub fn app_config_path() -> PathBuf {

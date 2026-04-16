@@ -182,8 +182,8 @@ export async function restartMihomoConnections(): Promise<void> {
   return invoke('restart_mihomo_connections');
 }
 
-export async function triggerSysProxy(enable: boolean, onlyActiveDevice: boolean): Promise<void> {
-  return invoke('trigger_sys_proxy', { enable, onlyActiveDevice });
+export async function triggerSysProxy(enable: boolean, affectVpnConnections: boolean): Promise<void> {
+  return invoke('trigger_sys_proxy', { enable, affectVpnConnections });
 }
 
 export async function manualGrantCorePermition(cores?: ('mihomo' | 'mihomo-alpha')[]): Promise<void> {

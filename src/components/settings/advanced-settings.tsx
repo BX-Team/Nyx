@@ -1,6 +1,6 @@
 import { ChevronDownIcon, Copy, MessageCircleQuestionMark, Settings } from 'lucide-react';
 import type React from 'react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -12,9 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@/components/ui/input-group';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAppConfig } from '@/hooks/use-app-config';
 import { platform } from '@/utils/init';
@@ -29,7 +27,6 @@ import EditableList from '../base/base-list-editor';
 import SettingCard from '../base/base-setting-card';
 import SettingItem from '../base/base-setting-item';
 
-const emptyArray: string[] = [];
 type EnvType = 'bash' | 'cmd' | 'powershell' | 'nushell';
 
 const envOptions: Array<{ value: EnvType; label: string }> = [
@@ -49,33 +46,19 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = props => {
   const navigate = useNavigate();
   const { appConfig, patchAppConfig } = useAppConfig();
   const {
-    diffWorkDir = false,
     controlDns = true,
     controlSniff = true,
-    pauseSSID,
-    mihomoCpuPriority = 'PRIORITY_NORMAL',
-    autoLightweight = false,
-    autoLightweightDelay = 60,
-    autoLightweightMode = 'core',
     envType = [platform === 'win32' ? 'powershell' : 'bash'],
     networkDetection = false,
     networkDetectionBypass = ['VMware', 'vEthernet'],
     networkDetectionInterval = 10,
   } = appConfig || {};
 
-  const pauseSSIDArray = pauseSSID ?? emptyArray;
-
-  const [pauseSSIDInput, setPauseSSIDInput] = useState(pauseSSIDArray);
-
   const [bypass, setBypass] = useState(networkDetectionBypass);
   const [interval, setInterval] = useState(networkDetectionInterval);
   const envTypeValue = envType as EnvType[];
   const envTypeLabels = envOptions.filter(option => envTypeValue.includes(option.value)).map(option => option.label);
   const envTypeLabel = envTypeLabels.length ? envTypeLabels.join(', ') : '-';
-
-  useEffect(() => {
-    setPauseSSIDInput(pauseSSIDArray);
-  }, [pauseSSIDArray]);
 
   const handleEnvTypeChange = async (value: EnvType, checked: boolean): Promise<void> => {
     const next = checked ? Array.from(new Set([...envTypeValue, value])) : envTypeValue.filter(item => item !== value);
@@ -91,65 +74,6 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = props => {
 
   return (
     <SettingCard title={t('settings.advanced.moreSettings')}>
-      <SettingItem
-        title={t('settings.advanced.autoEnterLightMode')}
-        actions={
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size='icon-sm' variant='ghost'>
-                <MessageCircleQuestionMark className='text-lg' />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('settings.advanced.autoEnterLightModeHelp')}</TooltipContent>
-          </Tooltip>
-        }
-        divider
-      >
-        <Switch
-          checked={autoLightweight}
-          onCheckedChange={value => {
-            patchAppConfig({ autoLightweight: value });
-          }}
-        />
-      </SettingItem>
-      {autoLightweight && (
-        <>
-          <SettingItem title={t('settings.advanced.lightModeBehavior')} divider>
-            <Tabs
-              value={autoLightweightMode}
-              onValueChange={value => {
-                patchAppConfig({ autoLightweightMode: value as 'core' | 'tray' });
-                if (value === 'core') {
-                  patchAppConfig({ autoLightweightDelay: Math.max(autoLightweightDelay, 5) });
-                }
-              }}
-            >
-              <TabsList>
-                <TabsTrigger value='core'>{t('settings.advanced.keepCoreOnly')}</TabsTrigger>
-                <TabsTrigger value='tray'>{t('settings.advanced.closeRendererOnly')}</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </SettingItem>
-          <SettingItem title={t('settings.advanced.autoEnterLightModeDelay')} divider>
-            <InputGroup className='w-37.5 h-8'>
-              <InputGroupInput
-                type='number'
-                value={autoLightweightDelay.toString()}
-                onChange={async event => {
-                  let num = parseInt(event.target.value, 10);
-                  if (Number.isNaN(num)) num = 0;
-                  const minDelay = autoLightweightMode === 'core' ? 5 : 0;
-                  if (num < minDelay) num = minDelay;
-                  await patchAppConfig({ autoLightweightDelay: num });
-                }}
-              />
-              <InputGroupAddon align='inline-end'>
-                <InputGroupText>{t('settings.advanced.seconds')}</InputGroupText>
-              </InputGroupAddon>
-            </InputGroup>
-          </SettingItem>
-        </>
-      )}
       {showHiddenSettings && (
         <SettingItem
           title={t('settings.advanced.copyEnvType')}
@@ -179,35 +103,6 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = props => {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-        </SettingItem>
-      )}
-      {platform === 'win32' && (
-        <SettingItem title={t('settings.advanced.corePriority')} divider>
-          <Select
-            value={mihomoCpuPriority}
-            onValueChange={async value => {
-              try {
-                await patchAppConfig({
-                  mihomoCpuPriority: value as Priority,
-                });
-                await restartCore();
-              } catch (e) {
-                toast.error(`${e}`);
-              }
-            }}
-          >
-            <SelectTrigger size='sm' className='w-37.5'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='PRIORITY_HIGHEST'>{t('settings.advanced.realtime')}</SelectItem>
-              <SelectItem value='PRIORITY_HIGH'>{t('settings.advanced.high')}</SelectItem>
-              <SelectItem value='PRIORITY_ABOVE_NORMAL'>{t('settings.advanced.aboveNormal')}</SelectItem>
-              <SelectItem value='PRIORITY_NORMAL'>{t('settings.advanced.normal')}</SelectItem>
-              <SelectItem value='PRIORITY_BELOW_NORMAL'>{t('settings.advanced.belowNormal')}</SelectItem>
-              <SelectItem value='PRIORITY_LOW'>{t('settings.advanced.low')}</SelectItem>
-            </SelectContent>
-          </Select>
         </SettingItem>
       )}
       <SettingItem
@@ -255,27 +150,6 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = props => {
         />
       </SettingItem>
       <SettingItem
-        title={t('profile.separateWorkDir')}
-        actions={
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size='icon-sm' variant='ghost'>
-                <MessageCircleQuestionMark className='text-lg' />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{t('profile.separateWorkDirHelp')}</TooltipContent>
-          </Tooltip>
-        }
-        divider
-      >
-        <Switch
-          checked={diffWorkDir}
-          onCheckedChange={v => {
-            patchAppConfig({ diffWorkDir: v });
-          }}
-        />
-      </SettingItem>
-      <SettingItem
         title={t('settings.advanced.stopCoreOnDisconnect')}
         actions={
           <Tooltip>
@@ -287,7 +161,7 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = props => {
             <TooltipContent>{t('settings.advanced.stopCoreOnDisconnectHelp')}</TooltipContent>
           </Tooltip>
         }
-        divider
+        divider={networkDetection}
       >
         <Switch
           checked={networkDetection}
@@ -345,22 +219,9 @@ const AdvancedSettings: React.FC<AdvancedSettingsProps> = props => {
               </Button>
             )}
           </SettingItem>
-          <EditableList items={bypass} onChange={list => setBypass(list as string[])} />
+          <EditableList items={bypass} onChange={list => setBypass(list as string[])} divider={false} />
         </>
       )}
-      <SettingItem title={t('settings.advanced.directOnSpecificWifi')}>
-        {pauseSSIDInput.join('') !== pauseSSIDArray.join('') && (
-          <Button
-            size='sm'
-            onClick={() => {
-              patchAppConfig({ pauseSSID: pauseSSIDInput });
-            }}
-          >
-            {t('common.confirm')}
-          </Button>
-        )}
-      </SettingItem>
-      <EditableList items={pauseSSIDInput} onChange={list => setPauseSSIDInput(list as string[])} divider={false} />
     </SettingCard>
   );
 };
