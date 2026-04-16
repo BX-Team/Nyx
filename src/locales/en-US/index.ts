@@ -394,7 +394,6 @@ export default {
       cannotUndo: 'this action cannot be undone',
       confirmDelete: 'Confirm Delete',
       checkUpdate: 'Check for Updates',
-      alreadyLatest: 'Already using latest version',
       noNeedUpdate: 'No update needed',
       resetApp: 'Reset App',
       resetAppHelp: 'Delete all configurations and restore app to initial state',
