@@ -11,7 +11,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["clash", "mihomo", "nyx"]
+        "schemes": ["nyx"]
       }
     },
     "updater": {

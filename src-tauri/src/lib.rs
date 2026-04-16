@@ -50,6 +50,55 @@ fn read_app_config() -> serde_json::Value {
         .unwrap_or_default()
 }
 
+fn handle_deep_link_url(app: &tauri::AppHandle, url_str: &str) {
+    let parsed = match url::Url::parse(url_str) {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("deep link: failed to parse '{url_str}': {e}");
+            return;
+        }
+    };
+
+    let host = parsed.host_str().unwrap_or("").to_string();
+    let path_cmd = parsed.path().trim_start_matches('/').to_string();
+    let command = if !host.is_empty() { host } else { path_cmd };
+    let params: std::collections::HashMap<String, String> =
+        parsed.query_pairs().into_owned().collect();
+
+    log::info!("deep link command='{command}' params={:?}", params);
+
+    match command.as_str() {
+        "install-config" => deep_link::install_config(app, &params),
+        other => log::warn!("deep link: unknown command '{other}'"),
+    }
+}
+
+mod deep_link {
+    use super::commands;
+    use std::collections::HashMap;
+    use tauri::{AppHandle};
+
+    pub fn install_config(app: &AppHandle, params: &HashMap<String, String>) {
+        let Some(config_url) = params.get("url").cloned() else {
+            log::warn!("deep link install-config: missing 'url' parameter");
+            return;
+        };
+        let name = params.get("name").cloned().unwrap_or_default();
+        let handle = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let item = serde_json::json!({
+                "type": "remote",
+                "url": config_url,
+                "name": name,
+            });
+            match commands::config::add_profile_item(handle, item).await {
+                Ok(_) => log::info!("deep link install-config: profile added"),
+                Err(e) => log::error!("deep link install-config: add failed: {e}"),
+            }
+        });
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -58,12 +107,17 @@ pub fn run() {
     log::info!("Nyx starting up");
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             use tauri::Manager;
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.show();
                 let _ = win.set_focus();
                 let _ = win.unminimize();
+            }
+            for arg in args.iter().skip(1) {
+                if arg.contains("://") {
+                    handle_deep_link_url(app, arg);
+                }
             }
         }))
         .plugin(tauri_plugin_shell::init())
@@ -249,6 +303,13 @@ pub fn run() {
                 }
             }
 
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(e) = app.deep_link().register_all() {
+                    log::warn!("deep link: register_all failed: {e}");
+                }
+            }
+
             let deep_link_handle = app.handle().clone();
             app.listen("deep-link://new-url", move |event| {
                 let raw = event.payload().to_string();
@@ -260,29 +321,7 @@ pub fn run() {
                 });
 
                 for url_str in urls {
-                    log::info!("deep link url: {}", url_str);
-                    if let Ok(parsed) = url::Url::parse(&url_str) {
-                        let command = parsed.host_str().unwrap_or(parsed.path().trim_start_matches('/'));
-                        if command == "install-config" {
-                            let params: std::collections::HashMap<_, _> = parsed.query_pairs().collect();
-                            if let Some(config_url) = params.get("url") {
-                                let name = params.get("name").map(|n| n.to_string()).unwrap_or_default();
-                                let config_url = config_url.to_string();
-                                let h = deep_link_handle.clone();
-                                tauri::async_runtime::spawn(async move {
-                                    let item = serde_json::json!({
-                                        "type": "remote",
-                                        "url": config_url,
-                                        "name": name,
-                                    });
-                                    match commands::config::add_profile_item(h.clone(), item).await {
-                                        Ok(_) => log::info!("profile added via deep link"),
-                                        Err(e) => log::error!("deep link add profile failed: {e}"),
-                                    }
-                                });
-                            }
-                        }
-                    }
+                    handle_deep_link_url(&deep_link_handle, &url_str);
                 }
             });
 
