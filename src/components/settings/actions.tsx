@@ -115,9 +115,7 @@ const Actions: React.FC<ActionsProps> = props => {
                   setChangelog(version.changelog);
                   setOpenUpdate(true);
                 } else {
-                  new window.Notification(t('settings.actions.alreadyLatest'), {
-                    body: t('settings.actions.noNeedUpdate'),
-                  });
+                  toast.success(t('settings.actions.noNeedUpdate'));
                 }
               } catch (e) {
                 toast.error(`${e}`);

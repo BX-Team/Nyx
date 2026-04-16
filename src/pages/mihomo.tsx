@@ -150,6 +150,14 @@ const Mihomo: React.FC = () => {
           onInstall={async () => {
             await installService();
             toast.success(t('pages.mihomo.serviceInstallSuccess'));
+            if (hasProfiles) {
+              try {
+                await initService();
+                toast.success(t('pages.mihomo.serviceInitSuccess'));
+              } catch (e) {
+                toast.error(`${e}`);
+              }
+            }
           }}
           onUninstall={async () => {
             await uninstallService();

@@ -197,6 +197,16 @@ pub fn run() {
 
             tray::setup_tray(&app.handle())?;
 
+            for evt in ["controled-mihomo-config-updated", "profile-config-updated", "app-config-updated"] {
+                let h = app.handle().clone();
+                app.listen(evt, move |_| {
+                    let h = h.clone();
+                    tauri::async_runtime::spawn(async move {
+                        commands::tray::refresh_tray(&h).await;
+                    });
+                });
+            }
+
             {
                 use tauri::Manager;
                 let app_cfg = read_app_config();

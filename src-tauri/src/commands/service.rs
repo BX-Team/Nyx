@@ -447,10 +447,13 @@ pub async fn install_service() -> Result<(), String> {
     #[cfg(windows)]
     {
         if !crate::commands::window::is_elevated_sync() {
-            return install_service_elevated();
+            install_service_elevated()?;
+        } else {
+            ensure_service_installed_args()?;
+            let _ = sc_start_service();
         }
-        ensure_service_installed_args()?;
-        let _ = sc_start_service();
+        wait_for_service_state(true).await?;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         Ok(())
     }
 
@@ -566,6 +569,39 @@ pub async fn restart_service(app: AppHandle) -> Result<(), String> {
         crate::core::streaming::start_streaming(&app);
         Ok(())
     }
+}
+
+#[cfg(windows)]
+pub async fn stop_service_for_update() -> Result<(), String> {
+    crate::core::streaming::stop_streaming();
+
+    let state = match service_query_state() {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
+
+    if state.is_none() {
+        return Ok(());
+    }
+
+    if state.as_deref() == Some("running") {
+        let _ = send_ipc_request(&crate::service_host::IpcRequest::StopCore).await;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        if !crate::commands::window::is_elevated_sync() {
+            let bat_cmd = format!(
+                "@echo off\r\nsc.exe stop \"{SERVICE_NAME}\"\r\n",
+                SERVICE_NAME = SERVICE_NAME
+            );
+            run_elevated_bat(&bat_cmd)?;
+        } else {
+            sc_stop_service()?;
+        }
+
+        let _ = wait_for_service_state(false).await;
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

@@ -12,6 +12,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
     TrayIconBuilder::with_id("main")
         .icon(icon)
+        .tooltip("Nyx")
         .menu(&menu)
         .on_menu_event(|app, event| handle_menu_event(app, event.id.as_ref()))
         .on_tray_icon_event(|tray, event| {
@@ -26,6 +27,11 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        crate::commands::tray::refresh_tray(&handle).await;
+    });
 
     Ok(())
 }
@@ -63,6 +69,7 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
                 async move {
                     let _ = crate::core::api::patch_config(serde_json::json!({"mode": "rule"})).await;
                     let _ = app.emit("app-config-updated", ());
+                    crate::commands::tray::refresh_tray(&app).await;
                 }
             });
         }
@@ -72,6 +79,7 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
                 async move {
                     let _ = crate::core::api::patch_config(serde_json::json!({"mode": "global"})).await;
                     let _ = app.emit("app-config-updated", ());
+                    crate::commands::tray::refresh_tray(&app).await;
                 }
             });
         }
@@ -81,6 +89,7 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
                 async move {
                     let _ = crate::core::api::patch_config(serde_json::json!({"mode": "direct"})).await;
                     let _ = app.emit("app-config-updated", ());
+                    crate::commands::tray::refresh_tray(&app).await;
                 }
             });
         }
@@ -117,4 +126,25 @@ pub fn update_tray_icon(app: &AppHandle, enabled: bool) {
         let icon = load_icon(app, enabled);
         let _ = tray.set_icon(Some(icon));
     }
+}
+
+pub fn update_tray_tooltip(app: &AppHandle, profile: &str, mode: &str, tun_enabled: bool) {
+    let Some(tray) = app.tray_by_id("main") else {
+        return;
+    };
+    let mode_label = match mode {
+        "global" => "Global",
+        "direct" => "Direct",
+        "rule" => "Rule",
+        other if !other.is_empty() => other,
+        _ => "Rule",
+    };
+    let profile_line = if profile.is_empty() {
+        "Profile: —".to_string()
+    } else {
+        format!("Profile: {profile}")
+    };
+    let tun_line = if tun_enabled { "TUN: On" } else { "TUN: Off" };
+    let tooltip = format!("Nyx\n{profile_line}\nMode: {mode_label}\n{tun_line}");
+    let _ = tray.set_tooltip(Some(&tooltip));
 }

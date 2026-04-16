@@ -21,7 +21,7 @@ pub async fn check_update(app: AppHandle) -> Result<Value, String> {
         let info = serde_json::json!({
             "version": update.version,
             "currentVersion": update.current_version,
-            "body": update.body,
+            "changelog": update.body.clone().unwrap_or_default(),
         });
         *PENDING_UPDATE.lock() = Some(update);
         Ok(info)
@@ -36,6 +36,11 @@ pub async fn download_and_install_update(_version: String) -> Result<(), String>
         .lock()
         .take()
         .ok_or("no pending update — call check_update first")?;
+
+    #[cfg(windows)]
+    {
+        let _ = crate::commands::service::stop_service_for_update().await;
+    }
 
     update
         .download_and_install(|_, _| {}, || {})

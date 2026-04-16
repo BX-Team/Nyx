@@ -18,13 +18,28 @@ pub async fn close_tray_icon(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub async fn refresh_tray(app: &AppHandle) {
+    let (tun_enabled, mode) = match crate::core::api::get_config().await {
+        Ok(cfg) => (
+            cfg["tun"]["enable"].as_bool().unwrap_or(false),
+            cfg["mode"].as_str().unwrap_or("rule").to_string(),
+        ),
+        Err(_) => (false, String::new()),
+    };
+
+    let profile_name = crate::commands::config::get_current_profile_item()
+        .await
+        .ok()
+        .and_then(|v| v["name"].as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+
+    crate::tray::update_tray_icon(app, tun_enabled);
+    crate::tray::update_tray_tooltip(app, &profile_name, &mode, tun_enabled);
+}
+
 #[tauri::command]
 pub async fn update_tray_icon(app: AppHandle) -> Result<(), String> {
-    let enabled = match crate::core::api::get_config().await {
-        Ok(cfg) => cfg["tun"]["enable"].as_bool().unwrap_or(false),
-        Err(_) => false,
-    };
-    crate::tray::update_tray_icon(&app, enabled);
+    refresh_tray(&app).await;
     Ok(())
 }
 

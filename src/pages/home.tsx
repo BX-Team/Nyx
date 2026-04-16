@@ -39,7 +39,26 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** i).toFixed(i > 1 ? 1 : 0)} ${units[i]}`;
 }
 
-let connectionStartTime: number | null = null;
+const CONNECTION_START_STORAGE_KEY = 'nyx-connection-start-time';
+
+const readStoredStartTime = (): number | null => {
+  if (typeof window === 'undefined') return null;
+  const raw = window.sessionStorage.getItem(CONNECTION_START_STORAGE_KEY);
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const writeStoredStartTime = (value: number | null): void => {
+  if (typeof window === 'undefined') return;
+  if (value === null) {
+    window.sessionStorage.removeItem(CONNECTION_START_STORAGE_KEY);
+  } else {
+    window.sessionStorage.setItem(CONNECTION_START_STORAGE_KEY, String(value));
+  }
+};
+
+let connectionStartTime: number | null = readStoredStartTime();
 
 const Home: React.FC = () => {
   const { t } = useTranslation();
@@ -90,11 +109,14 @@ const Home: React.FC = () => {
   });
 
   const isSelected = tun?.enable ?? false;
+  const configLoaded = controledMihomoConfig !== undefined;
 
   useEffect(() => {
+    if (!configLoaded) return undefined;
     if (isSelected) {
       const startTime = connectionStartTime ?? Date.now();
       connectionStartTime = startTime;
+      writeStoredStartTime(startTime);
       setElapsed(Math.floor((Date.now() - startTime) / 1000));
       const interval = setInterval(() => {
         setElapsed(Math.floor((Date.now() - startTime) / 1000));
@@ -102,10 +124,11 @@ const Home: React.FC = () => {
       return () => clearInterval(interval);
     } else {
       connectionStartTime = null;
+      writeStoredStartTime(null);
       setElapsed(0);
       return undefined;
     }
-  }, [isSelected]);
+  }, [isSelected, configLoaded]);
 
   const isDisabled = loading;
 
