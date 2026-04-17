@@ -144,6 +144,9 @@ export default {
       tunServiceInstallDescription:
         'Для режима TUN требуется системная служба Nyx. Открыть управление службой и установить её сейчас?',
       tunServiceInstallAction: 'Открыть управление службой',
+      statistics: 'Статистика',
+      subscriptionNews: 'Новости подписки',
+      toggleStats: 'Свернуть/развернуть статистику',
     },
     settings: {
       title: 'Настройки приложения',

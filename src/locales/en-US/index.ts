@@ -144,6 +144,9 @@ export default {
       tunServiceInstallDescription:
         'TUN mode requires the Nyx system service. Open service management now to install and start it?',
       tunServiceInstallAction: 'Open Service Management',
+      statistics: 'Statistics',
+      subscriptionNews: 'Subscription news',
+      toggleStats: 'Toggle stats panel',
     },
     settings: {
       title: 'Application Settings',
