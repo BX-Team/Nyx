@@ -71,6 +71,8 @@ export default {
     rules: 'Правила',
     connection: 'Подключения',
     logs: 'Логи',
+    groupMain: 'Основное',
+    groupManagement: 'Управление',
     systemProxy: 'Системный прокси',
     virtualInterface: 'Режим TUN',
     runtimeConfigTitle: 'Текущая конфигурация',

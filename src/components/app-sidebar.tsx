@@ -22,6 +22,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -38,14 +39,26 @@ interface AppSidebarProps {
   };
 }
 
-const navItems = [
-  { key: 'main', path: '/home', icon: HomeIcon, i18nKey: 'sider.home' },
-  { key: 'profile', path: '/profiles', icon: ProfileIcon, i18nKey: 'sider.profileManagement' },
-  { key: 'proxy', path: '/proxies', icon: ProxiesIcon, i18nKey: 'sider.proxyGroup' },
-  { key: 'connection', path: '/connections', icon: ConnectionsIcon, i18nKey: 'sider.connection' },
-  { key: 'rule', path: '/rules', icon: RulesIcon, i18nKey: 'sider.rules' },
-  { key: 'log', path: '/logs', icon: LogsIcon, i18nKey: 'sider.logs' },
-  { key: 'settings', path: '/settings', icon: SettingsIcon, i18nKey: 'common.settings' },
+const navGroups = [
+  {
+    key: 'main',
+    i18nKey: 'sider.groupMain',
+    items: [
+      { key: 'main', path: '/home', icon: HomeIcon, i18nKey: 'sider.home' },
+      { key: 'profile', path: '/profiles', icon: ProfileIcon, i18nKey: 'sider.profileManagement' },
+      { key: 'proxy', path: '/proxies', icon: ProxiesIcon, i18nKey: 'sider.proxyGroup' },
+    ],
+  },
+  {
+    key: 'management',
+    i18nKey: 'sider.groupManagement',
+    items: [
+      { key: 'rule', path: '/rules', icon: RulesIcon, i18nKey: 'sider.rules' },
+      { key: 'connection', path: '/connections', icon: ConnectionsIcon, i18nKey: 'sider.connection' },
+      { key: 'log', path: '/logs', icon: LogsIcon, i18nKey: 'sider.logs' },
+      { key: 'settings', path: '/settings', icon: SettingsIcon, i18nKey: 'common.settings' },
+    ],
+  },
 ];
 
 const allowedWithoutProfiles = new Set(['main', 'profile', 'settings']);
@@ -59,7 +72,12 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ latest }) => {
   const [showRuntimeConfig, setShowRuntimeConfig] = useState(false);
   const { profileConfig } = useProfileConfig();
   const hasProfiles = (profileConfig?.items?.length ?? 0) > 0;
-  const filteredNavItems = hasProfiles ? navItems : navItems.filter(item => allowedWithoutProfiles.has(item.key));
+  const filteredNavGroups = navGroups
+    .map(group => ({
+      ...group,
+      items: hasProfiles ? group.items : group.items.filter(item => allowedWithoutProfiles.has(item.key)),
+    }))
+    .filter(group => group.items.length > 0);
 
   return (
     <Sidebar collapsible='icon' side='left' variant='floating'>
@@ -72,29 +90,39 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ latest }) => {
         )}
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {filteredNavItems.map(item => {
-                const Icon = item.icon;
-                const isActive = location.pathname.includes(item.path);
-                return (
-                  <SidebarMenuItem key={item.key}>
-                    <SidebarMenuButton
-                      tooltip={t(item.i18nKey)}
-                      isActive={isActive}
-                      onClick={() => navigate(item.path)}
-                      onDoubleClick={item.key === 'profile' ? () => setShowRuntimeConfig(true) : undefined}
-                    >
-                      <Icon className='size-4' />
-                      <span>{t(item.i18nKey)}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {filteredNavGroups.map((group, idx) => (
+          <SidebarGroup
+            key={group.key}
+            className={
+              idx > 0
+                ? 'group-data-[collapsible=icon]:before:bg-stroke group-data-[collapsible=icon]:before:absolute group-data-[collapsible=icon]:before:-top-1 group-data-[collapsible=icon]:before:left-1/2 group-data-[collapsible=icon]:before:h-px group-data-[collapsible=icon]:before:w-6 group-data-[collapsible=icon]:before:-translate-x-1/2'
+                : ''
+            }
+          >
+            <SidebarGroupLabel>{t(group.i18nKey)}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map(item => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname.includes(item.path);
+                  return (
+                    <SidebarMenuItem key={item.key}>
+                      <SidebarMenuButton
+                        tooltip={t(item.i18nKey)}
+                        isActive={isActive}
+                        onClick={() => navigate(item.path)}
+                        onDoubleClick={item.key === 'profile' ? () => setShowRuntimeConfig(true) : undefined}
+                      >
+                        <Icon className='size-4' />
+                        <span>{t(item.i18nKey)}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
       <SidebarFooter>
         <div className='flex flex-col items-center gap-2'>

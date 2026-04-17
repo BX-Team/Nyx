@@ -71,6 +71,8 @@ export default {
     rules: 'Rules',
     connection: 'Connections',
     logs: 'Logs',
+    groupMain: 'Main',
+    groupManagement: 'Management',
     systemProxy: 'System Proxy',
     virtualInterface: 'Virtual Network Interface',
     runtimeConfigTitle: 'Current runtime configuration',
