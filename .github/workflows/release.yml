@@ -32,7 +32,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
 
@@ -55,7 +55,7 @@ jobs:
           sed -i "s/^  \"version\": \".*\",/  \"version\": \"$VERSION\",/" src-tauri/tauri.conf.json
 
       - name: Commit Changes
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: 'chore(release): bump version to ${{ inputs.version }}'
 
@@ -70,10 +70,10 @@ jobs:
       release_id: ${{ steps.create_release.outputs.id }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Compute release tag
         id: meta
@@ -84,19 +84,21 @@ jobs:
         id: prev_tag
         shell: bash
         run: |
-          latest_tag="$(git tag --list 'v*' --sort=-version:refname | head -n 1)"
+          latest_tag="$(git tag --list 'v*' --sort=-version:refname | grep -vx "v${{ inputs.version }}" | head -n 1)"
           if [ -z "$latest_tag" ]; then
             latest_tag="v${{ inputs.version }}"
           fi
           echo "latest_tag=$latest_tag" >> "$GITHUB_OUTPUT"
 
-      - name: Create local release tag for changelog diff
+      - name: Push release tag
         shell: bash
-        run: git tag -f "v${{ inputs.version }}" "${GITHUB_SHA}"
+        run: |
+          git tag -f "v${{ inputs.version }}" HEAD
+          git push origin "v${{ inputs.version }}" --force
 
       - name: Build Changelog
         id: changelog
-        uses: mikepenz/release-changelog-builder-action@v5
+        uses: mikepenz/release-changelog-builder-action@v6
         with:
           mode: COMMIT
           fromTag: ${{ steps.prev_tag.outputs.latest_tag }}
@@ -105,15 +107,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push release tag
-        shell: bash
-        run: |
-          git tag -f "v${{ inputs.version }}" HEAD
-          git push origin "v${{ inputs.version }}"
-
       - name: Create draft release
         id: create_release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ inputs.version }}
           name: Nyx ${{ inputs.version }}
@@ -145,7 +141,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
 
@@ -187,7 +183,7 @@ jobs:
           args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
       - name: Upload Release Assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ inputs.version }}
           files: |
@@ -200,7 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Publish release with changelog
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: Nyx ${{ needs.prepare.outputs.tag }}
@@ -215,7 +211,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -231,7 +227,7 @@ jobs:
           RELEASE_NOTES: ${{ needs.prepare.outputs.changelog }}
 
       - name: Publish update.json to updater tag
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: updater
           name: updater
