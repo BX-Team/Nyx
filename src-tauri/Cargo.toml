@@ -1,6 +1,6 @@
 [package]
 name = "nyx"
-version = "0.2.0"
+version = "0.3.0"
 description = "Nyx — Mihomo/Clash GUI"
 authors = ["BX Team"]
 edition = "2021"
