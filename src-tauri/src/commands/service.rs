@@ -366,8 +366,8 @@ pub async fn test_service_connection() -> Result<bool, String> {
             return Ok(false);
         }
         let req = crate::service_host::IpcRequest::Ping;
-        if send_ipc_request(&req).await.is_ok() {
-            return Ok(true);
+        if send_ipc_request(&req).await.is_err() {
+            return Ok(false);
         }
     }
     Ok(is_mihomo_running().await)
