@@ -66,9 +66,141 @@ pub async fn get_image_data_url(url: String) -> Result<String, String> {
     Ok(format!("data:{content_type};base64,{encoded}"))
 }
 
+#[cfg(windows)]
+#[tauri::command]
+pub async fn get_icon_data_url(app_path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || extract_icon_png_data_url(&app_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[cfg(not(windows))]
 #[tauri::command]
 pub async fn get_icon_data_url(_app_path: String) -> Result<String, String> {
     Ok(String::new())
+}
+
+#[cfg(windows)]
+fn extract_icon_png_data_url(app_path: &str) -> Result<String, String> {
+    use std::path::Path;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC,
+        SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HGDIOBJ,
+    };
+    use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
+    use windows::Win32::UI::Shell::{
+        SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_NORMAL};
+
+    if app_path.is_empty() || !Path::new(app_path).is_file() {
+        return Ok(String::new());
+    }
+
+    let wide: Vec<u16> = app_path.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut sfi = SHFILEINFOW::default();
+
+    let ok = unsafe {
+        SHGetFileInfoW(
+            PCWSTR(wide.as_ptr()),
+            FILE_FLAGS_AND_ATTRIBUTES(0),
+            Some(&mut sfi as *mut SHFILEINFOW),
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_ICON | SHGFI_LARGEICON,
+        )
+    };
+
+    if ok == 0 || sfi.hIcon.is_invalid() {
+        return Ok(String::new());
+    }
+
+    let hicon = sfi.hIcon;
+    let size: i32 = 32;
+
+    let result = unsafe {
+        let screen_dc = GetDC(HWND::default());
+        if screen_dc.is_invalid() {
+            let _ = DestroyIcon(hicon);
+            return Err("GetDC failed".into());
+        }
+        let mem_dc = CreateCompatibleDC(screen_dc);
+        if mem_dc.is_invalid() {
+            ReleaseDC(HWND::default(), screen_dc);
+            let _ = DestroyIcon(hicon);
+            return Err("CreateCompatibleDC failed".into());
+        }
+
+        let bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: size,
+                biHeight: -size,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut bits_ptr: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hbitmap: HBITMAP = match CreateDIBSection(
+            mem_dc,
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut bits_ptr,
+            None,
+            0,
+        ) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = DeleteDC(mem_dc);
+                ReleaseDC(HWND::default(), screen_dc);
+                let _ = DestroyIcon(hicon);
+                return Err(e.to_string());
+            }
+        };
+
+        let old = SelectObject(mem_dc, HGDIOBJ(hbitmap.0));
+        let draw_ok =
+            DrawIconEx(mem_dc, 0, 0, hicon, size, size, 0, None, DI_NORMAL).is_ok();
+
+        let byte_count = (size * size * 4) as usize;
+        let mut pixels = vec![0u8; byte_count];
+        if draw_ok && !bits_ptr.is_null() {
+            std::ptr::copy_nonoverlapping(bits_ptr as *const u8, pixels.as_mut_ptr(), byte_count);
+        }
+
+        SelectObject(mem_dc, old);
+        let _ = DeleteObject(HGDIOBJ(hbitmap.0));
+        let _ = DeleteDC(mem_dc);
+        ReleaseDC(HWND::default(), screen_dc);
+        let _ = DestroyIcon(hicon);
+
+        if !draw_ok {
+            return Err("DrawIconEx failed".into());
+        }
+        pixels
+    };
+
+    let mut pixels = result;
+    for px in pixels.chunks_exact_mut(4) {
+        px.swap(0, 2);
+    }
+
+    let mut png_bytes: Vec<u8> = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut png_bytes, size as u32, size as u32);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
+        writer.write_image_data(&pixels).map_err(|e| e.to_string())?;
+    }
+
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+    Ok(format!("data:image/png;base64,{b64}"))
 }
 
 #[tauri::command]

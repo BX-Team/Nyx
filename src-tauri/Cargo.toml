@@ -56,6 +56,7 @@ thiserror         = "1"
 if-addrs          = "0.13"
 url               = "2"
 futures-util      = "0.3"
+png               = "0.17"
 
 [target.'cfg(windows)'.dependencies]
 winreg  = "0.52"
@@ -63,6 +64,9 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_System_Registry",
     "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_FileSystem",
     "Win32_Security",
     "Win32_Security_Authorization",
 ] }
