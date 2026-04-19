@@ -84,7 +84,6 @@ pub async fn get_icon_data_url(_app_path: String) -> Result<String, String> {
 fn extract_icon_png_data_url(app_path: &str) -> Result<String, String> {
     use std::path::Path;
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Gdi::{
         CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDC, ReleaseDC,
         SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HGDIOBJ,
@@ -120,14 +119,14 @@ fn extract_icon_png_data_url(app_path: &str) -> Result<String, String> {
     let size: i32 = 32;
 
     let result = unsafe {
-        let screen_dc = GetDC(HWND::default());
+        let screen_dc = GetDC(None);
         if screen_dc.is_invalid() {
             let _ = DestroyIcon(hicon);
             return Err("GetDC failed".into());
         }
-        let mem_dc = CreateCompatibleDC(screen_dc);
+        let mem_dc = CreateCompatibleDC(Some(screen_dc));
         if mem_dc.is_invalid() {
-            ReleaseDC(HWND::default(), screen_dc);
+            ReleaseDC(None, screen_dc);
             let _ = DestroyIcon(hicon);
             return Err("CreateCompatibleDC failed".into());
         }
@@ -147,7 +146,7 @@ fn extract_icon_png_data_url(app_path: &str) -> Result<String, String> {
 
         let mut bits_ptr: *mut core::ffi::c_void = std::ptr::null_mut();
         let hbitmap: HBITMAP = match CreateDIBSection(
-            mem_dc,
+            Some(mem_dc),
             &bmi,
             DIB_RGB_COLORS,
             &mut bits_ptr,
@@ -157,7 +156,7 @@ fn extract_icon_png_data_url(app_path: &str) -> Result<String, String> {
             Ok(b) => b,
             Err(e) => {
                 let _ = DeleteDC(mem_dc);
-                ReleaseDC(HWND::default(), screen_dc);
+                ReleaseDC(None, screen_dc);
                 let _ = DestroyIcon(hicon);
                 return Err(e.to_string());
             }
@@ -176,7 +175,7 @@ fn extract_icon_png_data_url(app_path: &str) -> Result<String, String> {
         SelectObject(mem_dc, old);
         let _ = DeleteObject(HGDIOBJ(hbitmap.0));
         let _ = DeleteDC(mem_dc);
-        ReleaseDC(HWND::default(), screen_dc);
+        ReleaseDC(None, screen_dc);
         let _ = DestroyIcon(hicon);
 
         if !draw_ok {

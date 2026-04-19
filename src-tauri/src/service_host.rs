@@ -9,8 +9,7 @@ pub mod imp {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
     use tokio::process::Child;
-    use windows::core::PCWSTR;
-    use windows::Win32::Foundation::BOOL;
+    use windows::core::{BOOL, PCWSTR};
     use windows::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
     use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
     use windows_service::define_windows_service;

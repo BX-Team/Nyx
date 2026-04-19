@@ -33,7 +33,6 @@ tauri-plugin-autostart       = "2"
 tauri-plugin-updater         = "2"
 tauri-plugin-deep-link       = "2"
 tauri-plugin-single-instance = "2"
-tauri-plugin-positioner      = "2"
 tauri-plugin-fs              = "2"
 tauri-plugin-opener          = "2"
 tauri-plugin-http            = "2"
@@ -43,24 +42,23 @@ serde_json        = "1"
 serde_yaml        = "0.9"
 tokio             = { version = "1", features = ["full", "io-util", "macros", "net", "process", "rt"] }
 mihomo-rs         = "*"
-reqwest           = { version = "0.12", features = ["json", "stream"] }
+reqwest           = { version = "0.13.2", features = ["json", "stream"] }
 base64            = "0.22"
 once_cell         = "1"
 parking_lot       = "0.12"
 log               = "0.4"
 env_logger        = "0.11"
-dirs              = "5"
+dirs              = "6"
 chrono            = { version = "0.4", features = ["serde"] }
 anyhow            = "1"
-thiserror         = "1"
-if-addrs          = "0.13"
+if-addrs          = "0.15"
 url               = "2"
 futures-util      = "0.3"
 png               = "0.17"
 
 [target.'cfg(windows)'.dependencies]
-winreg  = "0.52"
-windows = { version = "0.58", features = [
+winreg  = "0.56"
+windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_System_Registry",
     "Win32_UI_Shell",
@@ -70,7 +68,7 @@ windows = { version = "0.58", features = [
     "Win32_Security",
     "Win32_Security_Authorization",
 ] }
-windows-service = "0.7"
+windows-service = "0.8"
 
 [target.'cfg(not(windows))'.dependencies]
 libc = "0.2"

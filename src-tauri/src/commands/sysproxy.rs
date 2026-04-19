@@ -48,7 +48,7 @@ fn set_windows_proxy(
             for value_name_res in connections_key.enum_values() {
                 if let Ok((name, val)) = value_name_res {
                     if val.vtype != winreg::enums::REG_BINARY { continue; }
-                    let mut bytes: Vec<u8> = val.bytes;
+                    let mut bytes: Vec<u8> = val.bytes.to_vec();
                     if bytes.len() < 12 { continue; }
                     
                     // Increment counter
@@ -70,14 +70,14 @@ fn set_windows_proxy(
                         
                         // Remaining 36 zeros
                         new_bytes.extend_from_slice(&[0u8; 36]);
-                        let _ = connections_key.set_raw_value(&name, &winreg::RegValue { vtype: winreg::enums::REG_BINARY, bytes: new_bytes });
+                        let _ = connections_key.set_raw_value(&name, &winreg::RegValue { vtype: winreg::enums::REG_BINARY, bytes: new_bytes.into() });
                     } else {
                         bytes[8] = 0x09; // PROXY_TYPE_DIRECT | PROXY_TYPE_AUTO_PROXY_URL
                         // Simplified clear proxy settings
                         let mut new_bytes = bytes[..12].to_vec();
                         new_bytes.extend_from_slice(&[0u8; 8]); // No Proxy Addr, No Bypass
                         new_bytes.extend_from_slice(&[0u8; 36]);
-                        let _ = connections_key.set_raw_value(&name, &winreg::RegValue { vtype: winreg::enums::REG_BINARY, bytes: new_bytes });
+                        let _ = connections_key.set_raw_value(&name, &winreg::RegValue { vtype: winreg::enums::REG_BINARY, bytes: new_bytes.into() });
                     }
                 }
             }
