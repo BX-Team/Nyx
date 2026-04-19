@@ -288,6 +288,7 @@ async fn start_windows_service(app: &tauri::AppHandle) -> Result<(), String> {
     send_ipc_request(&req).await?;
 
     sync_controller(&url, &config)?;
+    crate::commands::mihomo::restore_proxy_selections().await;
     let _ = app.emit("core-started", ());
     let _ = app.emit("controled-mihomo-config-updated", ());
     crate::core::streaming::start_streaming(app);
@@ -385,6 +386,7 @@ pub async fn init_service(app: AppHandle) -> Result<(), String> {
             crate::core::manager::install_core().await.map_err(|e| e.to_string())?;
         }
         crate::core::manager::start_core().await.map_err(|e| e.to_string())?;
+        crate::commands::mihomo::restore_proxy_selections().await;
         let _ = app.emit("core-started", ());
         let _ = app.emit("controled-mihomo-config-updated", ());
         Ok(())
@@ -520,6 +522,7 @@ pub async fn start_service(app: AppHandle) -> Result<(), String> {
     {
         use tauri::Emitter;
         crate::core::manager::start_core().await.map_err(|e| e.to_string())?;
+        crate::commands::mihomo::restore_proxy_selections().await;
         let _ = app.emit("core-started", ());
         let _ = app.emit("controled-mihomo-config-updated", ());
         crate::core::streaming::start_streaming(&app);
@@ -566,6 +569,7 @@ pub async fn restart_service(app: AppHandle) -> Result<(), String> {
         send_ipc_request(&req).await?;
 
         sync_controller(&url, &config)?;
+        crate::commands::mihomo::restore_proxy_selections().await;
         use tauri::Emitter;
         let _ = app.emit("core-started", ());
         let _ = app.emit("controled-mihomo-config-updated", ());
@@ -577,6 +581,7 @@ pub async fn restart_service(app: AppHandle) -> Result<(), String> {
     {
         use tauri::Emitter;
         crate::core::manager::restart_core().await.map_err(|e| e.to_string())?;
+        crate::commands::mihomo::restore_proxy_selections().await;
         let _ = app.emit("core-started", ());
         let _ = app.emit("controled-mihomo-config-updated", ());
         crate::core::streaming::start_streaming(&app);

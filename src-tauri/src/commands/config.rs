@@ -393,6 +393,34 @@ pub async fn remove_profile_item(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn reload_current_profile(app: tauri::AppHandle) -> Result<(), String> {
+    let cfg = get_profile_config(None).await?;
+    let current_id = cfg["current"].as_str().unwrap_or("").to_string();
+    if current_id.is_empty() {
+        return Err("no current profile set".to_string());
+    }
+
+    crate::core::manager::rebuild_config()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mgr: ConfigManager = mihomo_config_manager().map_err(|e| e.to_string())?;
+    let config_path = mgr.get_current_path().await.map_err(|e| e.to_string())?;
+    let path_str = config_path.to_string_lossy().replace('\\', "/");
+    let reload_url = format!("{}/configs?force=false", crate::core::manager::controller_url());
+    let _ = reqwest::Client::new()
+        .put(&reload_url)
+        .json(&serde_json::json!({ "path": path_str }))
+        .send()
+        .await;
+
+    use tauri::Emitter;
+    let _ = app.emit("controled-mihomo-config-updated", ());
+    let _ = app.emit("groups-updated", ());
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn change_current_profile(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let path = crate::utils::dirs::profile_config_path();
     let mut cfg = get_profile_config(None).await?;

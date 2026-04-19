@@ -97,8 +97,59 @@ pub async fn mihomo_change_proxy(group: String, proxy: String) -> Result<(), Str
         .await
         .map_err(|e| e.to_string())?
         .error_for_status()
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    save_selection(&group, &proxy);
+    Ok(())
+}
+
+fn save_selection(group: &str, proxy: &str) {
+    let path = crate::utils::dirs::selections_path();
+    let mut map: serde_yaml::Mapping = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_yaml::from_str::<serde_yaml::Mapping>(&s).ok())
+        .unwrap_or_default();
+    map.insert(
+        serde_yaml::Value::String(group.to_string()),
+        serde_yaml::Value::String(proxy.to_string()),
+    );
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(text) = serde_yaml::to_string(&map) {
+        let _ = std::fs::write(&path, text);
+    }
+}
+
+pub async fn restore_proxy_selections() {
+    let path = crate::utils::dirs::selections_path();
+    let Ok(text) = std::fs::read_to_string(&path) else { return };
+    let Ok(map) = serde_yaml::from_str::<serde_yaml::Mapping>(&text) else { return };
+    let base_url = crate::core::manager::controller_url();
+    if base_url.is_empty() {
+        return;
+    }
+    let client = reqwest::Client::new();
+    for (k, v) in map.iter() {
+        let (Some(group), Some(proxy)) = (k.as_str(), v.as_str()) else { continue };
+        let encoded_group = group.replace(' ', "%20");
+        let url = format!("{}/proxies/{}", base_url, encoded_group);
+        match client
+            .put(&url)
+            .json(&serde_json::json!({ "name": proxy }))
+            .send()
+            .await
+        {
+            Ok(r) if r.status().is_success() => {
+                log::info!("[restore_proxy_selections] {} -> {}", group, proxy);
+            }
+            Ok(r) => {
+                log::warn!("[restore_proxy_selections] {} -> {} returned {}", group, proxy, r.status());
+            }
+            Err(e) => {
+                log::warn!("[restore_proxy_selections] {} -> {} failed: {e}", group, proxy);
+            }
+        }
+    }
 }
 
 #[tauri::command]

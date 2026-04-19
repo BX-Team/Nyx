@@ -66,6 +66,10 @@ pub fn rules_dir() -> PathBuf {
     data_dir().join("rules")
 }
 
+pub fn selections_path() -> PathBuf {
+    data_dir().join("selections.yaml")
+}
+
 pub fn rule_path(id: &str) -> PathBuf {
     rules_dir().join(format!("{}.yaml", id))
 }

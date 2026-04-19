@@ -134,6 +134,10 @@ export async function changeCurrentProfile(id: string): Promise<void> {
   return invoke('change_current_profile', { id });
 }
 
+export async function reloadCurrentProfile(): Promise<void> {
+  return invoke('reload_current_profile');
+}
+
 export async function addProfileItem(item: Partial<ProfileItem>): Promise<void> {
   return invoke('add_profile_item', { item });
 }

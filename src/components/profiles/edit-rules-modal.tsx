@@ -47,9 +47,10 @@ import { Spinner } from '@/components/ui/spinner';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useProfileConfig } from '@/hooks/use-profile-config';
 import { cn } from '@/lib/utils';
 import { platform } from '@/utils/init';
-import { getProfileStr, getRuleStr, setRuleStr } from '@/utils/ipc';
+import { getProfileStr, getRuleStr, reloadCurrentProfile, setRuleStr } from '@/utils/ipc';
 
 interface Props {
   id: string;
@@ -924,6 +925,8 @@ RuleListItem.displayName = 'RuleListItem';
 
 const EditRulesModal: React.FC<Props> = props => {
   const { id, onClose } = props;
+  const { profileConfig } = useProfileConfig();
+  const isCurrent = profileConfig?.current === id;
   const dialogCloseRef = useRef<HTMLButtonElement>(null);
   const [rules, setRules] = useState<RuleItem[]>([]);
   const [, setProfileContent] = useState('');
@@ -1321,12 +1324,17 @@ const EditRulesModal: React.FC<Props> = props => {
 
       const ruleYaml = yaml.dump(ruleData);
       await setRuleStr(id, ruleYaml);
+      if (isCurrent) {
+        try {
+          await reloadCurrentProfile();
+        } catch {}
+      }
       return true;
     } catch (e) {
       toast.error(`${t('profile.editRules.saveError')}: ${e instanceof Error ? e.message : String(e)}`);
       return false;
     }
-  }, [prependRules, deletedRules, rules, appendRules, id, t]);
+  }, [prependRules, deletedRules, rules, appendRules, id, isCurrent, t]);
 
   const handleRuleTypeChange = (selected: string): void => {
     const noResolveSupported = isRuleSupportsNoResolve(selected);

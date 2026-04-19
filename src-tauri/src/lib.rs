@@ -76,7 +76,7 @@ fn handle_deep_link_url(app: &tauri::AppHandle, url_str: &str) {
 mod deep_link {
     use super::commands;
     use std::collections::HashMap;
-    use tauri::{AppHandle};
+    use tauri::{AppHandle, Emitter};
 
     pub fn install_config(app: &AppHandle, params: &HashMap<String, String>) {
         let Some(config_url) = params.get("url").cloned() else {
@@ -86,14 +86,37 @@ mod deep_link {
         let name = params.get("name").cloned().unwrap_or_default();
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
+            let new_id = chrono::Utc::now().timestamp_millis().to_string();
             let item = serde_json::json!({
+                "id": new_id,
                 "type": "remote",
                 "url": config_url,
                 "name": name,
             });
-            match commands::config::add_profile_item(handle, item).await {
-                Ok(_) => log::info!("deep link install-config: profile added"),
-                Err(e) => log::error!("deep link install-config: add failed: {e}"),
+            match commands::config::add_profile_item(handle.clone(), item).await {
+                Ok(_) => {
+                    log::info!("deep link install-config: profile added");
+                    let display_name = if name.is_empty() {
+                        commands::config::get_profile_item(new_id.clone())
+                            .await
+                            .ok()
+                            .and_then(|v| v["name"].as_str().map(|s| s.to_string()))
+                            .unwrap_or_default()
+                    } else {
+                        name.clone()
+                    };
+                    if let Err(e) = commands::config::change_current_profile(handle.clone(), new_id.clone()).await {
+                        log::warn!("deep link install-config: change_current_profile failed: {e}");
+                    }
+                    let _ = handle.emit("profile-installed", serde_json::json!({ "name": display_name, "id": new_id }));
+                }
+                Err(e) => {
+                    log::error!("deep link install-config: add failed: {e}");
+                    let _ = handle.emit(
+                        "show-error",
+                        serde_json::json!({ "title": "Profile install failed", "message": e }),
+                    );
+                }
             }
         });
     }
@@ -174,6 +197,7 @@ pub fn run() {
             commands::config::set_profile_str,
             commands::config::update_profile_item,
             commands::config::change_current_profile,
+            commands::config::reload_current_profile,
             commands::config::add_profile_item,
             commands::config::remove_profile_item,
             commands::config::get_runtime_config,
@@ -375,6 +399,7 @@ pub fn run() {
                             let connected = commands::service::test_service_connection().await
                                 .unwrap_or(false);
                             if connected {
+                                commands::mihomo::restore_proxy_selections().await;
                                 let _ = handle.emit("core-started", ());
                                 core::streaming::start_streaming(&handle);
                             } else {
@@ -430,6 +455,7 @@ pub fn run() {
                 match core::manager::start_core().await {
                     Ok(url) => {
                         log::info!("mihomo started at {url}");
+                        commands::mihomo::restore_proxy_selections().await;
                         let _ = handle.emit("core-started", ());
                         core::streaming::start_streaming(&handle);
                     }

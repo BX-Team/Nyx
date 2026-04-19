@@ -92,6 +92,12 @@ const App: React.FC = () => {
       unlisteners.push(await listen<void>('needs-admin-setup', () => setShowAdminRequired(true)));
       unlisteners.push(await listen<void>('first-run', () => setShowFirstRunPrompt(true)));
       unlisteners.push(
+        await listen<{ name?: string; id?: string }>('profile-installed', e => {
+          const name = e.payload?.name?.trim() || t('common.unnamed');
+          toast.success(t('modal.profileInstalled', { name }));
+        }),
+      );
+      unlisteners.push(
         await listen<void>('shortcut-trigger-tun', async () => {
           try {
             const config = await getControledMihomoConfig();
@@ -123,7 +129,7 @@ const App: React.FC = () => {
         u();
       });
     };
-  }, []);
+  }, [t]);
 
   const handleQuitConfirm = (confirmed: boolean): void => {
     setShowQuitConfirm(false);

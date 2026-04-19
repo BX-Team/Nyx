@@ -321,6 +321,7 @@ export default {
   modal: {
     pleaseConfirm: 'Подтвердите действие',
     confirmImportProfile: 'Импортировать конфигурацию подписки?',
+    profileInstalled: 'Профиль "{{name}}" установлен и выбран',
     confirmQuit: 'Вы уверены, что хотите выйти из Nyx?',
     quitWarning: 'После выхода прокси перестанет работать',
     quickQuitHint: 'Нажмите дважды или удерживайте кнопку',

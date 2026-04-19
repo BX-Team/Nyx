@@ -321,6 +321,7 @@ export default {
   modal: {
     pleaseConfirm: 'Please Confirm',
     confirmImportProfile: 'Confirm import subscription config?',
+    profileInstalled: 'Profile "{{name}}" installed and selected',
     confirmQuit: 'Are you sure you want to quit Nyx?',
     quitWarning: 'Proxy functionality will stop working after quitting',
     quickQuitHint: 'Double press or long press',

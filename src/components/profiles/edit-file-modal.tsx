@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { getProfileStr, setProfileStr } from '@/utils/ipc';
+import { useProfileConfig } from '@/hooks/use-profile-config';
+import { getProfileStr, reloadCurrentProfile, setProfileStr } from '@/utils/ipc';
 import ConfirmModal from '../base/base-confirm';
 import { BaseEditor } from '../monaco/monaco-editor-lazy';
 
@@ -16,6 +17,8 @@ interface Props {
 const EditFileModal: React.FC<Props> = props => {
   const { t } = useTranslation();
   const { id, onClose } = props;
+  const { profileConfig } = useProfileConfig();
+  const isCurrent = profileConfig?.current === id;
   const [currData, setCurrData] = useState('');
   const [originalData, setOriginalData] = useState('');
   const [isDiff, setIsDiff] = useState(false);
@@ -126,6 +129,11 @@ const EditFileModal: React.FC<Props> = props => {
               onClick={async () => {
                 await setProfileStr(id, currData);
                 setOriginalData(currData);
+                if (isCurrent) {
+                  try {
+                    await reloadCurrentProfile();
+                  } catch {}
+                }
                 forceCloseRef.current = true;
                 closeWithAnimation();
               }}

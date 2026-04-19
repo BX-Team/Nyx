@@ -1,17 +1,12 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { useAppConfig } from '@/hooks/use-app-config';
 
 const WindowControls: React.FC = () => {
-  const { appConfig } = useAppConfig();
-  const { useWindowFrame = false } = appConfig || {};
   const [isMaximized, setIsMaximized] = useState(false);
   const [_isFocused, setIsFocused] = useState(document.hasFocus());
 
   useEffect(() => {
-    if (useWindowFrame) return;
-
     const appWindow = getCurrentWindow();
 
     appWindow.isMaximized().then(setIsMaximized);
@@ -30,9 +25,7 @@ const WindowControls: React.FC = () => {
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('blur', onBlur);
     };
-  }, [useWindowFrame]);
-
-  if (useWindowFrame) return null;
+  });
 
   const appWindow = getCurrentWindow();
 

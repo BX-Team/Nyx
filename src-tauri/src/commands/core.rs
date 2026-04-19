@@ -15,6 +15,7 @@ pub async fn restart_core(app: AppHandle) -> Result<(), String> {
     match crate::core::manager::restart_core().await {
         Ok(url) => {
             log::info!("[cmd::restart_core] success, url={url}");
+            crate::commands::mihomo::restore_proxy_selections().await;
             let _ = app.emit("core-started", ());
             let _ = app.emit("controled-mihomo-config-updated", ());
             crate::core::streaming::start_streaming(&app);

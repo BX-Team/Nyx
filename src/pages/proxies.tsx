@@ -106,8 +106,9 @@ const Proxies: React.FC = () => {
       }
       mutate();
       updateTrayIcon();
+      void mihomoProxyDelay(proxy, delayTestUrl).catch(() => {});
     },
-    [autoCloseConnection, mutate],
+    [autoCloseConnection, delayTestUrl, mutate],
   );
 
   const onProxyDelay = useCallback(

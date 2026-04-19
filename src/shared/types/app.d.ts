@@ -36,7 +36,6 @@ interface AppConfig {
   connectionTableSortDirection?: 'asc' | 'desc';
   connectionInterval?: number;
   disableTray?: boolean;
-  useWindowFrame: boolean;
   proxyInTray: boolean;
   appTheme: AppTheme;
   autoCheckUpdate: boolean;
