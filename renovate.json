@@ -1,0 +1,36 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":disableDependencyDashboard"],
+  "enabledManagers": ["cargo", "bun", "github-actions"],
+  "labels": ["🔄 dependencies"],
+  "baseBranchPatterns": ["master"],
+  "semanticCommitType": "build",
+  "commitMessagePrefix": "chore(deps): ",
+  "ignoreDeps": [
+    "monaco-editor",
+    "monaco-yaml",
+    "react-monaco-editor"
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    },
+    {
+      "matchManagers": ["cargo"],
+      "groupName": "cargo dependencies"
+    },
+    {
+      "matchManagers": ["bun"],
+      "groupName": "bun dependencies"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 4am on Monday"]
+  }
+}
