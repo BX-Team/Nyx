@@ -1,0 +1,110 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [ "master" ]
+
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'public/**'
+              - 'index.html'
+              - 'package.json'
+              - 'bun.lockb'
+              - 'bun.lock'
+              - 'biome.json'
+              - 'tsconfig*.json'
+              - 'vite.config.ts'
+            backend:
+              - 'src-tauri/**'
+              - 'package.json'
+              - 'bun.lockb'
+              - 'bun.lock'
+
+  frontend:
+    name: Frontend Check
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Biome format & lint check
+        run: bun run check
+
+      - name: TypeScript type-check
+        run: bun run typecheck
+
+  backend:
+    name: Backend Check
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Bun (for Tauri build scripts)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            ./src-tauri -> target
+
+      - name: Cargo Format Check
+        run: cargo fmt --check
+        working-directory: ./src-tauri
+
+      - name: Cargo Check
+        run: cargo check
+        working-directory: ./src-tauri
+
+      - name: Cargo Clippy Check
+        run: cargo clippy -- -D warnings
+        working-directory: ./src-tauri
