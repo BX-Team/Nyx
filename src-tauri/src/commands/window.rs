@@ -185,7 +185,7 @@ fn is_elevated() -> bool {
         }
 
         const TOKEN_QUERY: u32 = 0x0008;
-        const TOKEN_ELEVATION: u32 = 20; 
+        const TOKEN_ELEVATION: u32 = 20;
 
         if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
             return false;
@@ -220,10 +220,7 @@ pub async fn restart_as_admin(app: AppHandle) -> Result<(), String> {
             .args([
                 "-NoProfile",
                 "-Command",
-                &format!(
-                    "Start-Process -FilePath '{}' -Verb RunAs",
-                    exe.display()
-                ),
+                &format!("Start-Process -FilePath '{}' -Verb RunAs", exe.display()),
             ])
             .creation_flags(0x08000000)
             .spawn()

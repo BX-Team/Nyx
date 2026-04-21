@@ -1,11 +1,11 @@
 #[cfg(windows)]
 pub mod imp {
+    use serde::{Deserialize, Serialize};
     use std::ffi::{c_void, OsString};
     use std::io::Write;
     use std::path::{Path, PathBuf};
     use std::sync::mpsc;
     use std::time::Duration;
-    use serde::{Deserialize, Serialize};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
     use tokio::process::Child;
@@ -14,7 +14,8 @@ pub mod imp {
     use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
     use windows_service::define_windows_service;
     use windows_service::service::{
-        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
+        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus,
+        ServiceType,
     };
     use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
     use windows_service::service_dispatcher;
@@ -88,7 +89,11 @@ pub mod imp {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let log_path = log_dir.join(format!("{}.log", today));
         let _ = std::fs::create_dir_all(log_dir);
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+        {
             use std::time::SystemTime;
             let ts = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -157,16 +162,17 @@ pub mod imp {
 
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
 
-        let status_handle = service_control_handler::register(SERVICE_NAME, move |control_event| {
-            match control_event {
+        let status_handle = service_control_handler::register(
+            SERVICE_NAME,
+            move |control_event| match control_event {
                 ServiceControl::Stop => {
                     let _ = stop_tx.send(());
                     ServiceControlHandlerResult::NoError
                 }
                 ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
                 _ => ServiceControlHandlerResult::NotImplemented,
-            }
-        })?;
+            },
+        )?;
 
         status_handle.set_service_status(ServiceStatus {
             service_type: ServiceType::OWN_PROCESS,
@@ -193,19 +199,28 @@ pub mod imp {
 
                 while let Some(req) = rx.recv().await {
                     match req {
-                        IpcRequest::StartCore { binary, work_dir, config, max_log_days } => {
-                            let _ = tokio::task::spawn_blocking(move || {
+                        IpcRequest::StartCore {
+                            binary,
+                            work_dir,
+                            config,
+                            max_log_days,
+                        } => {
+                            drop(tokio::task::spawn_blocking(move || {
                                 clean_old_logs(max_log_days);
-                            });
+                            }));
 
                             if let Some(mut child) = current_child.take() {
                                 let _ = child.kill().await;
                             }
-                            
+
                             let mut cmd = tokio::process::Command::new(&binary);
                             cmd.arg("-d")
                                 .arg(if work_dir.is_empty() {
-                                    PathBuf::from(&config).parent().unwrap_or(Path::new("")).to_string_lossy().into_owned()
+                                    PathBuf::from(&config)
+                                        .parent()
+                                        .unwrap_or(Path::new(""))
+                                        .to_string_lossy()
+                                        .into_owned()
                                 } else {
                                     work_dir.clone()
                                 })
@@ -215,22 +230,31 @@ pub mod imp {
                                 .stdout(std::process::Stdio::null())
                                 .stderr(std::process::Stdio::null());
 
-                            cmd.creation_flags(0x08000000); 
+                            cmd.creation_flags(0x08000000);
 
                             match cmd.spawn() {
                                 Ok(child) => {
-                                    log_to_file(&format!("service manager: spawned mihomo pid={:?}", child.id()));
+                                    log_to_file(&format!(
+                                        "service manager: spawned mihomo pid={:?}",
+                                        child.id()
+                                    ));
                                     current_child = Some(child);
                                 }
                                 Err(e) => {
-                                    log_to_file(&format!("service manager: failed to spawn mihomo: {}", e));
+                                    log_to_file(&format!(
+                                        "service manager: failed to spawn mihomo: {}",
+                                        e
+                                    ));
                                 }
                             }
                         }
                         IpcRequest::StopCore => {
                             if let Some(mut child) = current_child.take() {
                                 let pid = child.id().unwrap_or(0);
-                                log_to_file(&format!("service manager: stopping mihomo pid={}", pid));
+                                log_to_file(&format!(
+                                    "service manager: stopping mihomo pid={}",
+                                    pid
+                                ));
                                 let _ = child.kill().await;
 
                                 if pid > 0 {
@@ -283,14 +307,16 @@ pub mod imp {
                                         let _ = server.write_all(res.as_bytes()).await;
                                     }
                                     IpcRequest::Ping => {
-                                        let res = serde_json::to_string(&IpcResponse::Pong).unwrap();
+                                        let res =
+                                            serde_json::to_string(&IpcResponse::Pong).unwrap();
                                         let _ = server.write_all(res.as_bytes()).await;
                                     }
                                 }
                             } else {
                                 let res = serde_json::to_string(&IpcResponse::Error {
                                     message: "Invalid request payload".to_string(),
-                                }).unwrap();
+                                })
+                                .unwrap();
                                 let _ = server.write_all(res.as_bytes()).await;
                             }
                         }
@@ -302,7 +328,8 @@ pub mod imp {
             let _ = tokio::task::spawn_blocking(move || {
                 let _ = stop_rx.recv();
                 let _ = shutdown_tx.blocking_send(());
-            }).await;
+            })
+            .await;
 
             let _ = shutdown_rx.recv().await;
             log_to_file("service stopping...");

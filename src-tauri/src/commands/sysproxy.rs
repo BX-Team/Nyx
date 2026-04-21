@@ -30,7 +30,7 @@ fn set_windows_proxy(
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let path = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
     let (key, _) = hkcu.create_subkey(path)?;
-    
+
     // Global Proxy settings
     key.set_value("ProxyEnable", &(enable as u32))?;
     if enable {
@@ -45,40 +45,54 @@ fn set_windows_proxy(
         // Apply proxy to all dial-up and VPN connections
         let connections_path = format!("{}\\{}", path, "Connections");
         if let Ok((connections_key, _)) = hkcu.create_subkey(&connections_path) {
-            for value_name_res in connections_key.enum_values() {
-                if let Ok((name, val)) = value_name_res {
-                    if val.vtype != winreg::enums::REG_BINARY { continue; }
-                    let mut bytes: Vec<u8> = val.bytes.to_vec();
-                    if bytes.len() < 12 { continue; }
-                    
-                    // Increment counter
-                    let counter = u32::from_le_bytes(bytes[4..8].try_into().unwrap_or([0,0,0,0]));
-                    bytes[4..8].copy_from_slice(&(counter + 1).to_le_bytes());
+            for (name, val) in connections_key.enum_values().flatten() {
+                if val.vtype != winreg::enums::REG_BINARY {
+                    continue;
+                }
+                let mut bytes: Vec<u8> = val.bytes.to_vec();
+                if bytes.len() < 12 {
+                    continue;
+                }
 
-                    if enable {
-                        bytes[8] = 0x03; // PROXY_TYPE_DIRECT | PROXY_TYPE_PROXY
-                        let mut new_bytes = bytes[..12].to_vec();
-                        
-                        let proxy_addr_bytes = proxy_addr.as_bytes();
-                        new_bytes.extend_from_slice(&(proxy_addr_bytes.len() as u32).to_le_bytes());
-                        new_bytes.extend_from_slice(proxy_addr_bytes);
+                // Increment counter
+                let counter = u32::from_le_bytes(bytes[4..8].try_into().unwrap_or([0, 0, 0, 0]));
+                bytes[4..8].copy_from_slice(&(counter + 1).to_le_bytes());
 
-                        let bypass = "<local>;localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;192.168.*";
-                        let bypass_bytes = bypass.as_bytes();
-                        new_bytes.extend_from_slice(&(bypass_bytes.len() as u32).to_le_bytes());
-                        new_bytes.extend_from_slice(bypass_bytes);
-                        
-                        // Remaining 36 zeros
-                        new_bytes.extend_from_slice(&[0u8; 36]);
-                        let _ = connections_key.set_raw_value(&name, &winreg::RegValue { vtype: winreg::enums::REG_BINARY, bytes: new_bytes.into() });
-                    } else {
-                        bytes[8] = 0x09; // PROXY_TYPE_DIRECT | PROXY_TYPE_AUTO_PROXY_URL
-                        // Simplified clear proxy settings
-                        let mut new_bytes = bytes[..12].to_vec();
-                        new_bytes.extend_from_slice(&[0u8; 8]); // No Proxy Addr, No Bypass
-                        new_bytes.extend_from_slice(&[0u8; 36]);
-                        let _ = connections_key.set_raw_value(&name, &winreg::RegValue { vtype: winreg::enums::REG_BINARY, bytes: new_bytes.into() });
-                    }
+                if enable {
+                    bytes[8] = 0x03; // PROXY_TYPE_DIRECT | PROXY_TYPE_PROXY
+                    let mut new_bytes = bytes[..12].to_vec();
+
+                    let proxy_addr_bytes = proxy_addr.as_bytes();
+                    new_bytes.extend_from_slice(&(proxy_addr_bytes.len() as u32).to_le_bytes());
+                    new_bytes.extend_from_slice(proxy_addr_bytes);
+
+                    let bypass = "<local>;localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;192.168.*";
+                    let bypass_bytes = bypass.as_bytes();
+                    new_bytes.extend_from_slice(&(bypass_bytes.len() as u32).to_le_bytes());
+                    new_bytes.extend_from_slice(bypass_bytes);
+
+                    // Remaining 36 zeros
+                    new_bytes.extend_from_slice(&[0u8; 36]);
+                    let _ = connections_key.set_raw_value(
+                        &name,
+                        &winreg::RegValue {
+                            vtype: winreg::enums::REG_BINARY,
+                            bytes: new_bytes.into(),
+                        },
+                    );
+                } else {
+                    bytes[8] = 0x09; // PROXY_TYPE_DIRECT | PROXY_TYPE_AUTO_PROXY_URL
+                                     // Simplified clear proxy settings
+                    let mut new_bytes = bytes[..12].to_vec();
+                    new_bytes.extend_from_slice(&[0u8; 8]); // No Proxy Addr, No Bypass
+                    new_bytes.extend_from_slice(&[0u8; 36]);
+                    let _ = connections_key.set_raw_value(
+                        &name,
+                        &winreg::RegValue {
+                            vtype: winreg::enums::REG_BINARY,
+                            bytes: new_bytes.into(),
+                        },
+                    );
                 }
             }
         }
@@ -88,7 +102,12 @@ fn set_windows_proxy(
     unsafe {
         #[link(name = "wininet")]
         extern "system" {
-            fn InternetSetOptionW(hInternet: *mut std::ffi::c_void, dwOption: u32, lpBuffer: *mut std::ffi::c_void, dwBufferLength: u32) -> i32;
+            fn InternetSetOptionW(
+                hInternet: *mut std::ffi::c_void,
+                dwOption: u32,
+                lpBuffer: *mut std::ffi::c_void,
+                dwBufferLength: u32,
+            ) -> i32;
         }
         InternetSetOptionW(std::ptr::null_mut(), 39, std::ptr::null_mut(), 0); // INTERNET_OPTION_SETTINGS_CHANGED
         InternetSetOptionW(std::ptr::null_mut(), 37, std::ptr::null_mut(), 0); // INTERNET_OPTION_REFRESH
@@ -106,10 +125,20 @@ fn set_linux_proxy(enable: bool, proxy_addr: &str) -> anyhow::Result<()> {
             .status();
         for schema in ["http", "https"] {
             let _ = std::process::Command::new("gsettings")
-                .args(["set", &format!("org.gnome.system.proxy.{schema}"), "host", host])
+                .args([
+                    "set",
+                    &format!("org.gnome.system.proxy.{schema}"),
+                    "host",
+                    host,
+                ])
                 .status();
             let _ = std::process::Command::new("gsettings")
-                .args(["set", &format!("org.gnome.system.proxy.{schema}"), "port", port])
+                .args([
+                    "set",
+                    &format!("org.gnome.system.proxy.{schema}"),
+                    "port",
+                    port,
+                ])
                 .status();
         }
     } else {

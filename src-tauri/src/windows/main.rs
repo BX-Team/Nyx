@@ -1,5 +1,5 @@
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 static SAVE_PENDING: AtomicBool = AtomicBool::new(false);
 
@@ -15,7 +15,8 @@ fn restore_window_state(win: &tauri::WebviewWindow) {
                 let _ = win.set_size(tauri::Size::Logical(tauri::LogicalSize::new(w, h)));
             }
             if let (Some(x), Some(y)) = (state["x"].as_f64(), state["y"].as_f64()) {
-                let _ = win.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
+                let _ =
+                    win.set_position(tauri::Position::Logical(tauri::LogicalPosition::new(x, y)));
             }
         }
     }
@@ -23,7 +24,7 @@ fn restore_window_state(win: &tauri::WebviewWindow) {
 
 fn save_window_state(win: &tauri::WebviewWindow) {
     if SAVE_PENDING.swap(true, Ordering::Relaxed) {
-        return; 
+        return;
     }
     let win = win.clone();
     std::thread::spawn(move || {
@@ -39,7 +40,10 @@ fn save_window_state(win: &tauri::WebviewWindow) {
                 "x": p.x as f64 / scale,
                 "y": p.y as f64 / scale,
             });
-            let _ = std::fs::write(window_state_path(), serde_json::to_string_pretty(&state).unwrap_or_default());
+            let _ = std::fs::write(
+                window_state_path(),
+                serde_json::to_string_pretty(&state).unwrap_or_default(),
+            );
         }
     });
 }

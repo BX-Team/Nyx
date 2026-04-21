@@ -5,8 +5,7 @@ use parking_lot::Mutex;
 use std::path::PathBuf;
 use tokio::sync::Mutex as AsyncMutex;
 
-static CONTROLLER_URL: Lazy<Mutex<String>> =
-    Lazy::new(|| Mutex::new(String::new()));
+static CONTROLLER_URL: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
 
 static REBUILD_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(|| AsyncMutex::new(()));
 
@@ -20,9 +19,15 @@ fn cm() -> Result<ConfigManager> {
 
 fn version_matches_channel(version: &str, want_alpha: bool) -> bool {
     let lower = version.to_ascii_lowercase();
-    let is_alpha =
-        lower.contains("alpha") || lower.contains("preview") || lower.contains("pre") || lower.contains("nightly");
-    if want_alpha { is_alpha } else { !is_alpha }
+    let is_alpha = lower.contains("alpha")
+        || lower.contains("preview")
+        || lower.contains("pre")
+        || lower.contains("nightly");
+    if want_alpha {
+        is_alpha
+    } else {
+        !is_alpha
+    }
 }
 
 fn pid_file() -> PathBuf {
@@ -32,7 +37,11 @@ fn pid_file() -> PathBuf {
 async fn spawn_mihomo(binary: &std::path::Path, config: &std::path::Path) -> Result<u32> {
     let mut cmd = std::process::Command::new(binary);
     cmd.arg("-d")
-        .arg(config.parent().ok_or_else(|| anyhow::anyhow!("config has no parent dir"))?)
+        .arg(
+            config
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("config has no parent dir"))?,
+        )
         .arg("-f")
         .arg(config)
         .stdin(std::process::Stdio::null())
@@ -42,12 +51,14 @@ async fn spawn_mihomo(binary: &std::path::Path, config: &std::path::Path) -> Res
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000); 
+        cmd.creation_flags(0x08000000);
     }
 
-    let child = cmd.spawn().map_err(|e| anyhow::anyhow!("failed to spawn mihomo: {e}"))?;
+    let child = cmd
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("failed to spawn mihomo: {e}"))?;
     let pid = child.id();
-    std::mem::forget(child); 
+    std::mem::forget(child);
 
     let pf = pid_file();
     if let Some(p) = pf.parent() {
@@ -85,7 +96,7 @@ async fn stop_mihomo() -> Result<()> {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .creation_flags(0x08000000) 
+            .creation_flags(0x08000000)
             .output();
     }
 
@@ -99,7 +110,6 @@ async fn stop_mihomo() -> Result<()> {
     let _ = tokio::fs::remove_file(&pf).await;
     Ok(())
 }
-
 
 async fn read_current_profile_id() -> Option<String> {
     let meta_path = crate::utils::dirs::profile_config_path();
@@ -122,7 +132,9 @@ async fn read_current_profile_yaml() -> String {
         None => return String::new(),
     };
     let profile_path = dirs::profile_path(&current_id);
-    tokio::fs::read_to_string(&profile_path).await.unwrap_or_default()
+    tokio::fs::read_to_string(&profile_path)
+        .await
+        .unwrap_or_default()
 }
 
 async fn apply_rule_overrides(yaml: &str, profile_id: &str) -> String {
@@ -210,7 +222,10 @@ async fn read_mihomo_overrides() -> String {
             let before = map.len();
             map.retain(|_, v| !v.is_null());
             if map.len() != before {
-                log::info!("[read_mihomo_overrides] cleaned {} stale null entries from mihomo.yaml", before - map.len());
+                log::info!(
+                    "[read_mihomo_overrides] cleaned {} stale null entries from mihomo.yaml",
+                    before - map.len()
+                );
                 let clean = serde_yaml::to_string(&val).unwrap_or_default();
                 let _ = tokio::fs::write(&path, &clean).await;
                 return clean;
@@ -237,10 +252,8 @@ fn merge_yaml(base: &str, patch: &str) -> String {
 }
 
 fn deep_merge_yaml(base: &mut serde_yaml::Value, patch: serde_yaml::Value) {
-    if let (
-        serde_yaml::Value::Mapping(ref mut base_map),
-        serde_yaml::Value::Mapping(patch_map),
-    ) = (base, patch)
+    if let (serde_yaml::Value::Mapping(ref mut base_map), serde_yaml::Value::Mapping(patch_map)) =
+        (base, patch)
     {
         for (k, v) in patch_map {
             if v.is_null() {
@@ -259,7 +272,10 @@ fn deep_merge_yaml(base: &mut serde_yaml::Value, patch: serde_yaml::Value) {
     }
 }
 
-fn ensure_external_controller_in_yaml(yaml: &str, preferred_addr: Option<&str>) -> (String, String) {
+fn ensure_external_controller_in_yaml(
+    yaml: &str,
+    preferred_addr: Option<&str>,
+) -> (String, String) {
     let mut val: serde_yaml::Value = if yaml.is_empty() {
         serde_yaml::Value::Mapping(Default::default())
     } else {
@@ -276,7 +292,9 @@ fn ensure_external_controller_in_yaml(yaml: &str, preferred_addr: Option<&str>) 
         Some(a) => a,
         None => {
             let a = if let Some(p) = preferred_addr.filter(|s| !s.is_empty()) {
-                p.trim_start_matches("http://").trim_start_matches("https://").to_string()
+                p.trim_start_matches("http://")
+                    .trim_start_matches("https://")
+                    .to_string()
             } else {
                 let port = (9090u16..9190)
                     .find(|p| std::net::TcpListener::bind(("127.0.0.1", *p)).is_ok())
@@ -310,7 +328,12 @@ pub async fn rebuild_config() -> Result<String> {
     let profile_id = read_current_profile_id().await;
     let profile_yaml = read_current_profile_yaml().await;
     let overrides_yaml = read_mihomo_overrides().await;
-    log::info!("[rebuild_config] profile_yaml length={}, overrides_yaml length={}, profile_id={:?}", profile_yaml.len(), overrides_yaml.len(), profile_id);
+    log::info!(
+        "[rebuild_config] profile_yaml length={}, overrides_yaml length={}, profile_id={:?}",
+        profile_yaml.len(),
+        overrides_yaml.len(),
+        profile_id
+    );
 
     let base_merged = merge_yaml(&profile_yaml, &overrides_yaml);
     let merged = if let Some(ref id) = profile_id {
@@ -320,7 +343,11 @@ pub async fn rebuild_config() -> Result<String> {
     };
 
     let running_url = CONTROLLER_URL.lock().clone();
-    let preferred_addr = if running_url.is_empty() { None } else { Some(running_url.as_str()) };
+    let preferred_addr = if running_url.is_empty() {
+        None
+    } else {
+        Some(running_url.as_str())
+    };
 
     let (final_yaml, url) = ensure_external_controller_in_yaml(&merged, preferred_addr);
 
@@ -328,7 +355,12 @@ pub async fn rebuild_config() -> Result<String> {
         let tun_enable = val.get("tun").and_then(|t| t.get("enable"));
         let ext_ctrl = val.get("external-controller");
         let secret = val.get("secret");
-        log::info!("[rebuild_config] tun.enable={:?}, external-controller={:?}, secret={:?}, url={url}", tun_enable, ext_ctrl, secret);
+        log::info!(
+            "[rebuild_config] tun.enable={:?}, external-controller={:?}, secret={:?}, url={url}",
+            tun_enable,
+            ext_ctrl,
+            secret
+        );
     }
 
     let cm = cm()?;
@@ -349,7 +381,6 @@ pub async fn rebuild_config() -> Result<String> {
     Ok(url)
 }
 
-
 pub async fn install_core() -> Result<()> {
     install_core_for_core_type("mihomo").await
 }
@@ -360,20 +391,27 @@ pub async fn install_core_for_core_type(core: &str) -> Result<()> {
     }
 
     let want_alpha = core == "mihomo-alpha";
-    let channel = if want_alpha { Channel::Nightly } else { Channel::Stable };
+    let channel = if want_alpha {
+        Channel::Nightly
+    } else {
+        Channel::Stable
+    };
 
     let vm = vm()?;
     let version = match vm.install_channel(channel).await {
         Ok(v) => v,
         Err(e) => {
             if e.to_string().contains("already installed") {
-                let versions = vm.list_installed().await.map_err(|e2| anyhow::anyhow!("{e2}"))?;
+                let versions = vm
+                    .list_installed()
+                    .await
+                    .map_err(|e2| anyhow::anyhow!("{e2}"))?;
                 let selected = versions
                     .into_iter()
                     .find(|v| version_matches_channel(&v.version, want_alpha));
-                selected
-                    .map(|v| v.version)
-                    .ok_or_else(|| anyhow::anyhow!("no installed versions found for selected core channel"))?
+                selected.map(|v| v.version).ok_or_else(|| {
+                    anyhow::anyhow!("no installed versions found for selected core channel")
+                })?
             } else {
                 return Err(anyhow::anyhow!("{e}"));
             }
@@ -407,7 +445,10 @@ pub async fn start_core() -> Result<String> {
             .ok_or_else(|| anyhow::anyhow!("system core path is not configured"))?;
         let p = std::path::PathBuf::from(system_path);
         if !p.exists() {
-            return Err(anyhow::anyhow!("system core does not exist: {}", p.display()));
+            return Err(anyhow::anyhow!(
+                "system core does not exist: {}",
+                p.display()
+            ));
         }
         p
     } else {
@@ -526,7 +567,10 @@ pub async fn core_installed() -> bool {
 
 pub async fn get_installed_version() -> Result<String> {
     let vm = vm()?;
-    let versions = vm.list_installed().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let versions = vm
+        .list_installed()
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     versions
         .into_iter()
         .next()

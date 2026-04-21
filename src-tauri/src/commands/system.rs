@@ -57,8 +57,13 @@ pub async fn setup_firewall() -> Result<(), String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         std::process::Command::new("netsh")
             .args([
-                "advfirewall", "firewall", "add", "rule",
-                "name=Nyx", "dir=in", "action=allow",
+                "advfirewall",
+                "firewall",
+                "add",
+                "rule",
+                "name=Nyx",
+                "dir=in",
+                "action=allow",
                 &format!("program={}", exe.display()),
             ])
             .creation_flags(0x08000000)
@@ -127,10 +132,10 @@ pub async fn check_elevate_task() -> Result<bool, String> {
         use std::os::windows::process::CommandExt;
         let out = std::process::Command::new("schtasks")
             .args(["/query", "/tn", ELEVATE_TASK_NAME])
-            .creation_flags(0x08000000) 
+            .creation_flags(0x08000000)
             .output()
             .map_err(|e| e.to_string())?;
-        return Ok(out.status.success());
+        Ok(out.status.success())
     }
     #[cfg(not(windows))]
     Ok(false)
@@ -165,7 +170,7 @@ Register-ScheduledTask -TaskName '{task}' -Action $action -Trigger $trigger -Pri
 
         let out = std::process::Command::new("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", &launcher])
-            .creation_flags(0x08000000) 
+            .creation_flags(0x08000000)
             .output()
             .map_err(|e| e.to_string())?;
 
@@ -179,7 +184,7 @@ Register-ScheduledTask -TaskName '{task}' -Action $action -Trigger $trigger -Pri
                 stderr
             });
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(windows))]
     Ok(())
@@ -192,17 +197,20 @@ pub async fn delete_elevate_task() -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         let out = std::process::Command::new("schtasks")
             .args(["/delete", "/tn", ELEVATE_TASK_NAME, "/f"])
-            .creation_flags(0x08000000) 
+            .creation_flags(0x08000000)
             .output()
             .map_err(|e| e.to_string())?;
         if !out.status.success() {
             let text = String::from_utf8_lossy(&out.stdout).to_string()
                 + &String::from_utf8_lossy(&out.stderr);
-            if !text.contains("cannot find") && !text.contains("does not exist") && !text.contains("1060") {
+            if !text.contains("cannot find")
+                && !text.contains("does not exist")
+                && !text.contains("1060")
+            {
                 return Err(text.trim().to_string());
             }
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(windows))]
     Ok(())

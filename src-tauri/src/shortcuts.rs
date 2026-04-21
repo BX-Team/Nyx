@@ -72,7 +72,8 @@ fn handle_shortcut_action(app: &AppHandle, action: &str) {
             tauri::async_runtime::spawn({
                 let app = app.clone();
                 async move {
-                    let _ = crate::core::api::patch_config(serde_json::json!({"mode": "rule"})).await;
+                    let _ =
+                        crate::core::api::patch_config(serde_json::json!({"mode": "rule"})).await;
                     use tauri::Emitter;
                     let _ = app.emit("app-config-updated", ());
                 }
@@ -83,7 +84,8 @@ fn handle_shortcut_action(app: &AppHandle, action: &str) {
             tauri::async_runtime::spawn({
                 let app = app.clone();
                 async move {
-                    let _ = crate::core::api::patch_config(serde_json::json!({"mode": "global"})).await;
+                    let _ =
+                        crate::core::api::patch_config(serde_json::json!({"mode": "global"})).await;
                     use tauri::Emitter;
                     let _ = app.emit("app-config-updated", ());
                 }
@@ -94,7 +96,8 @@ fn handle_shortcut_action(app: &AppHandle, action: &str) {
             tauri::async_runtime::spawn({
                 let app = app.clone();
                 async move {
-                    let _ = crate::core::api::patch_config(serde_json::json!({"mode": "direct"})).await;
+                    let _ =
+                        crate::core::api::patch_config(serde_json::json!({"mode": "direct"})).await;
                     use tauri::Emitter;
                     let _ = app.emit("app-config-updated", ());
                 }

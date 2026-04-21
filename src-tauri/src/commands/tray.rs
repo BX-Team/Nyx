@@ -46,7 +46,14 @@ pub async fn refresh_tray(app: &AppHandle) {
     };
 
     crate::tray::update_tray_icon(app, tun_enabled);
-    crate::tray::update_tray_tooltip(app, &profile_name, &mode, tun_enabled, &proxy_node, proxy_in_tray);
+    crate::tray::update_tray_tooltip(
+        app,
+        &profile_name,
+        &mode,
+        tun_enabled,
+        &proxy_node,
+        proxy_in_tray,
+    );
 }
 
 async fn current_proxy_node(mode: &str) -> String {
@@ -91,8 +98,7 @@ pub async fn update_tray_icon(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn set_dock_visible(_app: AppHandle, _visible: bool) {
-}
+pub async fn set_dock_visible(_app: AppHandle, _visible: bool) {}
 
 #[tauri::command]
 pub async fn copy_env(app: AppHandle, env_type: String) -> Result<(), String> {

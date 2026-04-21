@@ -6,7 +6,7 @@ static STREAMING_ACTIVE: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false))
 
 pub fn start_streaming(app: &AppHandle) {
     if STREAMING_ACTIVE.swap(true, Ordering::SeqCst) {
-        return; 
+        return;
     }
     log::info!("[streaming] starting connection and log streams");
 
@@ -68,9 +68,7 @@ async fn stream_logs(app: AppHandle) {
         let logs_url = format!("{url}/logs?level=info");
         log::info!("[streaming] connecting to logs: {logs_url}");
 
-        let client = reqwest::Client::builder()
-            .build()
-            .unwrap_or_default();
+        let client = reqwest::Client::builder().build().unwrap_or_default();
 
         match client.get(&logs_url).send().await {
             Ok(resp) => {
@@ -88,7 +86,9 @@ async fn stream_logs(app: AppHandle) {
                             let line = buffer[..pos].trim().to_string();
                             buffer = buffer[pos + 1..].to_string();
                             if !line.is_empty() {
-                                if let Ok(log_entry) = serde_json::from_str::<serde_json::Value>(&line) {
+                                if let Ok(log_entry) =
+                                    serde_json::from_str::<serde_json::Value>(&line)
+                                {
                                     let _ = app.emit("mihomo-logs", &log_entry);
                                 }
                             }

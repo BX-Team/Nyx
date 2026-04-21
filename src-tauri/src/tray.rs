@@ -67,7 +67,8 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
             tauri::async_runtime::spawn({
                 let app = app.clone();
                 async move {
-                    let _ = crate::core::api::patch_config(serde_json::json!({"mode": "rule"})).await;
+                    let _ =
+                        crate::core::api::patch_config(serde_json::json!({"mode": "rule"})).await;
                     let _ = app.emit("app-config-updated", ());
                     crate::commands::tray::refresh_tray(&app).await;
                 }
@@ -77,7 +78,8 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
             tauri::async_runtime::spawn({
                 let app = app.clone();
                 async move {
-                    let _ = crate::core::api::patch_config(serde_json::json!({"mode": "global"})).await;
+                    let _ =
+                        crate::core::api::patch_config(serde_json::json!({"mode": "global"})).await;
                     let _ = app.emit("app-config-updated", ());
                     crate::commands::tray::refresh_tray(&app).await;
                 }
@@ -87,7 +89,8 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
             tauri::async_runtime::spawn({
                 let app = app.clone();
                 async move {
-                    let _ = crate::core::api::patch_config(serde_json::json!({"mode": "direct"})).await;
+                    let _ =
+                        crate::core::api::patch_config(serde_json::json!({"mode": "direct"})).await;
                     let _ = app.emit("app-config-updated", ());
                     crate::commands::tray::refresh_tray(&app).await;
                 }
@@ -139,7 +142,7 @@ pub fn update_tray_tooltip(
     let Some(tray) = app.tray_by_id("main") else {
         return;
     };
-    
+
     if !show_info {
         let _ = tray.set_tooltip(Some("Nyx"));
         return;
@@ -158,12 +161,12 @@ pub fn update_tray_tooltip(
         format!("Profile: {profile}")
     };
     let tun_line = if tun_enabled { "TUN: On" } else { "TUN: Off" };
-    
+
     let tooltip = if proxy.is_empty() {
         format!("Nyx\n{profile_line}\nMode: {mode_label}\n{tun_line}")
     } else {
         format!("Nyx\n{profile_line}\nMode: {mode_label}\nProxy: {proxy}\n{tun_line}")
     };
-    
+
     let _ = tray.set_tooltip(Some(&tooltip));
 }

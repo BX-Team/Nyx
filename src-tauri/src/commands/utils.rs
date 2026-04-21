@@ -89,9 +89,7 @@ fn extract_icon_png_data_url(app_path: &str) -> Result<String, String> {
         SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HGDIOBJ,
     };
     use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
-    use windows::Win32::UI::Shell::{
-        SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON,
-    };
+    use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
     use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, DI_NORMAL};
 
     if app_path.is_empty() || !Path::new(app_path).is_file() {
@@ -145,26 +143,19 @@ fn extract_icon_png_data_url(app_path: &str) -> Result<String, String> {
         };
 
         let mut bits_ptr: *mut core::ffi::c_void = std::ptr::null_mut();
-        let hbitmap: HBITMAP = match CreateDIBSection(
-            Some(mem_dc),
-            &bmi,
-            DIB_RGB_COLORS,
-            &mut bits_ptr,
-            None,
-            0,
-        ) {
-            Ok(b) => b,
-            Err(e) => {
-                let _ = DeleteDC(mem_dc);
-                ReleaseDC(None, screen_dc);
-                let _ = DestroyIcon(hicon);
-                return Err(e.to_string());
-            }
-        };
+        let hbitmap: HBITMAP =
+            match CreateDIBSection(Some(mem_dc), &bmi, DIB_RGB_COLORS, &mut bits_ptr, None, 0) {
+                Ok(b) => b,
+                Err(e) => {
+                    let _ = DeleteDC(mem_dc);
+                    ReleaseDC(None, screen_dc);
+                    let _ = DestroyIcon(hicon);
+                    return Err(e.to_string());
+                }
+            };
 
         let old = SelectObject(mem_dc, HGDIOBJ(hbitmap.0));
-        let draw_ok =
-            DrawIconEx(mem_dc, 0, 0, hicon, size, size, 0, None, DI_NORMAL).is_ok();
+        let draw_ok = DrawIconEx(mem_dc, 0, 0, hicon, size, size, 0, None, DI_NORMAL).is_ok();
 
         let byte_count = (size * size * 4) as usize;
         let mut pixels = vec![0u8; byte_count];
@@ -195,7 +186,9 @@ fn extract_icon_png_data_url(app_path: &str) -> Result<String, String> {
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
-        writer.write_image_data(&pixels).map_err(|e| e.to_string())?;
+        writer
+            .write_image_data(&pixels)
+            .map_err(|e| e.to_string())?;
     }
 
     let b64 = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
@@ -231,7 +224,7 @@ pub async fn quit_without_core(app: AppHandle) -> Result<(), String> {
 pub async fn quit_app(app: AppHandle) {
     #[cfg(windows)]
     let _ = crate::commands::service::stop_service().await;
-    
+
     let _ = crate::core::manager::stop_core().await;
     app.exit(0);
 }
@@ -240,7 +233,7 @@ pub async fn quit_app(app: AppHandle) {
 pub async fn not_dialog_quit(app: AppHandle) {
     #[cfg(windows)]
     let _ = crate::commands::service::stop_service().await;
-    
+
     let _ = crate::core::manager::stop_core().await;
     app.exit(0);
 }
@@ -267,15 +260,21 @@ pub async fn debug_info() -> Result<serde_json::Value, String> {
     };
 
     let overrides_path = crate::utils::dirs::controled_mihomo_config_path();
-    let overrides_content = tokio::fs::read_to_string(&overrides_path).await.unwrap_or_else(|_| "<not found>".to_string());
+    let overrides_content = tokio::fs::read_to_string(&overrides_path)
+        .await
+        .unwrap_or_else(|_| "<not found>".to_string());
 
     let app_config_path = crate::utils::dirs::app_config_path();
-    let app_config_content = tokio::fs::read_to_string(&app_config_path).await.unwrap_or_else(|_| "<not found>".to_string());
+    let app_config_content = tokio::fs::read_to_string(&app_config_path)
+        .await
+        .unwrap_or_else(|_| "<not found>".to_string());
 
     let cm = mihomo_rs::ConfigManager::with_home(data_dir.clone()).ok();
     let running_config_content = if let Some(ref cm) = cm {
         if let Ok(path) = cm.get_current_path().await {
-            tokio::fs::read_to_string(&path).await.unwrap_or_else(|_| "<not found>".to_string())
+            tokio::fs::read_to_string(&path)
+                .await
+                .unwrap_or_else(|_| "<not found>".to_string())
         } else {
             "<cm.get_current_path failed>".to_string()
         }

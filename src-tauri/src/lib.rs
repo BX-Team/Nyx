@@ -34,7 +34,12 @@ async fn run_auto_refresh(app: &tauri::AppHandle) -> anyhow::Result<()> {
             continue;
         }
         let name = item["name"].as_str().unwrap_or("").to_string();
-        log::info!("auto-refresh: refreshing profile '{}' (interval={}m, elapsed={}m)", name, interval_minutes, elapsed_minutes);
+        log::info!(
+            "auto-refresh: refreshing profile '{}' (interval={}m, elapsed={}m)",
+            name,
+            interval_minutes,
+            elapsed_minutes
+        );
         if let Err(e) = commands::config::add_profile_item(app.clone(), item.clone()).await {
             log::warn!("auto-refresh: failed to refresh '{}': {}", name, e);
         }
@@ -105,10 +110,16 @@ mod deep_link {
                     } else {
                         name.clone()
                     };
-                    if let Err(e) = commands::config::change_current_profile(handle.clone(), new_id.clone()).await {
+                    if let Err(e) =
+                        commands::config::change_current_profile(handle.clone(), new_id.clone())
+                            .await
+                    {
                         log::warn!("deep link install-config: change_current_profile failed: {e}");
                     }
-                    let _ = handle.emit("profile-installed", serde_json::json!({ "name": display_name, "id": new_id }));
+                    let _ = handle.emit(
+                        "profile-installed",
+                        serde_json::json!({ "name": display_name, "id": new_id }),
+                    );
                 }
                 Err(e) => {
                     log::error!("deep link install-config: add failed: {e}");
@@ -271,11 +282,15 @@ pub fn run() {
         ])
         .setup(|app| {
             use tauri::Listener;
-            windows::main::create_main_window(&app.handle())?;
+            windows::main::create_main_window(app.handle())?;
 
-            tray::setup_tray(&app.handle())?;
+            tray::setup_tray(app.handle())?;
 
-            for evt in ["controled-mihomo-config-updated", "profile-config-updated", "app-config-updated"] {
+            for evt in [
+                "controled-mihomo-config-updated",
+                "profile-config-updated",
+                "app-config-updated",
+            ] {
                 let h = app.handle().clone();
                 app.listen(evt, move |_| {
                     let h = h.clone();
@@ -320,8 +335,15 @@ pub fn run() {
                 ];
                 for key in shortcut_keys {
                     if let Some(sc) = app_cfg[key].as_str().filter(|s| !s.is_empty()) {
-                        if let Err(e) = shortcuts::register_shortcut(app.handle(), None, Some(sc), key) {
-                            log::warn!("startup: failed to register shortcut '{}' for '{}': {}", sc, key, e);
+                        if let Err(e) =
+                            shortcuts::register_shortcut(app.handle(), None, Some(sc), key)
+                        {
+                            log::warn!(
+                                "startup: failed to register shortcut '{}' for '{}': {}",
+                                sc,
+                                key,
+                                e
+                            );
                         }
                     }
                 }
@@ -341,7 +363,11 @@ pub fn run() {
 
                 let urls: Vec<String> = serde_json::from_str(&raw).unwrap_or_else(|_| {
                     let s = raw.trim_matches('"').to_string();
-                    if s.is_empty() { vec![] } else { vec![s] }
+                    if s.is_empty() {
+                        vec![]
+                    } else {
+                        vec![s]
+                    }
                 });
 
                 for url_str in urls {
@@ -375,7 +401,8 @@ pub fn run() {
                         "hosts": [],
                         "core": "mihomo",
                         "corePermissionMode": "service"
-                    })).unwrap_or_default();
+                    }))
+                    .unwrap_or_default();
                     let _ = std::fs::write(&config_path, defaults);
                     log::info!("created default app config");
                     use tauri::Emitter;
@@ -387,16 +414,14 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 let app_cfg = read_app_config();
                 let use_service_mode = cfg!(windows)
-                    && app_cfg["corePermissionMode"]
-                        .as_str()
-                        .unwrap_or("service")
-                        == "service";
+                    && app_cfg["corePermissionMode"].as_str().unwrap_or("service") == "service";
 
                 if use_service_mode {
                     match commands::service::service_status().await {
                         Ok(status) if status == "running" => {
                             use tauri::Emitter;
-                            let connected = commands::service::test_service_connection().await
+                            let connected = commands::service::test_service_connection()
+                                .await
                                 .unwrap_or(false);
                             if connected {
                                 commands::mihomo::restore_proxy_selections().await;
@@ -404,7 +429,9 @@ pub fn run() {
                                 core::streaming::start_streaming(&handle);
                             } else {
                                 log::warn!("service running but mihomo not reachable, restarting");
-                                if let Err(e) = commands::service::start_service(handle.clone()).await {
+                                if let Err(e) =
+                                    commands::service::start_service(handle.clone()).await
+                                {
                                     log::error!("failed to restart service on startup: {e}");
                                     let _ = handle.emit("core-start-failed", e.to_string());
                                 }
@@ -424,7 +451,8 @@ pub fn run() {
                             use tauri::Emitter;
                             let _ = handle.emit(
                                 "core-start-failed",
-                                "Service mode is enabled, but Nyx service is not installed".to_string(),
+                                "Service mode is enabled, but Nyx service is not installed"
+                                    .to_string(),
                             );
                             return;
                         }

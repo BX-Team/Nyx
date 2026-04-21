@@ -8,7 +8,7 @@ fn run_sc(args: &[String]) -> Result<std::process::Output, String> {
     use std::os::windows::process::CommandExt;
     std::process::Command::new("sc")
         .args(args)
-        .creation_flags(0x08000000) 
+        .creation_flags(0x08000000)
         .output()
         .map_err(|e| e.to_string())
 }
@@ -59,10 +59,7 @@ async fn ensure_core_binary() -> Result<std::path::PathBuf, String> {
     let app_cfg_path = crate::utils::dirs::app_config_path();
     if let Ok(cfg_text) = tokio::fs::read_to_string(&app_cfg_path).await {
         if let Ok(cfg) = serde_yaml::from_str::<serde_yaml::Value>(&cfg_text) {
-            let core = cfg
-                .get("core")
-                .and_then(|v| v.as_str())
-                .unwrap_or("mihomo");
+            let core = cfg.get("core").and_then(|v| v.as_str()).unwrap_or("mihomo");
             selected_core = core.to_string();
             if core == "system" {
                 let path = cfg
@@ -102,10 +99,7 @@ async fn ensure_runtime_config() -> Result<(std::path::PathBuf, String), String>
 #[cfg(windows)]
 fn build_service_binpath() -> Result<String, String> {
     let service_host_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    Ok(format!(
-        "\"{}\" --nyx-service",
-        service_host_exe.display()
-    ))
+    Ok(format!("\"{}\" --nyx-service", service_host_exe.display()))
 }
 
 #[cfg(windows)]
@@ -156,7 +150,10 @@ fn ensure_service_installed_args() -> Result<(), String> {
                 SERVICE_DISPLAY_NAME.to_string(),
             ])?;
             if !out.status.success() {
-                return Err(format!("failed to reconfigure service: {}", output_message(&out)));
+                return Err(format!(
+                    "failed to reconfigure service: {}",
+                    output_message(&out)
+                ));
             }
             Ok(())
         }
@@ -172,7 +169,10 @@ fn ensure_service_installed_args() -> Result<(), String> {
                 SERVICE_DISPLAY_NAME.to_string(),
             ])?;
             if !out.status.success() {
-                return Err(format!("failed to create service: {}", output_message(&out)));
+                return Err(format!(
+                    "failed to create service: {}",
+                    output_message(&out)
+                ));
             }
             Ok(())
         }
@@ -228,7 +228,11 @@ async fn wait_for_service_state(expected_running: bool) -> Result<(), String> {
     }
     Err(format!(
         "service did not reach {} state within timeout",
-        if expected_running { "running" } else { "stopped" }
+        if expected_running {
+            "running"
+        } else {
+            "stopped"
+        }
     ))
 }
 
@@ -236,16 +240,22 @@ async fn wait_for_service_state(expected_running: bool) -> Result<(), String> {
 async fn send_ipc_request(req: &crate::service_host::IpcRequest) -> Result<(), String> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::windows::named_pipe::ClientOptions;
-    
-    let mut client = ClientOptions::new().open(crate::service_host::IPC_PIPE_NAME).map_err(|e| e.to_string())?;
-    
-    let req_str = serde_json::to_string(req).map_err(|_e| "failed to serialize IPC request".to_string())?;
-    client.write_all(req_str.as_bytes()).await.map_err(|e| e.to_string())?;
-    
+
+    let mut client = ClientOptions::new()
+        .open(crate::service_host::IPC_PIPE_NAME)
+        .map_err(|e| e.to_string())?;
+
+    let req_str =
+        serde_json::to_string(req).map_err(|_e| "failed to serialize IPC request".to_string())?;
+    client
+        .write_all(req_str.as_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
+
     let mut buf = vec![0u8; 4096];
     let n = client.read(&mut buf).await.map_err(|e| e.to_string())?;
     let msg = String::from_utf8_lossy(&buf[..n]);
-    
+
     if let Ok(res) = serde_json::from_str::<crate::service_host::IpcResponse>(&msg) {
         match res {
             crate::service_host::IpcResponse::Ok | crate::service_host::IpcResponse::Pong => Ok(()),
@@ -261,7 +271,11 @@ async fn start_windows_service(app: &tauri::AppHandle) -> Result<(), String> {
     use tauri::Emitter;
     let binary = ensure_core_binary().await?;
     let (config, url) = ensure_runtime_config().await?;
-    let work_dir = config.parent().unwrap_or(std::path::Path::new("")).to_string_lossy().into_owned();
+    let work_dir = config
+        .parent()
+        .unwrap_or(std::path::Path::new(""))
+        .to_string_lossy()
+        .into_owned();
 
     let state = service_query_state()?;
     if state != Some("running".to_string()) {
@@ -302,7 +316,8 @@ async fn is_mihomo_running() -> bool {
             if let Ok(config) = cm.get_current_path().await {
                 if let Ok(content) = tokio::fs::read_to_string(&config).await {
                     if let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
-                        if let Some(addr) = val.get("external-controller").and_then(|v| v.as_str()) {
+                        if let Some(addr) = val.get("external-controller").and_then(|v| v.as_str())
+                        {
                             if addr.starts_with("http") {
                                 url = addr.to_string();
                             } else if addr.starts_with(':') {
@@ -311,7 +326,10 @@ async fn is_mihomo_running() -> bool {
                                 url = format!("http://{addr}");
                             }
                             crate::core::manager::set_controller_url(url.clone());
-                            let _ = crate::core::api::init_client(&url, read_secret_from_config(&config));
+                            let _ = crate::core::api::init_client(
+                                &url,
+                                read_secret_from_config(&config),
+                            );
                         }
                     }
                 }
@@ -338,12 +356,12 @@ pub async fn service_status() -> Result<String, String> {
     #[cfg(windows)]
     {
         let status = service_query_state()?;
-        return Ok(match status {
+        Ok(match status {
             None => "not-installed".to_string(),
             Some(s) if s == "running" => "running".to_string(),
             Some(s) if s == "stopped" => "stopped".to_string(),
             Some(_) => "unknown".to_string(),
-        });
+        })
     }
 
     #[cfg(not(windows))]
@@ -383,9 +401,13 @@ pub async fn init_service(app: AppHandle) -> Result<(), String> {
     {
         use tauri::Emitter;
         if !crate::core::manager::core_installed().await {
-            crate::core::manager::install_core().await.map_err(|e| e.to_string())?;
+            crate::core::manager::install_core()
+                .await
+                .map_err(|e| e.to_string())?;
         }
-        crate::core::manager::start_core().await.map_err(|e| e.to_string())?;
+        crate::core::manager::start_core()
+            .await
+            .map_err(|e| e.to_string())?;
         crate::commands::mihomo::restore_proxy_selections().await;
         let _ = app.emit("core-started", ());
         let _ = app.emit("controled-mihomo-config-updated", ());
@@ -396,12 +418,12 @@ pub async fn init_service(app: AppHandle) -> Result<(), String> {
 #[cfg(windows)]
 fn run_elevated_bat(bat_cmd: &str) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
-    
+
     let id = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis().to_string())
         .unwrap_or_default();
-        
+
     let tmp_bat = std::env::temp_dir().join(format!("nyx_svc_{}.bat", id));
     std::fs::write(&tmp_bat, bat_cmd).map_err(|e| e.to_string())?;
 
@@ -431,7 +453,10 @@ fn run_elevated_bat(bat_cmd: &str) -> Result<(), String> {
     let _ = std::fs::remove_file(&tmp_ps1);
 
     if !out.status.success() {
-        return Err(format!("service install (elevated) failed: {}", output_message(&out)));
+        return Err(format!(
+            "service install (elevated) failed: {}",
+            output_message(&out)
+        ));
     }
 
     Ok(())
@@ -473,7 +498,9 @@ pub async fn install_service() -> Result<(), String> {
 
     #[cfg(not(windows))]
     {
-        crate::core::manager::install_core().await.map_err(|e| e.to_string())
+        crate::core::manager::install_core()
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -496,15 +523,20 @@ pub async fn uninstall_service() -> Result<(), String> {
             wait_for_service_state(false).await?;
             let out = run_sc(&["delete".to_string(), SERVICE_NAME.to_string()])?;
             if !out.status.success() {
-                return Err(format!("failed to delete service: {}", output_message(&out)));
+                return Err(format!(
+                    "failed to delete service: {}",
+                    output_message(&out)
+                ));
             }
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(windows))]
     {
-        crate::core::manager::stop_core().await.map_err(|e| e.to_string())
+        crate::core::manager::stop_core()
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -521,7 +553,9 @@ pub async fn start_service(app: AppHandle) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         use tauri::Emitter;
-        crate::core::manager::start_core().await.map_err(|e| e.to_string())?;
+        crate::core::manager::start_core()
+            .await
+            .map_err(|e| e.to_string())?;
         crate::commands::mihomo::restore_proxy_selections().await;
         let _ = app.emit("core-started", ());
         let _ = app.emit("controled-mihomo-config-updated", ());
@@ -539,10 +573,14 @@ pub async fn restart_service(app: AppHandle) -> Result<(), String> {
         if service_query_state()?.is_none() {
             return Err("service is not installed".to_string());
         }
-        
+
         let binary = ensure_core_binary().await?;
         let (config, url) = ensure_runtime_config().await?;
-        let work_dir = config.parent().unwrap_or(std::path::Path::new("")).to_string_lossy().into_owned();
+        let work_dir = config
+            .parent()
+            .unwrap_or(std::path::Path::new(""))
+            .to_string_lossy()
+            .into_owned();
 
         let state = service_query_state()?;
         if state != Some("running".to_string()) {
@@ -574,13 +612,15 @@ pub async fn restart_service(app: AppHandle) -> Result<(), String> {
         let _ = app.emit("core-started", ());
         let _ = app.emit("controled-mihomo-config-updated", ());
         crate::core::streaming::start_streaming(&app);
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(windows))]
     {
         use tauri::Emitter;
-        crate::core::manager::restart_core().await.map_err(|e| e.to_string())?;
+        crate::core::manager::restart_core()
+            .await
+            .map_err(|e| e.to_string())?;
         crate::commands::mihomo::restore_proxy_selections().await;
         let _ = app.emit("core-started", ());
         let _ = app.emit("controled-mihomo-config-updated", ());
@@ -631,17 +671,19 @@ pub async fn stop_service() -> Result<(), String> {
         if service_query_state()?.is_none() {
             return Ok(());
         }
-        
+
         let state = service_query_state()?;
         if state == Some("running".to_string()) {
             let req = crate::service_host::IpcRequest::StopCore;
             let _ = send_ipc_request(&req).await;
         }
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(windows))]
     {
-        crate::core::manager::stop_core().await.map_err(|e| e.to_string())
+        crate::core::manager::stop_core()
+            .await
+            .map_err(|e| e.to_string())
     }
 }

@@ -26,14 +26,19 @@ pub fn connection_manager() -> Result<ConnectionManager> {
     Ok(ConnectionManager::new(get_client()?))
 }
 
-
 pub async fn get_version() -> Result<String> {
-    let v = get_client()?.get_version().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let v = get_client()?
+        .get_version()
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok(v.version)
 }
 
 pub async fn get_proxies() -> Result<serde_json::Value> {
-    let proxies = get_client()?.get_proxies().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let proxies = get_client()?
+        .get_proxies()
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     serde_json::to_value(proxies).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
@@ -47,32 +52,38 @@ pub async fn proxy_delay(proxy: &str, test_url: &str, timeout: u32) -> Result<se
         encoded_url,
         timeout
     );
-    let resp: serde_json::Value = http()
-        .get(&url)
-        .send()
-        .await?
-        .json()
-        .await?;
+    let resp: serde_json::Value = http().get(&url).send().await?.json().await?;
     Ok(resp)
 }
 
 pub async fn close_connection(id: &str) -> Result<()> {
-    get_client()?.close_connection(id).await.map_err(|e| anyhow::anyhow!("{e}"))
+    get_client()?
+        .close_connection(id)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 pub async fn close_all_connections() -> Result<()> {
-    get_client()?.close_all_connections().await.map_err(|e| anyhow::anyhow!("{e}"))
+    get_client()?
+        .close_all_connections()
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 pub async fn get_connections() -> Result<serde_json::Value> {
-    let conns = get_client()?.get_connections().await.map_err(|e| anyhow::anyhow!("{e}"))?;
+    let conns = get_client()?
+        .get_connections()
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     serde_json::to_value(conns).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 pub async fn reload_config(path: Option<&str>) -> Result<()> {
-    get_client()?.reload_config(path).await.map_err(|e| anyhow::anyhow!("{e}"))
+    get_client()?
+        .reload_config(path)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }
-
 
 fn base_url() -> String {
     crate::core::manager::controller_url()

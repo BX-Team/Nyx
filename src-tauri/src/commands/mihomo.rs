@@ -1,9 +1,10 @@
 use serde_json::Value;
 
-
 #[tauri::command]
 pub async fn mihomo_version() -> Result<String, String> {
-    crate::core::api::get_version().await.map_err(|e| e.to_string())
+    crate::core::api::get_version()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -15,20 +16,24 @@ pub async fn mihomo_installed_version() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn mihomo_config() -> Result<Value, String> {
-    crate::core::api::get_config().await.map_err(|e| e.to_string())
+    crate::core::api::get_config()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn patch_mihomo_config(patch: Value) -> Result<(), String> {
-    crate::core::api::patch_config(patch).await.map_err(|e| e.to_string())
+    crate::core::api::patch_config(patch)
+        .await
+        .map_err(|e| e.to_string())
 }
-
 
 #[tauri::command]
 pub async fn mihomo_rules() -> Result<Value, String> {
-    crate::core::api::get_rules().await.map_err(|e| e.to_string())
+    crate::core::api::get_rules()
+        .await
+        .map_err(|e| e.to_string())
 }
-
 
 #[tauri::command]
 pub async fn mihomo_proxies() -> Result<Value, String> {
@@ -76,7 +81,10 @@ pub async fn mihomo_groups() -> Result<Value, String> {
         .collect();
 
     groups.sort_by(|a, b| {
-        a["name"].as_str().unwrap_or("").cmp(b["name"].as_str().unwrap_or(""))
+        a["name"]
+            .as_str()
+            .unwrap_or("")
+            .cmp(b["name"].as_str().unwrap_or(""))
     });
 
     Ok(Value::Array(groups))
@@ -122,15 +130,21 @@ fn save_selection(group: &str, proxy: &str) {
 
 pub async fn restore_proxy_selections() {
     let path = crate::utils::dirs::selections_path();
-    let Ok(text) = std::fs::read_to_string(&path) else { return };
-    let Ok(map) = serde_yaml::from_str::<serde_yaml::Mapping>(&text) else { return };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(map) = serde_yaml::from_str::<serde_yaml::Mapping>(&text) else {
+        return;
+    };
     let base_url = crate::core::manager::controller_url();
     if base_url.is_empty() {
         return;
     }
     let client = reqwest::Client::new();
     for (k, v) in map.iter() {
-        let (Some(group), Some(proxy)) = (k.as_str(), v.as_str()) else { continue };
+        let (Some(group), Some(proxy)) = (k.as_str(), v.as_str()) else {
+            continue;
+        };
         let encoded_group = group.replace(' ', "%20");
         let url = format!("{}/proxies/{}", base_url, encoded_group);
         match client
@@ -143,10 +157,19 @@ pub async fn restore_proxy_selections() {
                 log::info!("[restore_proxy_selections] {} -> {}", group, proxy);
             }
             Ok(r) => {
-                log::warn!("[restore_proxy_selections] {} -> {} returned {}", group, proxy, r.status());
+                log::warn!(
+                    "[restore_proxy_selections] {} -> {} returned {}",
+                    group,
+                    proxy,
+                    r.status()
+                );
             }
             Err(e) => {
-                log::warn!("[restore_proxy_selections] {} -> {} failed: {e}", group, proxy);
+                log::warn!(
+                    "[restore_proxy_selections] {} -> {} failed: {e}",
+                    group,
+                    proxy
+                );
             }
         }
     }
@@ -154,21 +177,27 @@ pub async fn restore_proxy_selections() {
 
 #[tauri::command]
 pub async fn mihomo_unfixed_proxy(group: String) -> Result<(), String> {
-    crate::core::api::unfixed_proxy(&group).await.map_err(|e| e.to_string())
+    crate::core::api::unfixed_proxy(&group)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn mihomo_proxy_delay(proxy: String, url: Option<String>) -> Result<Value, String> {
-    let config = crate::commands::config::get_app_config(None).await.unwrap_or(Value::Null);
-    let default_url = config.get("delayTestUrl")
+    let config = crate::commands::config::get_app_config(None)
+        .await
+        .unwrap_or(Value::Null);
+    let default_url = config
+        .get("delayTestUrl")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .unwrap_or("https://cp.cloudflare.com");
     let test_url = url
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| default_url.to_string());
-    
-    let timeout = config.get("delayTestTimeout")
+
+    let timeout = config
+        .get("delayTestTimeout")
         .and_then(|v| v.as_u64())
         .map(|v| v as u32)
         .unwrap_or(5000);
@@ -180,16 +209,20 @@ pub async fn mihomo_proxy_delay(proxy: String, url: Option<String>) -> Result<Va
 
 #[tauri::command]
 pub async fn mihomo_group_delay(group: String, url: Option<String>) -> Result<Value, String> {
-    let config = crate::commands::config::get_app_config(None).await.unwrap_or(Value::Null);
-    let default_url = config.get("delayTestUrl")
+    let config = crate::commands::config::get_app_config(None)
+        .await
+        .unwrap_or(Value::Null);
+    let default_url = config
+        .get("delayTestUrl")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .unwrap_or("https://cp.cloudflare.com");
     let test_url = url
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| default_url.to_string());
-        
-    let timeout = config.get("delayTestTimeout")
+
+    let timeout = config
+        .get("delayTestTimeout")
         .and_then(|v| v.as_u64())
         .map(|v| v as u32)
         .unwrap_or(5000);
@@ -199,10 +232,11 @@ pub async fn mihomo_group_delay(group: String, url: Option<String>) -> Result<Va
         .map_err(|e| e.to_string())
 }
 
-
 #[tauri::command]
 pub async fn mihomo_proxy_providers() -> Result<Value, String> {
-    crate::core::api::get_proxy_providers().await.map_err(|e| e.to_string())
+    crate::core::api::get_proxy_providers()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -212,10 +246,11 @@ pub async fn mihomo_update_proxy_providers(name: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-
 #[tauri::command]
 pub async fn mihomo_rule_providers() -> Result<Value, String> {
-    crate::core::api::get_rule_providers().await.map_err(|e| e.to_string())
+    crate::core::api::get_rule_providers()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -225,36 +260,47 @@ pub async fn mihomo_update_rule_providers(name: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-
 #[tauri::command]
 pub async fn mihomo_close_connection(id: String) -> Result<(), String> {
-    crate::core::api::close_connection(&id).await.map_err(|e| e.to_string())
+    crate::core::api::close_connection(&id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn mihomo_close_all_connections(name: Option<String>) -> Result<(), String> {
     if let Some(host) = name {
         let cm = crate::core::api::connection_manager().map_err(|e| e.to_string())?;
-        cm.close_by_host(&host).await.map(|_| ()).map_err(|e| e.to_string())
+        cm.close_by_host(&host)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     } else {
-        crate::core::api::close_all_connections().await.map_err(|e| e.to_string())
+        crate::core::api::close_all_connections()
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 
 #[tauri::command]
 pub async fn restart_mihomo_connections() -> Result<(), String> {
-    crate::core::api::restart_connections().await.map_err(|e| e.to_string())
+    crate::core::api::restart_connections()
+        .await
+        .map_err(|e| e.to_string())
 }
-
 
 #[tauri::command]
 pub async fn mihomo_upgrade_geo() -> Result<(), String> {
-    crate::core::api::upgrade_geo().await.map_err(|e| e.to_string())
+    crate::core::api::upgrade_geo()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn mihomo_upgrade_ui() -> Result<(), String> {
-    crate::core::api::upgrade_ui().await.map_err(|e| e.to_string())
+    crate::core::api::upgrade_ui()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

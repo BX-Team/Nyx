@@ -37,7 +37,7 @@ static NETWORK_DETECTION_RUNNING: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::ne
 pub async fn start_network_detection(app: AppHandle) -> Result<(), String> {
     use tauri::Emitter;
     if NETWORK_DETECTION_RUNNING.swap(true, Ordering::SeqCst) {
-        return Ok(()); 
+        return Ok(());
     }
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
