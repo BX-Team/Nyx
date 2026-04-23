@@ -504,7 +504,10 @@ async fn resolve_provider_path(path: &str) -> std::path::PathBuf {
     }
     let config_dir = if let Ok(cm) = mihomo_config_manager() {
         if let Ok(config_path) = cm.get_current_path().await {
-            config_path.parent().map(PathBuf::from).unwrap_or_else(crate::utils::dirs::data_dir)
+            config_path
+                .parent()
+                .map(PathBuf::from)
+                .unwrap_or_else(crate::utils::dirs::data_dir)
         } else {
             crate::utils::dirs::data_dir()
         }
@@ -553,7 +556,8 @@ pub async fn convert_mrs_ruleset(path: String, behavior: String) -> Result<Strin
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .subsec_nanos();
-    let temp_path = std::env::temp_dir().join(format!("mrs-convert-{}-{}.txt", std::process::id(), nanos));
+    let temp_path =
+        std::env::temp_dir().join(format!("mrs-convert-{}-{}.txt", std::process::id(), nanos));
 
     let output = tokio::process::Command::new(&core_path)
         .arg("convert-ruleset")

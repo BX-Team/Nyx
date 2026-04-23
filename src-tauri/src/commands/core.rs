@@ -96,7 +96,7 @@ pub async fn check_core_permission() -> Result<bool, String> {
                 }
             }
         }
-        return Ok(false);
+        Ok(false)
     }
     #[cfg(not(target_os = "linux"))]
     Ok(true)

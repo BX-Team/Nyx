@@ -1,7 +1,7 @@
 #[tauri::command]
 pub async fn trigger_sys_proxy(
     enable: bool,
-    affect_vpn_connections: Option<bool>,
+    _affect_vpn_connections: Option<bool>,
 ) -> Result<(), String> {
     let port: u16 = match crate::core::api::get_config().await {
         Ok(cfg) => cfg["mixed-port"].as_u64().unwrap_or(7890) as u16,
@@ -10,8 +10,12 @@ pub async fn trigger_sys_proxy(
     let proxy_addr = format!("127.0.0.1:{port}");
 
     #[cfg(target_os = "windows")]
-    set_windows_proxy(enable, &proxy_addr, affect_vpn_connections.unwrap_or(false))
-        .map_err(|e| e.to_string())?;
+    set_windows_proxy(
+        enable,
+        &proxy_addr,
+        _affect_vpn_connections.unwrap_or(false),
+    )
+    .map_err(|e| e.to_string())?;
 
     #[cfg(target_os = "linux")]
     set_linux_proxy(enable, &proxy_addr).map_err(|e| e.to_string())?;
