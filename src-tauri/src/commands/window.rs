@@ -1,4 +1,16 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Manager};
+
+static FIRST_RUN: AtomicBool = AtomicBool::new(false);
+
+pub fn mark_first_run() {
+    FIRST_RUN.store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub async fn check_first_run() -> bool {
+    FIRST_RUN.swap(false, Ordering::Relaxed)
+}
 
 #[tauri::command]
 pub async fn window_minimize(app: AppHandle) -> Result<(), String> {

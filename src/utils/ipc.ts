@@ -202,6 +202,10 @@ export async function needsFirstRunAdmin(): Promise<boolean> {
   return invoke('needs_first_run_admin');
 }
 
+export async function checkFirstRun(): Promise<boolean> {
+  return invoke('check_first_run');
+}
+
 export async function isAdmin(): Promise<boolean> {
   return invoke('is_admin');
 }

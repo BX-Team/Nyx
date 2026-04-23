@@ -14,6 +14,7 @@ import { useAppConfig } from '@/hooks/use-app-config';
 import routes from '@/routes';
 import { platform } from '@/utils/init';
 import {
+  checkFirstRun,
   checkUpdate,
   getControledMihomoConfig,
   needsFirstRunAdmin,
@@ -90,7 +91,6 @@ const App: React.FC = () => {
         }),
       );
       unlisteners.push(await listen<void>('needs-admin-setup', () => setShowAdminRequired(true)));
-      unlisteners.push(await listen<void>('first-run', () => setShowFirstRunPrompt(true)));
       unlisteners.push(
         await listen<{ name?: string; id?: string }>('profile-installed', e => {
           const name = e.payload?.name?.trim() || t('common.unnamed');
@@ -121,6 +121,9 @@ const App: React.FC = () => {
     if (platform === 'win32') {
       needsFirstRunAdmin().then(needs => {
         if (needs) setShowAdminRequired(true);
+      });
+      checkFirstRun().then(isFirst => {
+        if (isFirst) setShowFirstRunPrompt(true);
       });
     }
 

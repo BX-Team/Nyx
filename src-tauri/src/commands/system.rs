@@ -1,6 +1,7 @@
 use serde_json::Value;
 use tauri::AppHandle;
 use tauri_plugin_autostart::ManagerExt;
+#[allow(unused_imports)]
 use tauri_plugin_shell::ShellExt;
 
 #[tauri::command]

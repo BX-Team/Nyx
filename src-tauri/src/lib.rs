@@ -241,6 +241,7 @@ pub fn run() {
             commands::window::is_always_on_top,
             commands::window::set_title_bar_overlay,
             commands::window::needs_first_run_admin,
+            commands::window::check_first_run,
             commands::window::is_admin,
             commands::window::restart_as_admin,
             commands::window::open_dev_tools,
@@ -405,8 +406,7 @@ pub fn run() {
                     .unwrap_or_default();
                     let _ = std::fs::write(&config_path, defaults);
                     log::info!("created default app config");
-                    use tauri::Emitter;
-                    let _ = app.handle().emit("first-run", ());
+                    commands::window::mark_first_run();
                 }
             }
 
