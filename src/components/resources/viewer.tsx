@@ -4,7 +4,7 @@ import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { convertMrsRuleset, getFileStr, getRuntimeConfig, setFileStr } from '@/utils/ipc';
+import { convertMrsRuleset, getControledMihomoConfig, getFileStr, setFileStr } from '@/utils/ipc';
 import { BaseEditor } from '../monaco/monaco-editor-lazy';
 
 type Language = 'yaml' | 'javascript' | 'css' | 'json' | 'text';
@@ -40,8 +40,8 @@ const Viewer: React.FC<Props> = props => {
           let ruleBehavior: string = behavior || 'domain';
           if (!behavior) {
             try {
-              const runtimeConfig = await getRuntimeConfig();
-              const provider = runtimeConfig['rule-providers']?.providers?.[title];
+              const runtimeConfig = await getControledMihomoConfig();
+              const provider = runtimeConfig['rule-providers']?.[title];
               ruleBehavior = provider?.behavior || 'domain';
             } catch {
               ruleBehavior = 'domain';

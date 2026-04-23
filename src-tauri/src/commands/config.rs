@@ -496,14 +496,34 @@ pub async fn get_runtime_config_str() -> Result<String, String> {
     serde_yaml::to_string(&val).map_err(|e| e.to_string())
 }
 
+async fn resolve_provider_path(path: &str) -> std::path::PathBuf {
+    use std::path::{Path, PathBuf};
+    let clean = path.trim_start_matches("./").trim_start_matches(".\\");
+    if Path::new(clean).is_absolute() {
+        return PathBuf::from(clean);
+    }
+    let config_dir = if let Ok(cm) = mihomo_config_manager() {
+        if let Ok(config_path) = cm.get_current_path().await {
+            config_path.parent().map(PathBuf::from).unwrap_or_else(crate::utils::dirs::data_dir)
+        } else {
+            crate::utils::dirs::data_dir()
+        }
+    } else {
+        crate::utils::dirs::data_dir()
+    };
+    config_dir.join(clean)
+}
+
 #[tauri::command]
 pub async fn get_file_str(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| e.to_string())
+    let full = resolve_provider_path(&path).await;
+    fs::read_to_string(&full).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn set_file_str(path: String, str: String) -> Result<(), String> {
-    fs::write(&path, str).map_err(|e| e.to_string())
+    let full = resolve_provider_path(&path).await;
+    fs::write(&full, str).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -522,7 +542,35 @@ pub async fn set_rule_str(id: String, str: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn convert_mrs_ruleset(path: String, behavior: String) -> Result<(), String> {
-    let _ = (path, behavior);
-    Ok(())
+pub async fn convert_mrs_ruleset(path: String, behavior: String) -> Result<String, String> {
+    let vm = mihomo_rs::VersionManager::with_home(crate::utils::dirs::data_dir())
+        .map_err(|e| e.to_string())?;
+    let core_path = vm.get_binary_path(None).await.map_err(|e| e.to_string())?;
+
+    let full_path = resolve_provider_path(&path).await;
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos();
+    let temp_path = std::env::temp_dir().join(format!("mrs-convert-{}-{}.txt", std::process::id(), nanos));
+
+    let output = tokio::process::Command::new(&core_path)
+        .arg("convert-ruleset")
+        .arg(&behavior)
+        .arg("mrs")
+        .arg(&full_path)
+        .arg(&temp_path)
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        let _ = fs::remove_file(&temp_path);
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+
+    let content = fs::read_to_string(&temp_path).map_err(|e| e.to_string())?;
+    let _ = fs::remove_file(&temp_path);
+    Ok(content)
 }

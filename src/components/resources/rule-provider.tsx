@@ -8,7 +8,7 @@ import useSWR from 'swr';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getHash } from '@/utils/hash';
-import { getRuntimeConfig, mihomoRuleProviders, mihomoUpdateRuleProviders } from '@/utils/ipc';
+import { getControledMihomoConfig, mihomoRuleProviders, mihomoUpdateRuleProviders } from '@/utils/ipc';
 import SettingCard from '../base/base-setting-card';
 import SettingItem from '../base/base-setting-item';
 import Viewer from './viewer';
@@ -28,10 +28,8 @@ const RuleProvider: React.FC = () => {
     if (showDetails.title) {
       const fetchProviderPath = async (name: string): Promise<void> => {
         try {
-          const providers = await getRuntimeConfig();
-          const provider = providers['rule-providers']?.providers?.[name] as
-            | (MihomoRuleProvider & { path?: string; url?: string })
-            | undefined;
+          const providers = await getControledMihomoConfig();
+          const provider = providers['rule-providers']?.[name];
           if (provider) {
             setShowDetails(prev => ({
               ...prev,
