@@ -28,9 +28,5 @@
       "matchManagers": ["github-actions"],
       "groupName": "github actions"
     }
-  ],
-  "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": ["before 4am on Monday"]
-  }
+  ]
 }
