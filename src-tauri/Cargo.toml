@@ -54,7 +54,7 @@ anyhow            = "1"
 if-addrs          = "0.15"
 url               = "2"
 futures-util      = "0.3"
-png               = "0.17"
+png               = "0.18"
 
 [target.'cfg(windows)'.dependencies]
 winreg  = "0.56"
