@@ -51,10 +51,11 @@ fn save_window_state(win: &tauri::WebviewWindow) {
 pub fn create_main_window(app: &AppHandle) -> tauri::Result<tauri::WebviewWindow> {
     let win = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("/".into()))
         .title("Nyx")
-        .inner_size(1090.0, 781.0)
+        .inner_size(950.0, 690.0)
         .min_inner_size(820.0, 610.0)
         .decorations(false)
         .visible(false)
+        .center()
         .build()?;
 
     restore_window_state(&win);
