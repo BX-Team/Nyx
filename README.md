@@ -48,9 +48,15 @@ bun run tauri:build   # produce a release bundle
 ```
 
 
-# License and Credits
+# License
 
 This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
+
+# Contributing
+
+We welcome contributions to Nyx! If you have an idea for a new feature or found a bug, please feel free to submit a pull request. Before you start, please read our [contributing guidelines](CONTRIBUTING.md) to understand our contribution process.
+
+# Credits
 
 Nyx was based on or inspired by these projects:
 
