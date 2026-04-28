@@ -559,15 +559,15 @@ pub async fn convert_mrs_ruleset(path: String, behavior: String) -> Result<Strin
     let temp_path =
         std::env::temp_dir().join(format!("mrs-convert-{}-{}.txt", std::process::id(), nanos));
 
-    let output = tokio::process::Command::new(&core_path)
-        .arg("convert-ruleset")
+    let mut cmd = tokio::process::Command::new(&core_path);
+    cmd.arg("convert-ruleset")
         .arg(&behavior)
         .arg("mrs")
         .arg(&full_path)
-        .arg(&temp_path)
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
+        .arg(&temp_path);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+    let output = cmd.output().await.map_err(|e| e.to_string())?;
 
     if !output.status.success() {
         let _ = fs::remove_file(&temp_path);

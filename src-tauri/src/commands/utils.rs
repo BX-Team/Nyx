@@ -202,9 +202,9 @@ pub async fn alert(_app: AppHandle, msg: String) {
 
 #[tauri::command]
 pub async fn reset_app_config(app: AppHandle) -> Result<(), String> {
-    let path = crate::utils::dirs::app_config_path();
-    if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    let data_dir = crate::utils::dirs::data_dir();
+    if data_dir.exists() {
+        std::fs::remove_dir_all(&data_dir).map_err(|e| e.to_string())?;
     }
     app.restart();
 }
