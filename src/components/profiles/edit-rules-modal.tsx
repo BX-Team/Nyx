@@ -184,7 +184,7 @@ const domainValidator = (value: string): boolean => {
   if (value.length > 253 || value.length < 2) return false;
 
   return (
-    /^(?:(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)\\.)+[a-zA-Z]{2,}$/.test(value) ||
+    /^(?:(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)\.)+[a-zA-Z]{2,}$/.test(value) ||
     ['localhost', 'local', 'localdomain'].includes(value.toLowerCase())
   );
 };
