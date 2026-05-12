@@ -45,7 +45,7 @@ fn looks_like_mihomo_config(text: &str) -> bool {
         ];
         return keys
             .iter()
-            .any(|k| map.contains_key(&serde_yaml::Value::String(k.to_string())));
+            .any(|k| map.contains_key(serde_yaml::Value::String(k.to_string())));
     }
     false
 }
@@ -106,7 +106,7 @@ fn convert_proxy_list_to_config(text: &str) -> String {
         };
 
         let raw_name = proxy
-            .get(&sv("name"))
+            .get(sv("name"))
             .and_then(|v| v.as_str())
             .unwrap_or("proxy")
             .to_string();
