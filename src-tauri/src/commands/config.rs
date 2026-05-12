@@ -295,7 +295,8 @@ pub async fn add_profile_item(app: tauri::AppHandle, item: Value) -> Result<(), 
                 }
             }
 
-            let body = resp.text().await.map_err(|e| e.to_string())?;
+            let raw_body = resp.text().await.map_err(|e| e.to_string())?;
+            let body = crate::utils::proxy_convert::detect_and_convert_subscription(&raw_body);
             let profile_path = crate::utils::dirs::profile_path(&id);
             if let Some(parent) = profile_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
