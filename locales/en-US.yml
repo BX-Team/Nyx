@@ -1,0 +1,267 @@
+common:
+  settings: Settings
+  hideSidebar: Hide
+  toggleSidebar: Expand
+  language: Language
+  save: Save
+  close: Close
+  cancel: Cancel
+  back: Back
+  copy: Copy
+  copied: Copied
+  remote: Remote
+  local: Local
+sider:
+  home: Home
+  profileManagement: Profile Management
+  proxyGroup: Proxy Groups
+  groupMain: Main
+  groupManagement: Management
+  rules: Rules
+  connection: Connections
+  logs: Logs
+  modeRule: Rules
+  modeGlobal: Global
+page:
+  placeholder: This page will be ported in a later milestone.
+languages:
+  native:
+    enUS: English
+    ruRU: Русский
+pages:
+  home:
+    connected: Connected
+    disconnected: Disconnected
+    coreRunning: Core running
+    coreStarting: Starting core…
+    coreStopped: Core stopped
+    coreFailed: Core failed
+    upload: Upload
+    download: Download
+    connections: Connections
+    totalUp: Total uploaded
+    totalDown: Total downloaded
+    currentProfile: Current profile
+    noProfile: No profile selected
+    mainSwitch: Proxy
+    statistics: Statistics
+    trafficRemaining: Traffic remaining
+    daysRemaining: Days remaining
+    expires: Expires
+    subscriptionNews: Subscription news
+    never: Never
+  proxies:
+    testGroup: Test
+    refresh: Refresh
+    nodes: nodes
+    noGroups: No proxy groups — is the core running?
+  rules:
+    edit: Edit rule overrides
+    noProfile: Select a profile first to edit its rule overrides.
+    summary: "%{n} rules · mode %{mode}"
+    colType: Type
+    colValue: Value
+    colPolicy: Policy
+    editorTitle: Rule editor
+    customRules: Custom rules
+    subscriptionRules: Subscription rules
+    addRule: Add
+    top: Top
+    bottom: Bottom
+  profiles:
+    importUrl: Import URL
+    importFile: Import file
+    empty: No profiles yet — import one above.
+    activate: Activate
+    count: "%{n} subscriptions"
+    updateAll: Update all
+    add: Add
+    addTitle: Add subscription
+    editTitle: Edit subscription
+    selectFile: Select file
+    fileSelected: File selected
+    urlLabel: Subscription URL
+    nameLabel: Name (optional)
+    expires: Expires
+    active: ACTIVE
+    days: "%{n} days"
+  connections:
+    processes: Processes
+    filter: Filter
+    empty: No active connections.
+    active: Active
+    closed: Closed
+    close: Close connections
+    closeAll: Close all
+    detail:
+      routing: Routing
+      network: Network
+      process: Process
+      traffic: Traffic
+      rule: Rule
+      chain: Proxy chain
+      type: Type
+      host: Host
+      destIp: Destination IP
+      destPort: Destination port
+      geoip: GeoIP
+      asn: ASN
+      srcIp: Source IP
+      srcPort: Source port
+      processName: Process
+      processPath: Path
+      dnsMode: DNS mode
+      upload: Uploaded
+      download: Downloaded
+      copyRule: Copy rule
+  logs:
+    clear: Clear
+    all: All
+  settings:
+    title: Application settings
+    tunMode: TUN Mode
+    systemProxy: System Proxy
+    autostart: Autostart
+    silentStart: Silent start
+    autoCheckUpdate: Automatic update check
+    appearance: Appearance settings
+    advanced: Advanced settings
+    shortcuts: Hotkey settings
+    dns: DNS settings
+    mihomo: Mihomo core
+    mixedPort: Mixed port
+    socksPort: SOCKS port
+    httpPort: HTTP port
+    redirPort: Redir port
+    tproxyPort: TProxy port
+    allowLan: Allow LAN
+    coreIpv6: IPv6
+    unifiedDelay: Unified delay
+    tcpConcurrent: TCP concurrent
+    disableKeepAlive: Disable TCP keep-alive
+    keepAliveInterval: Keep-alive interval (s)
+    keepAliveIdle: Keep-alive idle (s)
+    interfaceName: Outbound interface
+    storeSelected: Store selected node
+    storeFakeIp: Store Fake-IP
+    findProcess: Find process
+    findProcessAuto: Auto
+    findProcessOff: Off
+    findProcessOn: On
+    fingerprint: TLS fingerprint
+    fpDisabled: Disabled
+    fpRandom: Random
+    skipAuthPrefixes: Skip-auth prefixes
+    lanAllowedIps: LAN allowed IPs
+    lanDisallowedIps: LAN disallowed IPs
+    logLevel: Log level
+    stopCoreOnDisconnect: Stop core on disconnect
+    coreSection: Core
+    coreInstalled: Installed version
+    coreRunning: Running version
+    coreStable: Stable
+    corePrerelease: Prerelease
+    coreUpdate: Update core
+    svcSection: System service
+    svcStatus: Status
+    svcRunning: Running
+    svcStopped: Stopped
+    svcNotInstalled: Not installed
+    svcUnknown: Unknown
+    svcChecking: Checking…
+    svcInstall: Install
+    svcUninstall: Uninstall
+    svcStart: Start
+    svcStop: Stop
+    svcRestart: Restart
+    sniffer: Sniffer
+    snifferOverrideDest: Override destination
+    snifferForceDns: Force DNS mapping
+    snifferParsePureIp: Parse pure IP
+    snifferSniff: Sniff
+    snifferForceDomain: Force domains
+    snifferSkipDomain: Skip domains
+    snifferSkipDst: Skip destination addresses
+    snifferSkipSrc: Skip source addresses
+    resources: Resources
+    resGeoData: Geo databases
+    resUpdateGeo: Update geo data
+    resUpdateDashboard: Update dashboard
+    resProxyProviders: Proxy providers
+    resRuleProviders: Rule providers
+    resNoProviders: No providers
+    resUpdateAll: Update all
+    resView: View
+    resOk: Update started
+    resFail: Update failed
+    dnsEnhancedMode: Enhanced mode
+    dnsFakeIpRange: Fake-IP range
+    dnsIpv6: IPv6
+    dnsRespectRules: Respect rules
+    dnsUseHosts: Use hosts
+    dnsUseSystemHosts: Use system hosts
+    dnsNameserver: Nameservers
+    dnsDefaultNs: Default nameservers
+    dnsProxyNs: Proxy-server nameservers
+    dnsDirectNs: Direct nameservers
+    dnsFakeIpFilter: Fake-IP filter
+    checkUpdate: Check for updates
+    check: Check
+    appVersion: App version
+    resetApp: Reset application
+    reset: Reset
+    confirmReset: Reset application?
+    resetWarning: "This deletes all settings, profiles and the downloaded core, then relaunches the app. "
+    cannotUndo: This action cannot be undone.
+    tunTakeover: Take over TUN
+    tunStack: Stack
+    tunAutoRoute: Auto route
+    tunStrictRoute: Strict route
+    tunAutoDetect: Auto-detect interface
+    tunNoIcmp: Disable ICMP forwarding
+    spAffectVpn: Affect VPN connections
+    spMode: Mode
+    spManual: Manual
+    spPac: PAC
+    tunDevice: Device
+    tunMtu: MTU
+    spHost: Proxy host
+    spBypass: Bypass
+    alwaysOnTop: Always on top
+    disableTray: Disable tray icon
+    trayNodeInfo: Show node info in tray
+    takeOverDns: Take over DNS
+    takeOverSniffer: Take over sniffer
+    networkDetection: Network change detection
+    detectInterval: Detection interval (s)
+    scToggleWindow: Toggle window
+    scRuleMode: Switch to Rule mode
+    scGlobalMode: Switch to Global mode
+    scToggleTun: Toggle TUN
+    scToggleSysproxy: Toggle system proxy
+    scRestart: Restart app
+    scQuitKeepCore: Quit (keep core)
+    scHint: Click a shortcut, then press the keys. Esc cancels, Backspace clears.
+    scPress: Press keys…
+tooltips:
+  refresh: Refresh
+  toggleStats: Toggle statistics
+  telegram: Open Telegram
+  support: Open support page
+  testLatency: Test latency
+  activate: Activate
+  update: Update
+  edit: Edit
+  editInfo: Edit info
+  delete: Delete
+  configure: Configure
+updater:
+  versionReady: Version %{version} is available
+  changelog: What's new
+  update: Update now
+  installing: Installing…
+  later: Later
+  checking: Checking…
+  upToDate: You're on the latest version
+  checkFailed: Update check failed
+  installFailed: Update failed

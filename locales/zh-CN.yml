@@ -1,0 +1,268 @@
+common:
+  settings: 设置
+  hideSidebar: 隐藏
+  toggleSidebar: 展开
+  language: 语言
+  save: 保存
+  close: 关闭
+  cancel: 取消
+  back: 返回
+  copy: 复制
+  copied: 已复制
+  remote: 远程
+  local: 本地
+sider:
+  home: 主页
+  profileManagement: 配置管理
+  proxyGroup: 代理组
+  groupMain: 主要
+  groupManagement: 管理
+  rules: 规则
+  connection: 连接
+  logs: 日志
+  modeRule: 规则
+  modeGlobal: 全局
+page:
+  placeholder: 此页面将在后续版本中迁移。
+languages:
+  native:
+    enUS: English
+    ruRU: Русский
+    zhCN: 简体中文
+pages:
+  home:
+    connected: 已连接
+    disconnected: 已断开
+    coreRunning: 内核运行中
+    coreStarting: 正在启动内核…
+    coreStopped: 内核已停止
+    coreFailed: 内核启动失败
+    upload: 上传
+    download: 下载
+    connections: 连接
+    totalUp: 总上传
+    totalDown: 总下载
+    currentProfile: 当前配置
+    noProfile: 未选择配置
+    mainSwitch: 代理
+    statistics: 统计
+    trafficRemaining: 剩余流量
+    daysRemaining: 剩余天数
+    expires: 到期时间
+    subscriptionNews: 订阅公告
+    never: 永不
+  proxies:
+    testGroup: 测试
+    refresh: 刷新
+    nodes: 节点
+    noGroups: 没有代理组 —— 内核是否在运行？
+  rules:
+    edit: 编辑规则覆盖
+    noProfile: 请先选择一个配置以编辑其规则覆盖。
+    summary: "%{n} 条规则 · 模式 %{mode}"
+    colType: 类型
+    colValue: 值
+    colPolicy: 策略
+    editorTitle: 规则编辑器
+    customRules: 自定义规则
+    subscriptionRules: 订阅规则
+    addRule: 添加
+    top: 置顶
+    bottom: 置底
+  profiles:
+    importUrl: 导入 URL
+    importFile: 导入文件
+    empty: 暂无配置 —— 请在上方导入。
+    activate: 启用
+    count: "%{n} 个订阅"
+    updateAll: 全部更新
+    add: 添加
+    addTitle: 添加订阅
+    editTitle: 编辑订阅
+    selectFile: 选择文件
+    fileSelected: 已选择文件
+    urlLabel: 订阅 URL
+    nameLabel: 名称（可选）
+    expires: 到期时间
+    active: 已启用
+    days: "%{n} 天"
+  connections:
+    processes: 进程
+    filter: 筛选
+    empty: 没有活动连接。
+    active: 活动
+    closed: 已关闭
+    close: 关闭连接
+    closeAll: 全部关闭
+    detail:
+      routing: 路由
+      network: 网络
+      process: 进程
+      traffic: 流量
+      rule: 规则
+      chain: 代理链
+      type: 类型
+      host: 主机
+      destIp: 目标 IP
+      destPort: 目标端口
+      geoip: GeoIP
+      asn: ASN
+      srcIp: 源 IP
+      srcPort: 源端口
+      processName: 进程
+      processPath: 路径
+      dnsMode: DNS 模式
+      upload: 已上传
+      download: 已下载
+      copyRule: 复制规则
+  logs:
+    clear: 清空
+    all: 全部
+  settings:
+    title: 应用设置
+    tunMode: TUN 模式
+    systemProxy: 系统代理
+    autostart: 开机自启
+    silentStart: 静默启动
+    autoCheckUpdate: 自动检查更新
+    appearance: 外观设置
+    advanced: 高级设置
+    shortcuts: 快捷键设置
+    dns: DNS 设置
+    mihomo: Mihomo 内核
+    mixedPort: 混合端口
+    socksPort: SOCKS 端口
+    httpPort: HTTP 端口
+    redirPort: Redir 端口
+    tproxyPort: TProxy 端口
+    allowLan: 允许局域网
+    coreIpv6: IPv6
+    unifiedDelay: 统一延迟
+    tcpConcurrent: TCP 并发
+    disableKeepAlive: 禁用 TCP 保活
+    keepAliveInterval: 保活间隔（秒）
+    keepAliveIdle: 保活空闲（秒）
+    interfaceName: 出站接口
+    storeSelected: 保存所选节点
+    storeFakeIp: 保存 Fake-IP
+    findProcess: 查找进程
+    findProcessAuto: 自动
+    findProcessOff: 关闭
+    findProcessOn: 开启
+    fingerprint: TLS 指纹
+    fpDisabled: 禁用
+    fpRandom: 随机
+    skipAuthPrefixes: 跳过认证前缀
+    lanAllowedIps: 允许的局域网 IP
+    lanDisallowedIps: 禁止的局域网 IP
+    logLevel: 日志级别
+    stopCoreOnDisconnect: 断开时停止内核
+    coreSection: 内核
+    coreInstalled: 已安装版本
+    coreRunning: 运行版本
+    coreStable: 稳定版
+    corePrerelease: 预发布版
+    coreUpdate: 更新内核
+    svcSection: 系统服务
+    svcStatus: 状态
+    svcRunning: 运行中
+    svcStopped: 已停止
+    svcNotInstalled: 未安装
+    svcUnknown: 未知
+    svcChecking: 检查中…
+    svcInstall: 安装
+    svcUninstall: 卸载
+    svcStart: 启动
+    svcStop: 停止
+    svcRestart: 重启
+    sniffer: 嗅探器
+    snifferOverrideDest: 覆盖目标地址
+    snifferForceDns: 强制 DNS 映射
+    snifferParsePureIp: 解析纯 IP
+    snifferSniff: 嗅探
+    snifferForceDomain: 强制域名
+    snifferSkipDomain: 跳过域名
+    snifferSkipDst: 跳过目标地址
+    snifferSkipSrc: 跳过源地址
+    resources: 资源
+    resGeoData: 地理数据库
+    resUpdateGeo: 更新地理数据
+    resUpdateDashboard: 更新面板
+    resProxyProviders: 代理提供者
+    resRuleProviders: 规则提供者
+    resNoProviders: 无提供者
+    resUpdateAll: 全部更新
+    resView: 查看
+    resOk: 更新已开始
+    resFail: 更新失败
+    dnsEnhancedMode: 增强模式
+    dnsFakeIpRange: Fake-IP 范围
+    dnsIpv6: IPv6
+    dnsRespectRules: 遵循规则
+    dnsUseHosts: 使用 hosts
+    dnsUseSystemHosts: 使用系统 hosts
+    dnsNameserver: 名称服务器
+    dnsDefaultNs: 默认名称服务器
+    dnsProxyNs: 代理服务器名称服务器
+    dnsDirectNs: 直连名称服务器
+    dnsFakeIpFilter: Fake-IP 过滤
+    checkUpdate: 检查更新
+    check: 检查
+    appVersion: 应用版本
+    resetApp: 重置应用
+    reset: 重置
+    confirmReset: 确定重置应用？
+    resetWarning: "这将删除所有设置、配置和已下载的内核，然后重新启动应用。"
+    cannotUndo: 此操作无法撤销。
+    tunTakeover: 接管 TUN
+    tunStack: 协议栈
+    tunAutoRoute: 自动路由
+    tunStrictRoute: 严格路由
+    tunAutoDetect: 自动检测接口
+    tunNoIcmp: 禁用 ICMP 转发
+    spAffectVpn: 影响 VPN 连接
+    spMode: 模式
+    spManual: 手动
+    spPac: PAC
+    tunDevice: 设备
+    tunMtu: MTU
+    spHost: 代理主机
+    spBypass: 绕过
+    alwaysOnTop: 置顶
+    disableTray: 禁用托盘图标
+    trayNodeInfo: 在托盘显示节点信息
+    takeOverDns: 接管 DNS
+    takeOverSniffer: 接管嗅探器
+    networkDetection: 网络变化检测
+    detectInterval: 检测间隔（秒）
+    scToggleWindow: 切换窗口
+    scRuleMode: 切换到规则模式
+    scGlobalMode: 切换到全局模式
+    scToggleTun: 切换 TUN
+    scToggleSysproxy: 切换系统代理
+    scRestart: 重启应用
+    scQuitKeepCore: 退出（保留内核）
+    scHint: 点击一个快捷键，然后按下按键。Esc 取消，Backspace 清除。
+    scPress: 按下按键…
+tooltips:
+  refresh: 刷新
+  toggleStats: 切换统计
+  telegram: 打开 Telegram
+  support: 打开支持页面
+  testLatency: 测试延迟
+  activate: 启用
+  update: 更新
+  edit: 编辑
+  editInfo: 编辑信息
+  delete: 删除
+  configure: 配置
+updater:
+  versionReady: 版本 %{version} 已可用
+  changelog: 更新内容
+  update: 立即更新
+  installing: 安装中…
+  later: 稍后
+  checking: 检查中…
+  upToDate: 您已是最新版本
+  checkFailed: 检查更新失败
+  installFailed: 更新失败

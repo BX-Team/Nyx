@@ -1,0 +1,267 @@
+common:
+  settings: Настройки
+  hideSidebar: Скрыть
+  toggleSidebar: Раскрыть
+  language: Язык
+  save: Сохранить
+  close: Закрыть
+  cancel: Отмена
+  back: Назад
+  copy: Копировать
+  copied: Скопировано
+  remote: Удалённо
+  local: Локально
+sider:
+  home: Главная
+  profileManagement: Профили
+  proxyGroup: Группы прокси
+  groupMain: Основное
+  groupManagement: Управление
+  rules: Правила
+  connection: Подключения
+  logs: Логи
+  modeRule: Правила
+  modeGlobal: Глобальный
+page:
+  placeholder: Эта страница будет перенесена на следующем этапе.
+languages:
+  native:
+    enUS: English
+    ruRU: Русский
+pages:
+  home:
+    connected: Подключено
+    disconnected: Отключено
+    coreRunning: Ядро запущено
+    coreStarting: Запуск ядра…
+    coreStopped: Ядро остановлено
+    coreFailed: Сбой ядра
+    upload: Отдача
+    download: Загрузка
+    connections: Подключения
+    totalUp: Всего отдано
+    totalDown: Всего загружено
+    currentProfile: Текущий профиль
+    noProfile: Профиль не выбран
+    mainSwitch: Прокси
+    statistics: Статистика
+    trafficRemaining: Трафика осталось
+    daysRemaining: Дней осталось
+    expires: Истекает
+    subscriptionNews: Новости подписки
+    never: Никогда
+  proxies:
+    testGroup: Тест
+    refresh: Обновить
+    nodes: узлов
+    noGroups: Нет групп прокси — ядро запущено?
+  rules:
+    edit: Редактировать правила
+    noProfile: Сначала выберите профиль, чтобы редактировать его правила.
+    summary: "Правил: %{n} · режим %{mode}"
+    colType: Тип
+    colValue: Значение
+    colPolicy: Политика
+    editorTitle: Редактор правил
+    customRules: Свои правила
+    subscriptionRules: Правила подписки
+    addRule: Добавить
+    top: Сверху
+    bottom: Снизу
+  profiles:
+    importUrl: Импорт URL
+    importFile: Импорт файла
+    empty: Пока нет профилей — импортируйте выше.
+    activate: Активировать
+    count: "Подписок: %{n}"
+    updateAll: Обновить все
+    add: Добавить
+    addTitle: Добавить подписку
+    editTitle: Редактировать подписку
+    selectFile: Выбрать файл
+    fileSelected: Файл выбран
+    urlLabel: Ссылка на подписку
+    nameLabel: Имя (необязательно)
+    expires: Истекает
+    active: АКТИВНЫЙ
+    days: "%{n} дн."
+  connections:
+    processes: Процессов
+    filter: Фильтр
+    empty: Нет активных подключений.
+    active: Активные
+    closed: Закрытые
+    close: Закрыть подключения
+    closeAll: Закрыть все
+    detail:
+      routing: Маршрутизация
+      network: Сеть
+      process: Процесс
+      traffic: Трафик
+      rule: Правило
+      chain: Цепочка прокси
+      type: Тип
+      host: Хост
+      destIp: IP назначения
+      destPort: Порт назначения
+      geoip: GeoIP
+      asn: ASN
+      srcIp: Исходный IP
+      srcPort: Исходный порт
+      processName: Процесс
+      processPath: Путь
+      dnsMode: Режим DNS
+      upload: Отправлено
+      download: Получено
+      copyRule: Копировать правило
+  logs:
+    clear: Очистить
+    all: Все
+  settings:
+    title: Настройки приложения
+    tunMode: Режим TUN
+    systemProxy: Системный прокси
+    autostart: Автозапуск
+    silentStart: Тихий запуск
+    autoCheckUpdate: Автоматическая проверка обновлений
+    appearance: Настройки внешнего вида
+    advanced: Дополнительные настройки
+    shortcuts: Настройки горячих клавиш
+    dns: Настройки DNS
+    mihomo: Ядро Mihomo
+    mixedPort: Смешанный порт
+    socksPort: SOCKS порт
+    httpPort: HTTP порт
+    redirPort: Redir порт
+    tproxyPort: TProxy порт
+    allowLan: Доступ из сети
+    coreIpv6: IPv6
+    unifiedDelay: Единая задержка
+    tcpConcurrent: TCP-параллелизм
+    disableKeepAlive: Отключить TCP keep-alive
+    keepAliveInterval: Интервал keep-alive (с)
+    keepAliveIdle: Простой keep-alive (с)
+    interfaceName: Исходящий интерфейс
+    storeSelected: Запоминать выбранный узел
+    storeFakeIp: Сохранять Fake-IP
+    findProcess: Определение процесса
+    findProcessAuto: Авто
+    findProcessOff: Выкл
+    findProcessOn: Вкл
+    fingerprint: Отпечаток TLS
+    fpDisabled: Отключён
+    fpRandom: Случайный
+    skipAuthPrefixes: Префиксы без авторизации
+    lanAllowedIps: Разрешённые IP в сети
+    lanDisallowedIps: Запрещённые IP в сети
+    logLevel: Уровень логов
+    stopCoreOnDisconnect: Останавливать ядро при отключении
+    coreSection: Ядро
+    coreInstalled: Установленная версия
+    coreRunning: Запущенная версия
+    coreStable: Стабильная
+    corePrerelease: Предварительная
+    coreUpdate: Обновить ядро
+    svcSection: Системная служба
+    svcStatus: Статус
+    svcRunning: Запущена
+    svcStopped: Остановлена
+    svcNotInstalled: Не установлена
+    svcUnknown: Неизвестно
+    svcChecking: Проверка…
+    svcInstall: Установить
+    svcUninstall: Удалить
+    svcStart: Запустить
+    svcStop: Остановить
+    svcRestart: Перезапустить
+    sniffer: Сниффер
+    snifferOverrideDest: Переопределять назначение
+    snifferForceDns: Принудительный DNS-маппинг
+    snifferParsePureIp: Разбирать чистые IP
+    snifferSniff: Сниффинг
+    snifferForceDomain: Принудительные домены
+    snifferSkipDomain: Пропускать домены
+    snifferSkipDst: Пропускать адреса назначения
+    snifferSkipSrc: Пропускать исходные адреса
+    resources: Ресурсы
+    resGeoData: Гео-базы
+    resUpdateGeo: Обновить гео-данные
+    resUpdateDashboard: Обновить панель
+    resProxyProviders: Провайдеры прокси
+    resRuleProviders: Провайдеры правил
+    resNoProviders: Нет провайдеров
+    resUpdateAll: Обновить все
+    resView: Просмотр
+    resOk: Обновление запущено
+    resFail: Ошибка обновления
+    dnsEnhancedMode: Расширенный режим
+    dnsFakeIpRange: Диапазон Fake-IP
+    dnsIpv6: IPv6
+    dnsRespectRules: Учитывать правила
+    dnsUseHosts: Использовать hosts
+    dnsUseSystemHosts: Системный hosts
+    dnsNameserver: DNS-серверы
+    dnsDefaultNs: DNS-серверы по умолчанию
+    dnsProxyNs: DNS для прокси-серверов
+    dnsDirectNs: Прямые DNS-серверы
+    dnsFakeIpFilter: Фильтр Fake-IP
+    checkUpdate: Проверить обновления
+    check: Проверить
+    appVersion: Версия приложения
+    resetApp: Сбросить приложение
+    reset: Сбросить
+    confirmReset: Сбросить приложение?
+    resetWarning: "Это удалит все настройки, профили и загруженное ядро, затем перезапустит приложение. "
+    cannotUndo: Это действие нельзя отменить.
+    tunTakeover: Перехват TUN
+    tunStack: Стек
+    tunAutoRoute: Авто-маршрут
+    tunStrictRoute: Строгий маршрут
+    tunAutoDetect: Авто-определение интерфейса
+    tunNoIcmp: Отключить пересылку ICMP
+    spAffectVpn: Влиять на VPN-подключения
+    spMode: Режим
+    spManual: Вручную
+    spPac: PAC
+    tunDevice: Устройство
+    tunMtu: MTU
+    spHost: Хост прокси
+    spBypass: Исключения
+    alwaysOnTop: Поверх всех окон
+    disableTray: Отключить значок в трее
+    trayNodeInfo: Показывать узел в трее
+    takeOverDns: Перехват DNS
+    takeOverSniffer: Перехват сниффера
+    networkDetection: Определение смены сети
+    detectInterval: Интервал проверки (с)
+    scToggleWindow: Показать/скрыть окно
+    scRuleMode: Режим Rule
+    scGlobalMode: Режим Global
+    scToggleTun: Переключить TUN
+    scToggleSysproxy: Переключить системный прокси
+    scRestart: Перезапустить приложение
+    scQuitKeepCore: Выход (оставить ядро)
+    scHint: Нажмите на шорткат, затем нужные клавиши. Esc — отмена, Backspace — очистить.
+    scPress: Нажмите клавиши…
+tooltips:
+  refresh: Обновить
+  toggleStats: Показать статистику
+  telegram: Открыть Telegram
+  support: Открыть страницу поддержки
+  testLatency: Проверить задержку
+  activate: Активировать
+  update: Обновить
+  edit: Редактировать
+  editInfo: Изменить данные
+  delete: Удалить
+  configure: Настроить
+updater:
+  versionReady: Доступна версия %{version}
+  changelog: Что нового
+  update: Обновить
+  installing: Установка…
+  later: Позже
+  checking: Проверка…
+  upToDate: У вас последняя версия
+  checkFailed: Не удалось проверить обновления
+  installFailed: Не удалось обновить
