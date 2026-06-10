@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Nyx
+Comment=Mihomo/Clash GUI
+Exec=nyx
+Icon=nyx
+Terminal=false
+Type=Application
+Categories=Network;Utility;
+StartupWMClass=Nyx

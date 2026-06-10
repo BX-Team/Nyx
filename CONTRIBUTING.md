@@ -56,12 +56,11 @@ Thank you for your contribution!
 
 ## Running Locally
 
-To run Nyx locally, follow these steps:
+Nyx is a single pure-Rust [gpui](https://github.com/zed-industries/zed) application — there is no longer a frontend or Node/Bun step.
 
 1. Install the prerequisites:
    - [Rust](https://www.rust-lang.org/tools/install) (stable toolchain)
-   - [Bun](https://bun.sh/)
-   - Tauri platform dependencies ([guide](https://tauri.app/start/prerequisites/))
+   - On **Linux**, the gpui/tray system libraries (see [README → Build from source](README.md#build-from-source)). Nix users can just `nix develop`.
 
 2. Clone the repository. If you plan to make changes, create a fork first!
 
@@ -69,20 +68,22 @@ To run Nyx locally, follow these steps:
 $ git clone https://github.com/BX-Team/Nyx
 ```
 
-3. Install frontend dependencies.
+3. Run the development build.
 
 ```bash
-$ bun install
+$ cargo run
 ```
 
-4. Start the development build.
+To produce an optimized binary (written to `target/release/nyx`):
 
 ```bash
-$ bun run tauri:dev
+$ cargo build --release
 ```
 
-To produce a release bundle:
+Before opening a pull request, make sure the same checks CI runs pass locally:
 
 ```bash
-$ bun run tauri:build
+$ cargo fmt --check
+$ cargo clippy -- -D warnings
+$ cargo check
 ```
