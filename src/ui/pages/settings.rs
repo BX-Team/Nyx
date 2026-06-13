@@ -56,11 +56,8 @@ impl NyxApp {
                 Some(self.gear("gear-sysproxy", SettingsSub::SysProxy, cx)),
                 Switch::new("set-sysproxy")
                     .checked(sysproxy)
-                    .on_click(cx.listener(|this, checked: &bool, _, cx| {
-                        this.set_app_flag(
-                            serde_json::json!({ "sysProxy": { "enable": *checked } }),
-                            cx,
-                        )
+                    .on_click(cx.listener(|_this, checked: &bool, _, cx| {
+                        crate::app::actions::set_sysproxy(*checked, cx)
                     })),
                 true,
             ),
@@ -350,11 +347,8 @@ impl NyxApp {
                 None,
                 Switch::new("sp-enable")
                     .checked(enable)
-                    .on_click(cx.listener(|this, checked: &bool, _, cx| {
-                        this.set_app_flag(
-                            serde_json::json!({ "sysProxy": { "enable": *checked } }),
-                            cx,
-                        )
+                    .on_click(cx.listener(|_this, checked: &bool, _, cx| {
+                        crate::app::actions::set_sysproxy(*checked, cx)
                     })),
                 false,
             ),

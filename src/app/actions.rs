@@ -94,21 +94,31 @@ pub fn toggle_tun(cx: &mut App) {
     });
 }
 
-/// Flips the system-proxy enable flag in the app config.
-pub fn toggle_sysproxy(cx: &mut App) {
-    let new = !AppState::global(cx).read(cx).app_flag("sysProxy.enable");
+/// Sets the system-proxy flag, persists it, and applies/removes the OS proxy.
+pub fn set_sysproxy(enable: bool, cx: &mut App) {
+    let affect_vpn = AppState::global(cx)
+        .read(cx)
+        .app_flag("affectVPNConnections");
     AppState::global(cx).update(cx, |st, c| {
         if let Some(obj) = st.app_config.as_object_mut() {
             let sp = obj.entry("sysProxy").or_insert_with(|| json!({}));
             if let Some(spo) = sp.as_object_mut() {
-                spo.insert("enable".into(), json!(new));
+                spo.insert("enable".into(), json!(enable));
             }
             c.notify();
         }
     });
     runtime::detach(async move {
-        let _ = backend::config::patch_app_config(json!({ "sysProxy": { "enable": new } })).await;
+        let _ =
+            backend::config::patch_app_config(json!({ "sysProxy": { "enable": enable } })).await;
+        backend::sysproxy::apply(enable, affect_vpn).await;
     });
+}
+
+/// Flips the system-proxy enable flag (hotkey / tray).
+pub fn toggle_sysproxy(cx: &mut App) {
+    let new = !AppState::global(cx).read(cx).app_flag("sysProxy.enable");
+    set_sysproxy(new, cx);
 }
 
 /// Restarts the mihomo core (fire-and-forget).
@@ -135,9 +145,10 @@ pub fn quit_without_core(cx: &mut App) {
     cx.quit();
 }
 
-/// Stops the core completely (service-managed or local, best-effort, blocking)
-/// then quits.
+/// Clears the OS system proxy, stops the core completely (service-managed or
+/// local, best-effort, blocking), then quits.
 pub fn quit_with_core(cx: &mut App) {
+    backend::sysproxy::clear();
     let _ = runtime::runtime().block_on(backend::service::stop_core_complete());
     cx.quit();
 }
