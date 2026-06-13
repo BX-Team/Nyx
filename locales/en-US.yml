@@ -207,9 +207,7 @@ pages:
     snifferSkipDst: Skip destination addresses
     snifferSkipSrc: Skip source addresses
     resources: Resources
-    resGeoData: Geo databases
     resUpdateGeo: Update geo data
-    resUpdateDashboard: Update dashboard
     resProxyProviders: Proxy providers
     resRuleProviders: Rule providers
     resNoProviders: No providers

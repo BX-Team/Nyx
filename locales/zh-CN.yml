@@ -208,9 +208,7 @@ pages:
     snifferSkipDst: 跳过目标地址
     snifferSkipSrc: 跳过源地址
     resources: 资源
-    resGeoData: 地理数据库
     resUpdateGeo: 更新地理数据
-    resUpdateDashboard: 更新面板
     resProxyProviders: 代理提供者
     resRuleProviders: 规则提供者
     resNoProviders: 无提供者

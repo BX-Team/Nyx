@@ -2322,22 +2322,19 @@ impl NyxApp {
         cx.notify();
     }
 
-    /// Updates geo databases (`geoip`/`geosite`/`mmdb`) or the dashboard UI.
-    pub(crate) fn update_resource(&mut self, what: &'static str, cx: &mut Context<Self>) {
+    /// Asks the running core to re-download its geo databases
+    /// (`geoip`/`geosite`/`mmdb`) via `PATCH /configs/geo`.
+    pub(crate) fn update_geo(&mut self, cx: &mut Context<Self>) {
         if self.resources_busy {
             return;
         }
         self.resources_busy = true;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let res = runtime::spawn(async move {
-                match what {
-                    "geo" => backend::api::upgrade_geo().await,
-                    "ui" => backend::api::upgrade_ui().await,
-                    _ => Ok(()),
-                }
-            })
-            .await;
+            let res = runtime::spawn(backend::api::upgrade_geo()).await;
+            if let Ok(Err(e)) = &res {
+                log::warn!("[geo] update failed: {e}");
+            }
             let ok = matches!(res, Ok(Ok(())));
             cx.update(|cx| {
                 let note = if ok {
