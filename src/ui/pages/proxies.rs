@@ -208,7 +208,7 @@ impl NyxApp {
                             .font_semibold()
                             .text_color(rgb(TEXT))
                             .truncate()
-                            .child(name.to_string()),
+                            .child(crate::ui::flags::render_name(&name)),
                     )
                     .child(kind_chip(group.kind.as_ref())),
             )
@@ -217,7 +217,7 @@ impl NyxApp {
                     .text_xs()
                     .text_color(rgb(subtitle_color))
                     .truncate()
-                    .child(subtitle),
+                    .child(crate::ui::flags::render_name(&subtitle)),
             )
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.proxies_group = Some(name.clone());
@@ -383,7 +383,7 @@ impl NyxApp {
                     .text_color(rgb(TEXT))
                     .truncate()
                     .pr(px(18.))
-                    .child(node_name.clone()),
+                    .child(crate::ui::flags::render_name(&node_name)),
             )
             .child(
                 h_flex()

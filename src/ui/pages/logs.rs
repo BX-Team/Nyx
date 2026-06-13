@@ -185,6 +185,6 @@ fn log_row(l: LogLine, striped: bool) -> impl IntoElement {
                 .min_w_0()
                 .text_xs()
                 .text_color(rgb(msg_color))
-                .child(l.message.clone()),
+                .child(crate::ui::flags::render_name(l.message.as_ref())),
         )
 }

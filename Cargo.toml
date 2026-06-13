@@ -69,6 +69,7 @@ url = "2"
 futures-util = "0.3"
 base64 = "0.22"
 md-5 = "0.10"
+emojis = "0.6"
 
 # --- system integration (M5) ---
 tray-icon = "0.19"
