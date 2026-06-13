@@ -61,13 +61,17 @@ pub async fn refresh_runtime_data(cx: &mut AsyncApp) {
     }
 
     if let Ok(Ok(app_cfg)) = runtime::spawn(backend::config::get_app_config()).await {
-        let autostart = app_cfg
-            .get("autoStart")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let flag = |k: &str| app_cfg.get(k).and_then(|v| v.as_bool()).unwrap_or(false);
+        let autostart = flag("autoStart");
+        let on_top = flag("alwaysOnTop");
+        let tray_enabled = !flag("disableTray");
         cx.update(|cx| {
-            AppState::global(cx).update(cx, |st, c| st.set_app_config(app_cfg, c));
+            AppState::global(cx).update(cx, |st, c| st.set_app_config(app_cfg.clone(), c));
             crate::app::hotkeys::reload(cx);
+            crate::app::tray::set_enabled(cx, tray_enabled);
+            // Win32 SetWindowPos must run outside the live gpui borrow.
+            cx.spawn(async move |_cx| crate::app::window::set_always_on_top(on_top))
+                .detach();
         });
         crate::app::autostart::sync(autostart);
     }

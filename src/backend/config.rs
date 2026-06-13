@@ -70,6 +70,55 @@ pub async fn patch_app_config(config: Value) -> Result<()> {
     write_json_as_yaml(&path, &base)
 }
 
+/// Reads a top-level boolean flag from the app config synchronously (used at
+/// startup before the async config load lands in state).
+pub fn app_config_bool(key: &str) -> bool {
+    let path = dirs::app_config_path();
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_yaml::from_str::<Value>(&s).ok())
+        .and_then(|v| v.get(key).and_then(Value::as_bool))
+        .unwrap_or(false)
+}
+
+/// Reads the persisted main-window geometry `(x, y, width, height)` from the app
+/// config, if present. Sync — called while opening the window.
+pub fn load_window_state() -> Option<(f64, f64, f64, f64)> {
+    let path = dirs::app_config_path();
+    let v: Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_yaml::from_str(&s).ok())?;
+    let w = v.get("window")?;
+    Some((
+        w.get("x")?.as_f64()?,
+        w.get("y")?.as_f64()?,
+        w.get("width")?.as_f64()?,
+        w.get("height")?.as_f64()?,
+    ))
+}
+
+/// Persists the main-window geometry into the app config under `window`. Sync —
+/// called from the window close/hide path (no gpui borrow held).
+pub fn save_window_state(x: f64, y: f64, width: f64, height: f64) {
+    let path = dirs::app_config_path();
+    let mut v: Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_yaml::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert(
+            "window".to_string(),
+            serde_json::json!({ "x": x, "y": y, "width": width, "height": height }),
+        );
+    }
+    if let Ok(s) = serde_yaml::to_string(&v) {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(&path, s);
+    }
+}
+
 pub async fn get_profile_config() -> Result<Value> {
     let path = dirs::profile_config_path();
     if !path.exists() {

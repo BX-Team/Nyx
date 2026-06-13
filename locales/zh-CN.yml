@@ -58,6 +58,12 @@ pages:
     noGroups: 没有代理组 —— 内核是否在运行？
   rules:
     edit: 编辑规则覆盖
+    convertMrs: 转换 MRS 规则集
+    convertPick: 选择 .mrs 文件
+    convertBehavior: 行为
+    convertDo: 转换
+    convertDone: 已转换
+    convertFailed: 转换失败
     noProfile: 请先选择一个配置以编辑其规则覆盖。
     summary: "%{n} 条规则 · 模式 %{mode}"
     colType: 类型
@@ -256,6 +262,8 @@ tooltips:
   editInfo: 编辑信息
   delete: 删除
   configure: 配置
+  unfix: 重置为自动
+  restartConnections: 重启连接
 updater:
   versionReady: 版本 %{version} 已可用
   changelog: 更新内容
@@ -266,3 +274,20 @@ updater:
   upToDate: 您已是最新版本
   checkFailed: 检查更新失败
   installFailed: 更新失败
+onboarding:
+  welcomeTitle: 欢迎使用 Nyx
+  welcomeBody: Mihomo 代理内核的桌面图形界面。让我们用三个简单步骤完成设置。
+  step: 第 %{n} 步，共 %{total} 步
+  profileTitle: 添加配置
+  profileBody: 导入订阅链接或本地配置文件——这是您的代理来源。
+  profileHint: 使用右上角的“添加”按钮。
+  serviceTitle: 安装服务
+  serviceBody: 后台服务让 Nyx 无需管理员提示即可管理内核和 TUN 模式。
+  serviceHint: 打开 Mihomo 设置并安装服务。
+  proxyTitle: 开启代理
+  proxyBody: 在主页切换主开关以转发您的流量。
+  proxyHint: 使用主页的主开关。
+  skip: 跳过
+  next: 下一步
+  start: 开始
+  finish: 完成

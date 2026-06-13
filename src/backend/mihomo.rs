@@ -92,11 +92,40 @@ pub async fn restore_proxy_selections() {
     if base_url.is_empty() {
         return;
     }
+
+    // Validate each saved selection against the live proxy set first. Selections
+    // are stored globally across profiles, so a group/proxy from a previously
+    // active profile may be absent now — restoring it blindly used to 404.
+    let proxies = match api::get_raw_proxies_map().await {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("[restore_proxy_selections] could not fetch proxies: {e}");
+            return;
+        }
+    };
+
     let client = reqwest::Client::new();
     for (k, v) in map.iter() {
         let (Some(group), Some(proxy)) = (k.as_str(), v.as_str()) else {
             continue;
         };
+
+        let Some(group_info) = proxies.get(group) else {
+            log::debug!("[restore_proxy_selections] skip {group}: group not in current profile");
+            continue;
+        };
+        if group_info["type"].as_str() != Some("Selector") {
+            continue;
+        }
+        let is_member = group_info["all"]
+            .as_array()
+            .map(|all| all.iter().any(|n| n.as_str() == Some(proxy)))
+            .unwrap_or(false);
+        if !is_member {
+            log::debug!("[restore_proxy_selections] skip {group}: '{proxy}' no longer a member");
+            continue;
+        }
+
         let encoded_group = group.replace(' ', "%20");
         let url = format!("{}/proxies/{}", base_url, encoded_group);
         match client
@@ -106,22 +135,16 @@ pub async fn restore_proxy_selections() {
             .await
         {
             Ok(r) if r.status().is_success() => {
-                log::info!("[restore_proxy_selections] {} -> {}", group, proxy);
+                log::info!("[restore_proxy_selections] {group} -> {proxy}");
             }
             Ok(r) => {
                 log::warn!(
-                    "[restore_proxy_selections] {} -> {} returned {}",
-                    group,
-                    proxy,
+                    "[restore_proxy_selections] {group} -> {proxy} returned {}",
                     r.status()
                 );
             }
             Err(e) => {
-                log::warn!(
-                    "[restore_proxy_selections] {} -> {} failed: {e}",
-                    group,
-                    proxy
-                );
+                log::warn!("[restore_proxy_selections] {group} -> {proxy} failed: {e}");
             }
         }
     }

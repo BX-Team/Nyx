@@ -28,6 +28,11 @@ pub fn run() {
 
     let app = gpui_platform::application().with_assets(app::assets::Assets);
 
+    // Tidy the data dir before anything reads it (rename legacy config, drop the
+    // stale Tauri window-state file).
+    backend::startup::migrate_data_dir();
+    let silent = backend::config::app_config_bool("silentStart");
+
     app.run(move |cx| {
         // Must run before using any gpui-component feature.
         gpui_component::init(cx);
@@ -36,8 +41,10 @@ pub fn run() {
         ui::theme::apply(cx);
         // Load persisted state and set the active locale.
         app::state::AppState::init(cx);
-        cx.activate(true);
-        ui::open_main_window(cx);
+        if !silent {
+            cx.activate(true);
+        }
+        ui::open_main_window(cx, silent);
         // Bring up the mihomo core + live data once the window exists.
         app::bootstrap::spawn_backend_startup(cx);
         // System tray (icon + menu) living in the gpui event loop.

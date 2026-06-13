@@ -90,6 +90,31 @@ impl NyxApp {
                     .when(!show_closed && count > 0, |this| {
                         this.child(
                             div()
+                                .id("conns-restart")
+                                .size(px(30.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(8.))
+                                .bg(rgb(CARD_BG))
+                                .border_1()
+                                .border_color(rgb(CARD_BORDER))
+                                .text_color(rgb(SUBTLE))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(rgb(PANEL_BG)))
+                                .tooltip(|window, cx| {
+                                    Tooltip::new(t!("tooltips.restartConnections").to_string())
+                                        .build(window, cx)
+                                })
+                                .child(Icon::empty().path("icons/refresh.svg").size(px(14.)))
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.restart_connections(cx);
+                                })),
+                        )
+                    })
+                    .when(!show_closed && count > 0, |this| {
+                        this.child(
+                            div()
                                 .id("conns-close-all")
                                 .h(px(30.))
                                 .px(px(12.))

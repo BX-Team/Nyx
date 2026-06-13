@@ -53,29 +53,57 @@ impl NyxApp {
             )
             .child({
                 let f = focused.clone();
-                h_flex().gap_2().items_center().child(
-                    div()
-                        .id("proxies-test")
-                        .size(px(30.))
-                        .rounded(px(8.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .bg(rgb(CARD_BG))
-                        .border_1()
-                        .border_color(rgb(CARD_BORDER))
-                        .text_color(rgb(SUBTLE))
-                        .cursor_pointer()
-                        .tooltip(|window, cx| {
-                            Tooltip::new(t!("tooltips.testLatency").to_string()).build(window, cx)
-                        })
-                        .child(Icon::empty().path("icons/activity.svg").size(px(15.)))
-                        .when_some(f, |this, name| {
-                            this.on_click(cx.listener(move |t, _, _, cx| {
-                                t.test_group_delay(name.to_string(), cx)
-                            }))
-                        }),
-                )
+                let fu = focused.clone();
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .when_some(fu, |row, name| {
+                        row.child(
+                            div()
+                                .id("proxies-unfix")
+                                .size(px(30.))
+                                .rounded(px(8.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .bg(rgb(CARD_BG))
+                                .border_1()
+                                .border_color(rgb(CARD_BORDER))
+                                .text_color(rgb(SUBTLE))
+                                .cursor_pointer()
+                                .tooltip(|window, cx| {
+                                    Tooltip::new(t!("tooltips.unfix").to_string()).build(window, cx)
+                                })
+                                .child(Icon::empty().path("icons/refresh.svg").size(px(15.)))
+                                .on_click(cx.listener(move |t, _, _, cx| {
+                                    t.unfix_group(name.to_string(), cx)
+                                })),
+                        )
+                    })
+                    .child(
+                        div()
+                            .id("proxies-test")
+                            .size(px(30.))
+                            .rounded(px(8.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(rgb(CARD_BG))
+                            .border_1()
+                            .border_color(rgb(CARD_BORDER))
+                            .text_color(rgb(SUBTLE))
+                            .cursor_pointer()
+                            .tooltip(|window, cx| {
+                                Tooltip::new(t!("tooltips.testLatency").to_string())
+                                    .build(window, cx)
+                            })
+                            .child(Icon::empty().path("icons/activity.svg").size(px(15.)))
+                            .when_some(f, |this, name| {
+                                this.on_click(cx.listener(move |t, _, _, cx| {
+                                    t.test_group_delay(name.to_string(), cx)
+                                }))
+                            }),
+                    )
             });
 
         let body = if groups.is_empty() {

@@ -214,7 +214,7 @@ impl NyxApp {
         if !current {
             let aid = id.to_string();
             row = row.child(
-                icon_btn("act", Icon::new(IconName::Check), false)
+                icon_btn(&format!("act-{id}"), Icon::new(IconName::Check), false)
                     .tooltip(|window, cx| {
                         Tooltip::new(t!("tooltips.activate").to_string()).build(window, cx)
                     })
@@ -226,37 +226,49 @@ impl NyxApp {
         if is_remote {
             let uid = id.to_string();
             row = row.child(
-                icon_btn("upd", Icon::empty().path("icons/refresh.svg"), false)
-                    .tooltip(|window, cx| {
-                        Tooltip::new(t!("tooltips.update").to_string()).build(window, cx)
-                    })
-                    .on_click(
-                        cx.listener(move |this, _, _, cx| this.update_profile(uid.clone(), cx)),
-                    ),
+                icon_btn(
+                    &format!("upd-{id}"),
+                    Icon::empty().path("icons/refresh.svg"),
+                    false,
+                )
+                .tooltip(|window, cx| {
+                    Tooltip::new(t!("tooltips.update").to_string()).build(window, cx)
+                })
+                .on_click(cx.listener(move |this, _, _, cx| this.update_profile(uid.clone(), cx))),
             );
         }
         let iid = id.to_string();
         row = row.child(
-            icon_btn("info", Icon::empty().path("icons/link.svg"), false)
-                .tooltip(|window, cx| {
-                    Tooltip::new(t!("tooltips.editInfo").to_string()).build(window, cx)
-                })
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.open_profile_edit_info(iid.clone(), window, cx)
-                })),
+            icon_btn(
+                &format!("info-{id}"),
+                Icon::empty().path("icons/link.svg"),
+                false,
+            )
+            .tooltip(|window, cx| {
+                Tooltip::new(t!("tooltips.editInfo").to_string()).build(window, cx)
+            })
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_profile_edit_info(iid.clone(), window, cx)
+            })),
         );
         let eid = id.to_string();
         let ename = name.to_string();
         row = row.child(
-            icon_btn("edit", Icon::empty().path("icons/square-pen.svg"), false)
-                .tooltip(|window, cx| {
-                    Tooltip::new(t!("tooltips.edit").to_string()).build(window, cx)
-                })
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.open_profile_editor(eid.clone(), ename.clone(), window, cx)
-                })),
+            icon_btn(
+                &format!("edit-{id}"),
+                Icon::empty().path("icons/square-pen.svg"),
+                false,
+            )
+            .tooltip(|window, cx| Tooltip::new(t!("tooltips.edit").to_string()).build(window, cx))
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_profile_editor(eid.clone(), ename.clone(), window, cx)
+            })),
         );
-        let del = icon_btn("del", Icon::empty().path("icons/trash-2.svg"), current);
+        let del = icon_btn(
+            &format!("del-{id}"),
+            Icon::empty().path("icons/trash-2.svg"),
+            current,
+        );
         let del = if current {
             del
         } else {

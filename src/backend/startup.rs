@@ -10,7 +10,26 @@ fn read_app_config_sync() -> Value {
         .unwrap_or_default()
 }
 
-/// Writes the default `config.yaml` if none exists yet (first run).
+/// One-time data-dir cleanup: rename the legacy `config.yaml` to
+/// `app-config.yaml` and drop the stale Tauri `window-state.json` (window
+/// geometry now lives inside the app config). Safe to call on every launch.
+pub fn migrate_data_dir() {
+    let new = dirs::app_config_path();
+    let old = dirs::legacy_app_config_path();
+    if !new.exists() && old.exists() {
+        match std::fs::rename(&old, &new) {
+            Ok(_) => log::info!("[migrate] config.yaml -> app-config.yaml"),
+            Err(e) => log::warn!("[migrate] could not rename config.yaml: {e}"),
+        }
+    }
+    let stale = dirs::legacy_window_state_path();
+    if stale.exists() {
+        let _ = std::fs::remove_file(&stale);
+        log::info!("[migrate] removed stale window-state.json");
+    }
+}
+
+/// Writes the default `app-config.yaml` if none exists yet (first run).
 pub fn ensure_default_app_config() {
     let config_path = dirs::app_config_path();
     if config_path.exists() {
@@ -28,7 +47,6 @@ pub fn ensure_default_app_config() {
         "proxyCols": "auto",
         "autoCloseConnection": true,
         "useWindowFrame": false,
-        "proxyInTray": true,
         "appTheme": "system",
         "maxLogDays": 7,
         "delayTestConcurrency": 50,

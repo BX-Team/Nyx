@@ -1,6 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rgb, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window,
 };
 use gpui_component::{
@@ -9,7 +9,7 @@ use gpui_component::{
     input::Input,
     select::Select,
     tooltip::Tooltip,
-    v_flex, Icon, IconName, Sizable, StyledExt,
+    v_flex, Disableable, Icon, IconName, Sizable, StyledExt,
 };
 use rust_i18n::t;
 
@@ -202,29 +202,55 @@ impl NyxApp {
                         t!("pages.rules.summary", n => count, mode => mode_label).to_string(),
                     )),
             )
-            .child(h_flex().gap_2().items_center().when(has_current, |this| {
-                this.child(
-                    div()
-                        .id("rules-edit")
-                        .size(px(32.))
-                        .rounded(px(8.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .bg(rgb(CARD_BG))
-                        .border_1()
-                        .border_color(rgb(CARD_BORDER))
-                        .text_color(rgb(SUBTLE))
-                        .cursor_pointer()
-                        .tooltip(|window, cx| {
-                            Tooltip::new(t!("pages.rules.edit").to_string()).build(window, cx)
-                        })
-                        .child(Icon::empty().path("icons/square-pen.svg").size(px(15.)))
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.open_rule_editor(window, cx)),
-                        ),
-                )
-            }));
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .id("rules-convert")
+                            .size(px(32.))
+                            .rounded(px(8.))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(rgb(CARD_BG))
+                            .border_1()
+                            .border_color(rgb(CARD_BORDER))
+                            .text_color(rgb(SUBTLE))
+                            .cursor_pointer()
+                            .tooltip(|window, cx| {
+                                Tooltip::new(t!("pages.rules.convertMrs").to_string())
+                                    .build(window, cx)
+                            })
+                            .child(Icon::empty().path("icons/refresh.svg").size(px(15.)))
+                            .on_click(cx.listener(|this, _, _, cx| this.open_mrs_convert(cx))),
+                    )
+                    .when(has_current, |this| {
+                        this.child(
+                            div()
+                                .id("rules-edit")
+                                .size(px(32.))
+                                .rounded(px(8.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .bg(rgb(CARD_BG))
+                                .border_1()
+                                .border_color(rgb(CARD_BORDER))
+                                .text_color(rgb(SUBTLE))
+                                .cursor_pointer()
+                                .tooltip(|window, cx| {
+                                    Tooltip::new(t!("pages.rules.edit").to_string())
+                                        .build(window, cx)
+                                })
+                                .child(Icon::empty().path("icons/square-pen.svg").size(px(15.)))
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.open_rule_editor(window, cx)
+                                })),
+                        )
+                    }),
+            );
 
         let table = v_flex()
             .flex_1()
@@ -246,6 +272,122 @@ impl NyxApp {
             );
 
         v_flex().size_full().child(header).child(table)
+    }
+
+    /// The MRS ruleset converter modal: pick a binary `.mrs` file, choose the
+    /// mihomo behavior, and write a decoded text ruleset beside it.
+    pub(crate) fn render_mrs_modal(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let input_name = self
+            .mrs_input
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned());
+        let behavior = self.mrs_behavior;
+
+        let behavior_pill =
+            |key: &'static str, label: &str, active: bool, cx: &mut Context<Self>| {
+                div()
+                    .id(SharedString::from(format!("mrs-bh-{key}")))
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .py(px(5.))
+                    .rounded(px(6.))
+                    .text_xs()
+                    .cursor_pointer()
+                    .when(active, |this| this.bg(rgb(GREEN)).text_color(rgb(0x0B1014)))
+                    .when(!active, |this| this.text_color(rgb(SUBTLE)))
+                    .child(label.to_string())
+                    .on_click(cx.listener(move |this, _, _, cx| this.mrs_set_behavior(key, cx)))
+            };
+
+        div()
+            .id("mrs-scrim")
+            .absolute()
+            .inset_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(rgba(0x000000B0))
+            .child(
+                v_flex()
+                    .w(px(440.))
+                    .rounded_xl()
+                    .border_1()
+                    .border_color(rgb(CARD_BORDER))
+                    .bg(rgb(CARD_BG))
+                    .p_5()
+                    .gap_3()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_bold()
+                            .text_color(rgb(TEXT))
+                            .child(t!("pages.rules.convertMrs").to_string()),
+                    )
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("mrs-pick")
+                                    .small()
+                                    .icon(IconName::FolderOpen)
+                                    .label(t!("pages.rules.convertPick").to_string())
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.mrs_pick_input(window, cx)
+                                    })),
+                            )
+                            .when_some(input_name, |this, name| {
+                                this.child(div().text_xs().text_color(rgb(GREEN)).child(name))
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(rgb(MUTED2))
+                            .child(t!("pages.rules.convertBehavior").to_string()),
+                    )
+                    .child(
+                        h_flex()
+                            .p(px(3.))
+                            .gap(px(2.))
+                            .rounded(px(9.))
+                            .bg(rgb(CONTROL_BG))
+                            .border_1()
+                            .border_color(rgb(CONTROL_BORDER))
+                            .child(behavior_pill("domain", "domain", behavior == "domain", cx))
+                            .child(behavior_pill("ipcidr", "ipcidr", behavior == "ipcidr", cx))
+                            .child(behavior_pill(
+                                "classical",
+                                "classical",
+                                behavior == "classical",
+                                cx,
+                            )),
+                    )
+                    .child(
+                        h_flex()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                Button::new("mrs-cancel")
+                                    .ghost()
+                                    .label(t!("common.cancel").to_string())
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.close_mrs_convert(cx)),
+                                    ),
+                            )
+                            .child(
+                                Button::new("mrs-go")
+                                    .primary()
+                                    .label(t!("pages.rules.convertDo").to_string())
+                                    .disabled(self.mrs_input.is_none())
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.submit_mrs_convert(cx)),
+                                    ),
+                            ),
+                    ),
+            )
     }
 
     /// The smart rule-override editor (opened from the Rules page edit button).
