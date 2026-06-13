@@ -9,6 +9,7 @@ use gpui::{AssetSource, Result, SharedString};
 #[folder = "assets"]
 #[include = "brand/*"]
 #[include = "icons/*"]
+#[include = "flags/*"]
 struct NyxEmbed;
 
 /// The asset source registered with the gpui application.

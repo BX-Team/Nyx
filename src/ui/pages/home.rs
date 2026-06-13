@@ -341,7 +341,7 @@ fn render_proxy_card(
                                     .font_medium()
                                     .text_color(rgb(TEXT))
                                     .truncate()
-                                    .child(name),
+                                    .child(crate::ui::flags::render_name(&name)),
                             )
                             .child(
                                 div()

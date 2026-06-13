@@ -1,3 +1,4 @@
+pub(crate) mod flags;
 mod onboarding;
 mod pages;
 mod rail;
