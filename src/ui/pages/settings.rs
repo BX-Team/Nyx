@@ -555,7 +555,8 @@ impl NyxApp {
 
         let body = settings_body()
             .child(self.mihomo_core_card(&core, cx))
-            .child(self.mihomo_service_card(cx))
+            .when(cfg!(windows), |b| b.child(self.mihomo_service_card(cx)))
+            .when(!cfg!(windows), |b| b.child(self.tun_permission_card(cx)))
             .child(group(vec![
                 input_row(
                     t!("pages.settings.mixedPort"),
@@ -890,6 +891,71 @@ impl NyxApp {
             )
             .child(actions)
             .into_any_element()
+    }
+
+    /// Non-Windows replacement for the service card: shows whether the core can
+    /// create a TUN device and (on Linux) offers to grant the capability.
+    fn tun_permission_card(&self, cx: &mut Context<Self>) -> AnyElement {
+        let granted = tun_granted();
+        let (label, color) = if granted {
+            (t!("pages.settings.tunGranted"), GREEN_HI)
+        } else {
+            (t!("pages.settings.tunNotGranted"), AMBER)
+        };
+        let hint = if cfg!(target_os = "macos") {
+            t!("pages.settings.tunHintMac")
+        } else {
+            t!("pages.settings.tunHint")
+        };
+
+        let card = settings_card(t!("pages.settings.tunSection"))
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .py(px(2.))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(rgb(TEXT))
+                            .child(t!("pages.settings.tunStatus").to_string()),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(div().size(px(7.)).rounded_full().bg(rgb(color)))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(rgb(color))
+                                    .child(label.to_string()),
+                            ),
+                    ),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(rgb(MUTED3))
+                    .child(hint.to_string()),
+            );
+
+        #[cfg(target_os = "linux")]
+        let card = card.when(!granted, |c| {
+            c.child(
+                h_flex().child(
+                    Button::new("tun-grant")
+                        .small()
+                        .primary()
+                        .label(t!("pages.settings.tunGrant").to_string())
+                        .on_click(cx.listener(|this, _, _, cx| this.grant_tun(cx))),
+                ),
+            )
+        });
+        #[cfg(not(target_os = "linux"))]
+        let _ = cx;
+
+        card.into_any_element()
     }
 
     /// One top-level mihomo boolean row that patches `<key>` and restarts core.
@@ -1754,6 +1820,19 @@ fn dns_list_card(label: impl Into<SharedString>, input: Option<&Entity<InputStat
 
 /// A read-only shortcut binding row (label + current key, until M5 wiring).
 /// A titled full-width card (header label on top, caller appends rows).
+/// Whether the running process can give the core TUN access (Linux: holds
+/// `CAP_NET_ADMIN`; elsewhere: running as root).
+fn tun_granted() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        crate::backend::elevation::has_net_admin()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        crate::backend::elevation::is_elevated()
+    }
+}
+
 fn settings_card(title: impl Into<SharedString>) -> gpui::Div {
     v_flex()
         .w_full()

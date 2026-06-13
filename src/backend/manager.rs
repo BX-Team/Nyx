@@ -54,6 +54,11 @@ async fn spawn_mihomo(binary: &std::path::Path, config: &std::path::Path) -> Res
         cmd.creation_flags(0x08000000);
     }
 
+    // Let the core inherit CAP_NET_ADMIN (etc.) for TUN. No-op unless Nyx itself
+    // holds the caps (setcap / NixOS `programs.nyx.tunMode`).
+    #[cfg(target_os = "linux")]
+    crate::backend::elevation::raise_net_ambient_caps();
+
     let child = cmd
         .spawn()
         .map_err(|e| anyhow::anyhow!("failed to spawn mihomo: {e}"))?;

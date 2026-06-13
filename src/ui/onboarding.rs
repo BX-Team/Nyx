@@ -63,10 +63,15 @@ impl NyxApp {
                 t!("onboarding.profileBody"),
                 Some(t!("onboarding.profileHint")),
             ),
-            2 => (
+            2 if cfg!(windows) => (
                 t!("onboarding.serviceTitle"),
                 t!("onboarding.serviceBody"),
                 Some(t!("onboarding.serviceHint")),
+            ),
+            2 => (
+                t!("onboarding.tunTitle"),
+                t!("onboarding.tunBody"),
+                Some(t!("onboarding.tunHint")),
             ),
             _ => (
                 t!("onboarding.proxyTitle"),

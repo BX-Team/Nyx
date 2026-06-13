@@ -101,6 +101,9 @@ windows = { version = "0.62", features = [
 [target.'cfg(not(windows))'.dependencies]
 libc = "0.2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+caps = "0.5"
+
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
 
@@ -115,7 +118,7 @@ license-file = ["LICENSE", "0"]
 extended-description = "A modern, lightweight desktop GUI for the Mihomo proxy core."
 section = "net"
 priority = "optional"
-depends = "$auto, libgtk-3-0, libayatana-appindicator3-1"
+depends = "$auto, libgtk-3-0, libayatana-appindicator3-1, libcap2-bin"
 assets = [
     ["target/release/nyx", "usr/bin/", "755"],
     ["installer/linux/nyx.desktop", "usr/share/applications/", "644"],
@@ -134,5 +137,6 @@ gtk3 = "*"
 "libayatana-appindicator-gtk3" = "*"
 fontconfig = "*"
 freetype = "*"
+libcap = "*"
 libxkbcommon = "*"
 vulkan-loader = "*"

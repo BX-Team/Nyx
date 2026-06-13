@@ -2421,6 +2421,26 @@ impl NyxApp {
         .detach();
     }
 
+    /// Grants TUN capabilities to the Nyx binary via `pkexec setcap` (Linux).
+    /// Takes effect on the next launch.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn grant_tun(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |_this, cx| {
+            let res = runtime::spawn(async { backend::elevation::grant_tun_caps() }).await;
+            let note = match res {
+                Ok(Ok(())) => gpui_component::notification::Notification::info(
+                    t!("pages.settings.tunGrantedToast").to_string(),
+                ),
+                Ok(Err(e)) => gpui_component::notification::Notification::error(e),
+                Err(_) => gpui_component::notification::Notification::error(
+                    t!("pages.settings.tunGrantFailed").to_string(),
+                ),
+            };
+            cx.update(|cx| crate::app::actions::notify(note, cx));
+        })
+        .detach();
+    }
+
     /// Persists the selected core channel and (re)installs that core, then
     /// restarts. `channel` is `mihomo` (stable) or `mihomo-alpha` (prerelease).
     pub(crate) fn install_core(&mut self, channel: &'static str, cx: &mut Context<Self>) {
