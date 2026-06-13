@@ -256,6 +256,43 @@ fn merge_yaml(base: &str, patch: &str) -> String {
     serde_yaml::to_string(&base_val).unwrap_or_default()
 }
 
+/// Decides, per overridable section (`dns`/`sniffer`/`tun`), whether the app's
+/// override block should be layered onto the profile. When `force` is set the
+/// app block always wins; otherwise, if the profile already defines a non-empty
+/// section we drop the app block so the subscription's own config is used. The
+/// `tun` section keeps its `enable` key regardless — that's the master switch.
+fn apply_section_policy(
+    profile: &serde_yaml::Value,
+    overrides: &mut serde_yaml::Value,
+    section: &str,
+    force: bool,
+) {
+    if force {
+        return;
+    }
+    let profile_has = profile
+        .get(section)
+        .and_then(|v| v.as_mapping())
+        .map(|m| !m.is_empty())
+        .unwrap_or(false);
+    if !profile_has {
+        return;
+    }
+    let serde_yaml::Value::Mapping(ref mut map) = overrides else {
+        return;
+    };
+    let key = serde_yaml::Value::String(section.to_string());
+    let kept_enable = (section == "tun")
+        .then(|| map.get(&key).and_then(|t| t.get("enable")).cloned())
+        .flatten();
+    map.remove(&key);
+    if let Some(enable) = kept_enable {
+        let mut tun = serde_yaml::Mapping::new();
+        tun.insert(serde_yaml::Value::String("enable".into()), enable);
+        map.insert(key, serde_yaml::Value::Mapping(tun));
+    }
+}
+
 fn deep_merge_yaml(base: &mut serde_yaml::Value, patch: serde_yaml::Value) {
     if let (serde_yaml::Value::Mapping(ref mut base_map), serde_yaml::Value::Mapping(patch_map)) =
         (base, patch)
@@ -340,7 +377,34 @@ pub async fn rebuild_config() -> Result<String> {
         profile_id
     );
 
-    let base_merged = merge_yaml(&profile_yaml, &overrides_yaml);
+    let effective_overrides = {
+        let profile_val: serde_yaml::Value =
+            serde_yaml::from_str(&profile_yaml).unwrap_or(serde_yaml::Value::Null);
+        let mut overrides_val: serde_yaml::Value = serde_yaml::from_str(&overrides_yaml)
+            .unwrap_or(serde_yaml::Value::Mapping(Default::default()));
+        use crate::backend::config::app_config_bool;
+        apply_section_policy(
+            &profile_val,
+            &mut overrides_val,
+            "dns",
+            app_config_bool("controlDns"),
+        );
+        apply_section_policy(
+            &profile_val,
+            &mut overrides_val,
+            "sniffer",
+            app_config_bool("controlSniff"),
+        );
+        apply_section_policy(
+            &profile_val,
+            &mut overrides_val,
+            "tun",
+            app_config_bool("controlTun"),
+        );
+        serde_yaml::to_string(&overrides_val).unwrap_or(overrides_yaml)
+    };
+
+    let base_merged = merge_yaml(&profile_yaml, &effective_overrides);
     let merged = if let Some(ref id) = profile_id {
         apply_rule_overrides(&base_merged, id).await
     } else {
