@@ -207,9 +207,7 @@ pages:
     snifferSkipDst: Пропускать адреса назначения
     snifferSkipSrc: Пропускать исходные адреса
     resources: Ресурсы
-    resGeoData: Гео-базы
     resUpdateGeo: Обновить гео-данные
-    resUpdateDashboard: Обновить панель
     resProxyProviders: Провайдеры прокси
     resRuleProviders: Провайдеры правил
     resNoProviders: Нет провайдеров

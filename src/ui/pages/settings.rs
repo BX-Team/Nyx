@@ -287,6 +287,7 @@ impl NyxApp {
         self.sub_scroll(
             t!("pages.settings.tunMode").to_string(),
             override_on,
+            None,
             body,
             cx,
         )
@@ -403,7 +404,13 @@ impl NyxApp {
             ),
         ]));
 
-        self.sub_scroll(t!("pages.settings.systemProxy").to_string(), true, body, cx)
+        self.sub_scroll(
+            t!("pages.settings.systemProxy").to_string(),
+            true,
+            None,
+            body,
+            cx,
+        )
     }
 
     fn render_settings_dns(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -530,7 +537,13 @@ impl NyxApp {
                 override_on,
             ));
 
-        self.sub_scroll(t!("pages.settings.dns").to_string(), override_on, body, cx)
+        self.sub_scroll(
+            t!("pages.settings.dns").to_string(),
+            override_on,
+            None,
+            body,
+            cx,
+        )
     }
 
     /// One DNS boolean row that patches `dns.<key>` on toggle.
@@ -763,7 +776,13 @@ impl NyxApp {
                 true,
             ));
 
-        self.sub_scroll(t!("pages.settings.mihomo").to_string(), true, body, cx)
+        self.sub_scroll(
+            t!("pages.settings.mihomo").to_string(),
+            true,
+            None,
+            body,
+            cx,
+        )
     }
 
     /// Core version + channel (stable/prerelease) + update button.
@@ -1198,6 +1217,7 @@ impl NyxApp {
         self.sub_scroll(
             t!("pages.settings.sniffer").to_string(),
             override_on,
+            None,
             body,
             cx,
         )
@@ -1261,28 +1281,14 @@ impl NyxApp {
 
     fn render_settings_resources(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let busy = self.resources_busy;
-        let geo_card = settings_card(t!("pages.settings.resGeoData")).child(
-            h_flex()
-                .gap_2()
-                .flex_wrap()
-                .child(
-                    Button::new("res-geo")
-                        .primary()
-                        .small()
-                        .label(t!("pages.settings.resUpdateGeo").to_string())
-                        .disabled(busy)
-                        .on_click(cx.listener(|this, _, _, cx| this.update_resource("geo", cx))),
-                )
-                .child(
-                    Button::new("res-ui")
-                        .small()
-                        .label(t!("pages.settings.resUpdateDashboard").to_string())
-                        .disabled(busy)
-                        .on_click(cx.listener(|this, _, _, cx| this.update_resource("ui", cx))),
-                ),
-        );
+        let geo_btn = Button::new("res-geo")
+            .primary()
+            .small()
+            .label(t!("pages.settings.resUpdateGeo").to_string())
+            .disabled(busy)
+            .on_click(cx.listener(|this, _, _, cx| this.update_geo(cx)))
+            .into_any_element();
         let body = settings_body()
-            .child(geo_card)
             .child(self.providers_card(
                 t!("pages.settings.resProxyProviders").to_string(),
                 self.proxy_providers.clone(),
@@ -1295,7 +1301,13 @@ impl NyxApp {
                 true,
                 cx,
             ));
-        self.sub_scroll(t!("pages.settings.resources").to_string(), false, body, cx)
+        self.sub_scroll(
+            t!("pages.settings.resources").to_string(),
+            false,
+            Some(geo_btn),
+            body,
+            cx,
+        )
     }
 
     /// A card listing providers with a per-row view + update button, plus an
@@ -1442,7 +1454,13 @@ impl NyxApp {
                 cx,
             ),
         ]));
-        self.sub_scroll(t!("pages.settings.appearance").to_string(), false, body, cx)
+        self.sub_scroll(
+            t!("pages.settings.appearance").to_string(),
+            false,
+            None,
+            body,
+            cx,
+        )
     }
 
     fn render_settings_advanced(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1475,7 +1493,13 @@ impl NyxApp {
                     true,
                 ),
             ]));
-        self.sub_scroll(t!("pages.settings.advanced").to_string(), true, body, cx)
+        self.sub_scroll(
+            t!("pages.settings.advanced").to_string(),
+            true,
+            None,
+            body,
+            cx,
+        )
     }
 
     fn render_settings_shortcuts(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1537,7 +1561,13 @@ impl NyxApp {
             .on_key_down(cx.listener(|this, ev: &gpui::KeyDownEvent, _window, cx| {
                 this.on_recorder_key(ev, cx)
             }));
-        self.sub_scroll(t!("pages.settings.shortcuts").to_string(), false, body, cx)
+        self.sub_scroll(
+            t!("pages.settings.shortcuts").to_string(),
+            false,
+            None,
+            body,
+            cx,
+        )
     }
 
     /// One shortcut row: click to record, shows "Press keys…" while recording.
@@ -1683,11 +1713,13 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// Wraps a sub-page body with a back-navigation header and optional Save.
+    /// Wraps a sub-page body with a back-navigation header, an optional Save
+    /// button, and an optional right-aligned header action element.
     fn sub_scroll(
         &self,
         title: String,
         save: bool,
+        action: Option<AnyElement>,
         body: impl IntoElement,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -1736,6 +1768,7 @@ impl NyxApp {
                                     .child(title),
                             ),
                     )
+                    .when_some(action, |this, a| this.child(a))
                     .when(save, |this| {
                         this.child(
                             div()

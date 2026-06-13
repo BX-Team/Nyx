@@ -161,13 +161,12 @@ pub async fn group_delay(group: &str, test_url: &str, timeout: u32) -> Result<se
 
 pub async fn upgrade_geo() -> Result<()> {
     let url = format!("{}/configs/geo", base_url());
-    http().patch(&url).send().await?;
-    Ok(())
-}
-
-pub async fn upgrade_ui() -> Result<()> {
-    let url = format!("{}/upgrade/ui", base_url());
-    http().post(&url).send().await?;
+    let resp = http().post(&url).send().await?;
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!("geo update failed: {status} {body}"));
+    }
     Ok(())
 }
 
