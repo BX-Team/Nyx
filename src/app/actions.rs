@@ -65,6 +65,17 @@ pub fn toggle_window(cx: &mut App) {
     }
 }
 
+/// Switches a proxy group's selection (from the tray), then refreshes groups so
+/// the UI and tray check-marks update.
+pub fn set_proxy(group: String, node: String, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let (g, n) = (group.clone(), node.clone());
+        let _ = runtime::spawn(async move { backend::mihomo::change_proxy(&g, &n).await }).await;
+        crate::app::bootstrap::refresh_runtime_data(cx).await;
+    })
+    .detach();
+}
+
 /// Optimistically switches proxy mode and patches the controlled config.
 pub fn set_mode(mode: &'static str, cx: &mut App) {
     AppState::global(cx).update(cx, |st, c| st.set_mode(mode, c));

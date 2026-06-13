@@ -57,6 +57,7 @@ pub async fn refresh_runtime_data(cx: &mut AsyncApp) {
         cx.update(|cx| {
             let parsed = state::parse_groups(&groups_val);
             AppState::global(cx).update(cx, |st, c| st.set_groups(parsed, c));
+            crate::app::tray::rebuild(cx);
         });
     }
 
