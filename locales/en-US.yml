@@ -28,6 +28,7 @@ languages:
   native:
     enUS: English
     ruRU: Русский
+    zhCN: 简体中文
 pages:
   home:
     connected: Connected
