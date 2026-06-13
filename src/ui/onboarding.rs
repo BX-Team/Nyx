@@ -166,14 +166,27 @@ impl NyxApp {
                     ),
             );
 
-        div()
-            .id("onboarding-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(rgba(0x000000C0))
-            .child(card)
+        // The welcome step is a centered modal; the action steps float in the
+        // bottom-right corner WITHOUT a scrim so the real UI behind (nav, the
+        // "Add" button, the add-subscription modal) stays clickable.
+        if step == 0 {
+            div()
+                .id("onboarding-scrim")
+                .absolute()
+                .inset_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(rgba(0x000000C0))
+                .child(card)
+                .into_any_element()
+        } else {
+            div()
+                .absolute()
+                .bottom(px(20.))
+                .right(px(20.))
+                .child(card)
+                .into_any_element()
+        }
     }
 }

@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
-use crate::backend::{api, dirs, elevation, manager};
+#[cfg(windows)]
+use crate::backend::elevation;
+use crate::backend::{api, dirs, manager};
 
 const SERVICE_NAME: &str = "Nyx Service";
 const SERVICE_DISPLAY_NAME: &str = "Nyx Mihomo Service";
@@ -545,6 +547,21 @@ pub async fn stop_service_for_update() -> Result<(), String> {
         }
         let _ = wait_for_service_state(false).await;
     }
+    Ok(())
+}
+
+/// Fully stops the running core, whether it's managed by the Windows service
+/// (StopCore over IPC) or a locally-spawned process. Used on "quit with core".
+pub async fn stop_core_complete() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        if service_query_state().ok().flatten() == Some("running".to_string()) {
+            let req = crate::backend::service_host::IpcRequest::StopCore;
+            let _ = send_ipc_request(&req).await;
+            return Ok(());
+        }
+    }
+    let _ = manager::stop_core().await;
     Ok(())
 }
 

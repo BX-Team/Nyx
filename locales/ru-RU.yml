@@ -310,3 +310,12 @@ onboarding:
   next: Далее
   start: Начать
   finish: Готово
+tray:
+  show: Показать окно
+  proxies: Прокси
+  modeRule: Режим правил
+  modeGlobal: Глобальный режим
+  modeDirect: Прямой режим
+  restartCore: Перезапустить ядро
+  quitNoCore: Выйти, оставив ядро
+  quit: Выход

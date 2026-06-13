@@ -135,8 +135,9 @@ pub fn quit_without_core(cx: &mut App) {
     cx.quit();
 }
 
-/// Stops the core (best-effort, blocking) then quits.
+/// Stops the core completely (service-managed or local, best-effort, blocking)
+/// then quits.
 pub fn quit_with_core(cx: &mut App) {
-    let _ = runtime::runtime().block_on(backend::manager::stop_core());
+    let _ = runtime::runtime().block_on(backend::service::stop_core_complete());
     cx.quit();
 }
