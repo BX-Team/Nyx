@@ -9,6 +9,7 @@ pub mod service;
 pub mod service_host;
 pub mod startup;
 pub mod streaming;
+pub mod sysproxy;
 pub mod updater;
 
 #[cfg(windows)]

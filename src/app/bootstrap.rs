@@ -47,6 +47,21 @@ pub fn spawn_backend_startup(cx: &mut App) {
         runtime::detach(async move { backend::streaming::stream_logs(tx).await });
 
         refresh_runtime_data(cx).await;
+
+        // Re-apply the saved system-proxy state now the core (and its mixed
+        // port) are up — also clears any proxy left over from a prior crash.
+        if let Ok(Ok(cfg)) = runtime::spawn(backend::config::get_app_config()).await {
+            let enable = cfg
+                .get("sysProxy")
+                .and_then(|v| v.get("enable"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let affect = cfg
+                .get("affectVPNConnections")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let _ = runtime::spawn(backend::sysproxy::apply(enable, affect)).await;
+        }
     })
     .detach();
 }
