@@ -88,6 +88,11 @@ pages:
     fileSelected: File selected
     urlLabel: Subscription URL
     nameLabel: Name (optional)
+    intervalLabel: Auto-update every (hours, 0 = off)
+    autoEvery: "⟳ %{n}h"
+    autoUpdated: Subscriptions updated
+    quotaWarn: "%{name}: subscription quota almost used up"
+    expiryWarn: "%{name}: subscription expires soon"
     expires: Expires
     active: ACTIVE
     days: "%{n} days"

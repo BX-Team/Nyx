@@ -130,6 +130,12 @@ impl NyxApp {
             chips = chips.child(chip(&t!("pages.profiles.active"), true));
         }
         chips = chips.child(chip(&p.kind.to_uppercase(), false));
+        if p.interval > 0 {
+            chips = chips.child(chip(
+                &t!("pages.profiles.autoEvery", n => p.interval / 60),
+                false,
+            ));
+        }
 
         let middle = v_flex()
             .flex_1()
@@ -382,6 +388,12 @@ impl NyxApp {
                         field_label(&t!("pages.profiles.nameLabel"))
                             .child(Input::new(&self.profile_add_name)),
                     )
+                    .when(!local, |this| {
+                        this.child(
+                            field_label(&t!("pages.profiles.intervalLabel"))
+                                .child(Input::new(&self.profile_interval)),
+                        )
+                    })
                     .child(
                         h_flex()
                             .justify_end()

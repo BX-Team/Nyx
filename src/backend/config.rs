@@ -318,10 +318,19 @@ pub async fn add_profile_item(item: Value) -> Result<String, String> {
                     }
                 }
             }
-            if let Some(v) = headers.get("profile-update-interval") {
-                if let Ok(s) = v.to_str() {
-                    if let Ok(h) = s.trim().parse::<i64>() {
-                        meta["interval"] = Value::Number((h * 60).into());
+            // The subscription's own update interval is only a default — a
+            // manually-set interval on the item takes precedence and is kept.
+            let has_manual_interval = meta
+                .get("interval")
+                .and_then(Value::as_i64)
+                .map(|v| v > 0)
+                .unwrap_or(false);
+            if !has_manual_interval {
+                if let Some(v) = headers.get("profile-update-interval") {
+                    if let Ok(s) = v.to_str() {
+                        if let Ok(h) = s.trim().parse::<i64>() {
+                            meta["interval"] = Value::Number((h * 60).into());
+                        }
                     }
                 }
             }
@@ -447,6 +456,41 @@ pub async fn update_profile_item(item: Value) -> Result<(), String> {
         }
     }
     Err(format!("profile '{id}' not found"))
+}
+
+/// Re-downloads every remote profile whose `interval` (minutes) has elapsed
+/// since its last `updated` timestamp. Returns the display names of the
+/// profiles that were refreshed.
+pub async fn run_due_auto_updates() -> Vec<String> {
+    let Ok(cfg) = profile_config().await else {
+        return Vec::new();
+    };
+    let now = chrono::Utc::now().timestamp_millis();
+    let items = cfg["items"].as_array().cloned().unwrap_or_default();
+    let mut updated = Vec::new();
+    for item in items {
+        if item["type"].as_str() != Some("remote") {
+            continue;
+        }
+        let interval_min = item["interval"].as_i64().unwrap_or(0);
+        if interval_min <= 0 {
+            continue;
+        }
+        let last = item["updated"].as_i64().unwrap_or(0);
+        if now - last < interval_min * 60 * 1000 {
+            continue;
+        }
+        let name = item["name"].as_str().unwrap_or_default().to_string();
+        match add_profile_item(item).await {
+            Ok(_) => updated.push(if name.is_empty() {
+                "profile".to_string()
+            } else {
+                name
+            }),
+            Err(e) => log::warn!("[auto-update] '{name}' failed: {e}"),
+        }
+    }
+    updated
 }
 
 pub async fn remove_profile_item(id: String) -> Result<(), String> {

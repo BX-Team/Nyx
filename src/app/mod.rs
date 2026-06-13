@@ -6,6 +6,7 @@ pub mod bootstrap;
 pub mod deep_link;
 pub mod hotkeys;
 pub mod runtime;
+pub mod scheduler;
 pub mod single_instance;
 pub mod state;
 pub mod tray;
