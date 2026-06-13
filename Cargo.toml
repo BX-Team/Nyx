@@ -1,0 +1,138 @@
+[package]
+name = "nyx"
+version = "1.1.0"
+description = "Nyx — Mihomo/Clash GUI"
+authors = ["BX Team"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+homepage = "https://github.com/BX-Team/Nyx"
+repository = "https://github.com/BX-Team/Nyx"
+
+[profile.dev]
+incremental = true
+
+# gpui is very slow at opt-level 0; bump it so the dev UI is usable.
+[profile.dev.package.gpui]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
+
+[lib]
+name = "nyx_lib"
+crate-type = ["rlib"]
+
+[dependencies]
+# --- UI stack (gpui + gpui-component) ---
+# gpui / gpui_platform are intentionally UNPINNED git deps: gpui-component pulls
+# `gpui = { git = zed }` unpinned itself, and as a git dependency its transitive
+# ref always resolves to zed HEAD in our lockfile. Pinning a different rev here
+# would produce two incompatible gpui versions. Reproducibility comes from the
+# committed Cargo.lock (which freezes the exact resolved zed/longbridge commits).
+gpui = { git = "https://github.com/zed-industries/zed" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
+    "font-kit",
+    "x11",
+    "wayland",
+    "runtime_shaders",
+] }
+gpui-component = { git = "https://github.com/longbridge/gpui-component", features = [
+    "tree-sitter-yaml",
+] }
+gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" }
+
+# --- base utilities ---
+log = "0.4"
+env_logger = "0.11"
+anyhow = "1"
+
+# --- config / state / i18n (M1) ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+dirs = "6"
+chrono = { version = "0.4", features = ["serde"] }
+rust-i18n = "3"
+
+# --- backend bridge + mihomo (M2) ---
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.13", features = ["json", "stream"] }
+mihomo-rs = "2.2"
+once_cell = "1"
+parking_lot = "0.12"
+rust-embed = "8"
+url = "2"
+futures-util = "0.3"
+base64 = "0.22"
+md-5 = "0.10"
+
+# --- system integration (M5) ---
+tray-icon = "0.19"
+global-hotkey = "0.6"
+auto-launch = "0.5"
+png = "0.17"
+
+# --- auto-update (M6) ---
+self_update = { version = "0.42", default-features = false, features = [
+    "rustls",
+    "compression-flate2",
+    "archive-tar",
+    "archive-zip",
+] }
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.8"
+winreg = "0.55"
+raw-window-handle = "0.6"
+image = "0.25"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+    "Win32_Graphics_Gdi",
+] }
+
+[target.'cfg(not(windows))'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
+# --- Linux packaging (cargo-deb / cargo-generate-rpm) ---
+# These read `target/release/nyx`, so the Linux release job builds without an
+# explicit --target (the ubuntu runner is x86_64 anyway).
+
+[package.metadata.deb]
+maintainer = "BX Team"
+copyright = "BX Team, GPL-3.0-or-later"
+license-file = ["LICENSE", "0"]
+extended-description = "A modern, lightweight desktop GUI for the Mihomo proxy core."
+section = "net"
+priority = "optional"
+depends = "$auto, libgtk-3-0, libayatana-appindicator3-1"
+assets = [
+    ["target/release/nyx", "usr/bin/", "755"],
+    ["installer/linux/nyx.desktop", "usr/share/applications/", "644"],
+    ["assets/brand/logo.png", "usr/share/icons/hicolor/512x512/apps/nyx.png", "644"],
+]
+
+[package.metadata.generate-rpm]
+assets = [
+    { source = "target/release/nyx", dest = "/usr/bin/nyx", mode = "755" },
+    { source = "installer/linux/nyx.desktop", dest = "/usr/share/applications/nyx.desktop", mode = "644" },
+    { source = "assets/brand/logo.png", dest = "/usr/share/icons/hicolor/512x512/apps/nyx.png", mode = "644" },
+]
+
+[package.metadata.generate-rpm.requires]
+gtk3 = "*"
+"libayatana-appindicator-gtk3" = "*"
+fontconfig = "*"
+freetype = "*"
+libxkbcommon = "*"
+vulkan-loader = "*"

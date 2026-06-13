@@ -13,98 +13,47 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
-      backend: ${{ steps.filter.outputs.backend }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            frontend:
-              - 'src/**'
-              - 'public/**'
-              - 'index.html'
-              - 'package.json'
-              - 'bun.lockb'
-              - 'bun.lock'
-              - 'biome.json'
-              - 'tsconfig*.json'
-              - 'vite.config.ts'
-            backend:
-              - 'src-tauri/**'
-              - 'package.json'
-              - 'bun.lockb'
-              - 'bun.lock'
-
-  frontend:
-    name: Frontend Check
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
-    runs-on: ubuntu-latest
+  check:
+    name: Check (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Biome format & lint check
-        run: bun run check
-
-      - name: TypeScript type-check
-        run: bun run typecheck
-
-  backend:
-    name: Backend Check
-    needs: changes
-    if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
+      # gpui (X11/Wayland/Vulkan/font-kit) + tray-icon (GTK/appindicator/xdo).
       - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-
-      - name: Setup Bun (for Tauri build scripts)
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
+          sudo apt-get install -y \
+            libgtk-3-dev libxdo-dev libayatana-appindicator3-dev \
+            libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libfontconfig1-dev libfreetype6-dev \
+            libvulkan-dev mesa-vulkan-drivers
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          targets: ${{ matrix.target }}
           components: clippy, rustfmt
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            ./src-tauri -> target
 
-      - name: Cargo Format Check
+      - name: Cargo format check
         run: cargo fmt --check
-        working-directory: ./src-tauri
 
-      - name: Cargo Check
-        run: cargo check
-        working-directory: ./src-tauri
+      - name: Cargo check
+        run: cargo check --target ${{ matrix.target }}
 
-      - name: Cargo Clippy Check
-        run: cargo clippy -- -D warnings
-        working-directory: ./src-tauri
+      - name: Cargo clippy
+        run: cargo clippy --target ${{ matrix.target }} -- -D warnings

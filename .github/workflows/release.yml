@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 1.2.3)'
+        description: "Release version (e.g. 1.2.3)"
         required: true
         type: string
       prerelease:
-        description: 'Mark as pre-release'
+        description: "Mark as pre-release"
         required: false
         type: boolean
         default: false
@@ -34,7 +34,6 @@ jobs:
       tag: ${{ steps.meta.outputs.tag }}
       previous_tag: ${{ steps.prev_tag.outputs.latest_tag }}
       changelog: ${{ steps.changelog.outputs.changelog }}
-      release_id: ${{ steps.create_release.outputs.id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -52,19 +51,18 @@ jobs:
             exit 1
           fi
 
-      - name: Set Version
+      - name: Set version in Cargo.toml / Cargo.lock / flake.nix
         shell: bash
         run: |
           VERSION="${{ inputs.version }}"
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-          sed -i '/name = "nyx"/,/^version =/ s/^version = ".*/version = "'"$VERSION"'"/' src-tauri/Cargo.lock
-          sed -i "s/^  \"version\": \".*\",/  \"version\": \"$VERSION\",/" package.json
-          sed -i "s/^  \"version\": \".*\",/  \"version\": \"$VERSION\",/" src-tauri/tauri.conf.json
+          sed -i "0,/^version = \".*\"/s//version = \"$VERSION\"/" Cargo.toml
+          sed -i '/^name = "nyx"$/,/^version = / s/^version = ".*/version = "'"$VERSION"'"/' Cargo.lock
+          sed -i '/pname = "nyx";/,/version = / s/version = "[^"]*";/version = "'"$VERSION"'";/' flake.nix
 
-      - name: Commit Changes
+      - name: Commit version bump
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
-          commit_message: 'chore(release): bump version to ${{ inputs.version }}'
+          commit_message: "chore(release): bump version to ${{ inputs.version }}"
 
       - name: Compute release tag
         id: meta
@@ -94,99 +92,171 @@ jobs:
           mode: COMMIT
           fromTag: ${{ steps.prev_tag.outputs.latest_tag }}
           toTag: v${{ inputs.version }}
-          configuration: '.github/changelog_configuration.json'
+          configuration: ".github/changelog_configuration.json"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create draft release
-        id: create_release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ inputs.version }}
           name: Nyx ${{ inputs.version }}
-          body: Draft release. Changelog and metadata will be finalized after all targets complete.
+          body: Draft release. Assets are uploaded by the build matrix.
           draft: true
           prerelease: ${{ inputs.prerelease }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  build:
-    name: Build (${{ matrix.target }})
+  build-windows:
+    name: Build (Windows)
     needs: [prepare]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bundles: nsis
-            arch: x64
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            bundles: nsis
-            arch: arm64
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundles: appimage
-            arch: x86_64
-
+    runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           ref: v${{ inputs.version }}
 
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            ./src-tauri -> target
 
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
+      - name: Build release binary
+        run: cargo build --release
 
-      - name: Build and upload Tauri artifacts
-        id: tauri_build
-        uses: tauri-apps/tauri-action@v0.6.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tauriScript: bun tauri
-          includeUpdaterJson: false
-          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Portable zip
+        shell: pwsh
+        run: |
+          $name = "nyx-x86_64-pc-windows-msvc.zip"
+          Compress-Archive -Path "target/release/nyx.exe" -DestinationPath $name -Force
 
-      - name: Upload Release Assets
+      - name: Build installer (NSIS)
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "target/release/nyx.exe").Path
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+            "/DAPPVERSION=${{ inputs.version }}" "/DSOURCEEXE=$exe" `
+            installer/windows/nyx.nsi
+          Copy-Item "installer/windows/Nyx_${{ inputs.version }}_x64-setup.exe" .
+
+      - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ inputs.version }}
           files: |
-            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*setup*
-            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*AppImage*
+            nyx-x86_64-pc-windows-msvc.zip
+            Nyx_${{ inputs.version }}_x64-setup.exe
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux:
+    name: Build (Linux)
+    needs: [prepare]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: v${{ inputs.version }}
+
+      # gpui (X11/Wayland/Vulkan/font-kit) + tray-icon (GTK/appindicator/xdo).
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libxdo-dev libayatana-appindicator3-dev \
+            libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libfontconfig1-dev libfreetype6-dev \
+            libvulkan-dev mesa-vulkan-drivers
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      # No --target: the binary lands in target/release/nyx, which the
+      # cargo-deb / cargo-generate-rpm asset paths and the PKGBUILD expect.
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Install packaging tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-generate-rpm
+
+      - name: Portable tarball
+        run: tar -C target/release -czf nyx-x86_64-unknown-linux-gnu.tar.gz nyx
+
+      - name: Build .deb
+        run: cargo deb --no-build --output nyx_${{ inputs.version }}_amd64.deb
+
+      - name: Build .rpm
+        run: |
+          cargo generate-rpm
+          cp target/generate-rpm/*.rpm "nyx-${{ inputs.version }}.x86_64.rpm"
+
+      - name: Build .pkg.tar.xz (Arch)
+        run: |
+          cp target/release/nyx        installer/arch/nyx
+          cp installer/linux/nyx.desktop installer/arch/nyx.desktop
+          cp assets/brand/logo.png       installer/arch/nyx.png
+          docker run --rm -v "$PWD/installer/arch:/pkg" -e VER="${{ inputs.version }}" \
+            archlinux:latest bash -c '
+              pacman -Sy --noconfirm base-devel >/dev/null
+              useradd -m builder
+              cp -r /pkg /home/builder/pkg && chown -R builder /home/builder/pkg
+              cd /home/builder/pkg
+              sed -i "s/^pkgver=.*/pkgver=${VER//-/_}/" PKGBUILD
+              sudo -u builder env PKGEXT=.pkg.tar.xz makepkg -f --nodeps
+              cp *.pkg.tar.xz /pkg/
+            '
+          cp installer/arch/*.pkg.tar.xz .
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ inputs.version }}
+          files: |
+            nyx-x86_64-unknown-linux-gnu.tar.gz
+            nyx_${{ inputs.version }}_amd64.deb
+            nyx-${{ inputs.version }}.x86_64.rpm
+            nyx-*-x86_64.pkg.tar.xz
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  cachix:
+    name: Push to Cachix
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    if: ${{ ! inputs.prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: v${{ inputs.version }}
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Set up Cachix
+        uses: cachix/cachix-action@v16
+        with:
+          name: nyx
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build (and push) the flake package
+        run: nix build --print-build-logs .#nyx
 
   publish:
     name: Publish release
-    needs: [prepare, build]
+    needs: [prepare, build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - name: Publish release with changelog
+      - name: Finalize release with changelog
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
@@ -195,35 +265,3 @@ jobs:
           draft: false
           prerelease: ${{ inputs.prerelease }}
           token: ${{ secrets.GITHUB_TOKEN }}
-
-  updater:
-    name: Publish updater/update.json
-    needs: [prepare, publish]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Generate update.json from release assets
-        run: bun scripts/updater.js
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-          VERSION: ${{ inputs.version }}
-          RELEASE_NOTES: ${{ needs.prepare.outputs.changelog }}
-
-      - name: Publish update.json to updater tag
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: updater
-          name: updater
-          body: Auto-generated updater metadata file.
-          draft: false
-          prerelease: true
-          token: ${{ secrets.GITHUB_TOKEN }}
-          files: update.json

@@ -1,0 +1,28 @@
+# Maintainer: BX Team
+#
+# Builds a binary package (nyx-<ver>-x86_64.pkg.tar.xz) from a prebuilt `nyx`
+# binary placed next to this PKGBUILD by CI. `pkgver` is injected at build time.
+pkgname=nyx
+pkgver=0.0.0
+pkgrel=1
+pkgdesc="Mihomo/Clash GUI"
+arch=('x86_64')
+url="https://github.com/BX-Team/Nyx"
+license=('GPL-3.0-or-later')
+depends=(
+  'fontconfig'
+  'freetype2'
+  'libxcb'
+  'libxkbcommon'
+  'wayland'
+  'vulkan-icd-loader'
+  'gtk3'
+  'libayatana-appindicator'
+)
+options=('!strip' '!debug')
+
+package() {
+  install -Dm755 "$startdir/nyx"          "$pkgdir/usr/bin/nyx"
+  install -Dm644 "$startdir/nyx.desktop"  "$pkgdir/usr/share/applications/nyx.desktop"
+  install -Dm644 "$startdir/nyx.png"      "$pkgdir/usr/share/icons/hicolor/512x512/apps/nyx.png"
+}
