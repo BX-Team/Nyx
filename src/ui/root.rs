@@ -1043,6 +1043,9 @@ impl Render for NyxApp {
                     .child(self.render_rail(cx))
                     .child(self.render_content(window, cx)),
             )
+            // Onboarding coach card sits below the modals so the add-subscription
+            // dialog (and others) open above it.
+            .children(onboarding)
             .children(updater_modal)
             .children(reset_modal)
             .children(provider_viewer_modal)
@@ -1050,7 +1053,6 @@ impl Render for NyxApp {
             .children(mrs_modal)
             .children(dialog_layer)
             .children(notification_layer)
-            .children(onboarding)
     }
 }
 

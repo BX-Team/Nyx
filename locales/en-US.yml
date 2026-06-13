@@ -310,3 +310,12 @@ onboarding:
   next: Next
   start: Get started
   finish: Done
+tray:
+  show: Show window
+  proxies: Proxies
+  modeRule: Rule mode
+  modeGlobal: Global mode
+  modeDirect: Direct mode
+  restartCore: Restart core
+  quitNoCore: Quit without core
+  quit: Quit

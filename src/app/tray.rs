@@ -6,6 +6,8 @@ use tray_icon::{
     Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
 };
 
+use rust_i18n::t;
+
 use crate::app::actions;
 use crate::app::state::AppState;
 
@@ -40,7 +42,7 @@ fn load_icon() -> Option<Icon> {
 /// (Selector) groups → nodes with the current selection checked.
 fn build_menu(cx: &App) -> Menu {
     let menu = Menu::new();
-    let _ = menu.append(&MenuItem::with_id("show", "Show Window", true, None));
+    let _ = menu.append(&MenuItem::with_id("show", &t!("tray.show"), true, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
 
     let groups = AppState::global(cx).read(cx).groups.clone();
@@ -49,7 +51,7 @@ fn build_menu(cx: &App) -> Menu {
         .filter(|g| g.kind.as_ref() == "Selector" && !g.all.is_empty())
         .collect();
     if !selectors.is_empty() {
-        let proxies = Submenu::new("Proxies", true);
+        let proxies = Submenu::new(&t!("tray.proxies"), true);
         for g in selectors {
             let nodes: Vec<CheckMenuItem> = g
                 .all
@@ -73,23 +75,38 @@ fn build_menu(cx: &App) -> Menu {
         let _ = menu.append(&PredefinedMenuItem::separator());
     }
 
-    let _ = menu.append(&MenuItem::with_id("mode-rule", "Rule Mode", true, None));
-    let _ = menu.append(&MenuItem::with_id("mode-global", "Global Mode", true, None));
-    let _ = menu.append(&MenuItem::with_id("mode-direct", "Direct Mode", true, None));
+    let _ = menu.append(&MenuItem::with_id(
+        "mode-rule",
+        &t!("tray.modeRule"),
+        true,
+        None,
+    ));
+    let _ = menu.append(&MenuItem::with_id(
+        "mode-global",
+        &t!("tray.modeGlobal"),
+        true,
+        None,
+    ));
+    let _ = menu.append(&MenuItem::with_id(
+        "mode-direct",
+        &t!("tray.modeDirect"),
+        true,
+        None,
+    ));
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id(
         "restart-core",
-        "Restart Core",
+        &t!("tray.restartCore"),
         true,
         None,
     ));
     let _ = menu.append(&MenuItem::with_id(
         "quit-no-core",
-        "Quit without Core",
+        &t!("tray.quitNoCore"),
         true,
         None,
     ));
-    let _ = menu.append(&MenuItem::with_id("quit", "Quit", true, None));
+    let _ = menu.append(&MenuItem::with_id("quit", &t!("tray.quit"), true, None));
     menu
 }
 

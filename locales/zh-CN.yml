@@ -311,3 +311,12 @@ onboarding:
   next: 下一步
   start: 开始
   finish: 完成
+tray:
+  show: 显示窗口
+  proxies: 代理
+  modeRule: 规则模式
+  modeGlobal: 全局模式
+  modeDirect: 直连模式
+  restartCore: 重启内核
+  quitNoCore: 退出（保留内核）
+  quit: 退出
