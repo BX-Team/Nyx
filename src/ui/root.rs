@@ -2485,6 +2485,23 @@ impl NyxApp {
         .detach();
     }
 
+    /// Flips an app-config override flag (`controlDns`/`controlSniff`/`controlTun`)
+    /// and rebuilds the core config so the new section policy takes effect.
+    pub(crate) fn toggle_override(
+        &mut self,
+        key: &'static str,
+        checked: bool,
+        cx: &mut Context<Self>,
+    ) {
+        cx.spawn(async move |_this, cx| {
+            let patch = serde_json::json!({ key: checked });
+            let _ = runtime::spawn(backend::config::patch_app_config(patch)).await;
+            let _ = runtime::spawn(backend::manager::restart_core()).await;
+            crate::app::bootstrap::refresh_runtime_data(cx).await;
+        })
+        .detach();
+    }
+
     /// Patches the controlled mihomo config under `dns` and restarts the core.
     pub(crate) fn patch_dns(&mut self, patch: serde_json::Value, cx: &mut Context<Self>) {
         cx.spawn(async move |_this, cx| {

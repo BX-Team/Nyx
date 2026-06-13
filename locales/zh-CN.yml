@@ -256,6 +256,8 @@ pages:
     trayNodeInfo: 在托盘显示节点信息
     takeOverDns: 接管 DNS
     takeOverSniffer: 接管嗅探器
+    overrideSettings: 覆盖订阅设置
+    overrideHint: 关闭时使用当前订阅的值（若订阅未提供则使用默认值）。开启以强制应用这些设置。
     networkDetection: 网络变化检测
     detectInterval: 检测间隔（秒）
     scToggleWindow: 切换窗口

@@ -255,6 +255,8 @@ pages:
     trayNodeInfo: Show node info in tray
     takeOverDns: Take over DNS
     takeOverSniffer: Take over sniffer
+    overrideSettings: Override subscription
+    overrideHint: When off, the active subscription's values are used (or defaults if it provides none). Turn on to force these settings.
     networkDetection: Network change detection
     detectInterval: Detection interval (s)
     scToggleWindow: Toggle window

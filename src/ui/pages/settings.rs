@@ -187,6 +187,7 @@ impl NyxApp {
         let strict = st.ctl_bool("tun.strict-route", false);
         let auto_detect = st.ctl_bool("tun.auto-detect-interface", true);
         let no_icmp = st.ctl_bool("tun.disable-icmp-forwarding", false);
+        let override_on = st.app_flag("controlTun");
 
         let stack_seg = h_flex()
             .gap(px(2.))
@@ -203,16 +204,20 @@ impl NyxApp {
                     .py(px(4.))
                     .rounded(px(6.))
                     .text_xs()
-                    .cursor_pointer()
                     .when(on, |t| t.bg(rgb(GREEN)).text_color(rgb(0x0B1014)))
                     .when(!on, |t| t.text_color(rgb(SUBTLE)))
+                    .when(!override_on, |t| t.opacity(0.5))
+                    .when(override_on, |t| {
+                        t.cursor_pointer()
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.patch_tun(serde_json::json!({ "stack": s }), cx)
+                            }))
+                    })
                     .child(s)
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.patch_tun(serde_json::json!({ "stack": s }), cx)
-                    }))
             }));
 
         let body = settings_body()
+            .child(self.override_group("tun-override", "controlTun", override_on, cx))
             .child(group(vec![
                 toggle_row(
                     t!("pages.settings.tunTakeover"),
@@ -230,11 +235,13 @@ impl NyxApp {
                 input_row(
                     t!("pages.settings.tunDevice"),
                     self.sub_inputs.device.as_ref(),
+                    override_on,
                     false,
                 ),
                 input_row(
                     t!("pages.settings.tunMtu"),
                     self.sub_inputs.mtu.as_ref(),
+                    override_on,
                     true,
                 ),
             ]))
@@ -244,6 +251,7 @@ impl NyxApp {
                     t!("pages.settings.tunAutoRoute"),
                     "auto-route",
                     auto_route,
+                    override_on,
                     false,
                     cx,
                 ),
@@ -252,6 +260,7 @@ impl NyxApp {
                     t!("pages.settings.tunStrictRoute"),
                     "strict-route",
                     strict,
+                    override_on,
                     false,
                     cx,
                 ),
@@ -260,6 +269,7 @@ impl NyxApp {
                     t!("pages.settings.tunAutoDetect"),
                     "auto-detect-interface",
                     auto_detect,
+                    override_on,
                     false,
                     cx,
                 ),
@@ -268,32 +278,41 @@ impl NyxApp {
                     t!("pages.settings.tunNoIcmp"),
                     "disable-icmp-forwarding",
                     no_icmp,
+                    override_on,
                     true,
                     cx,
                 ),
             ]));
 
-        self.sub_scroll(t!("pages.settings.tunMode").to_string(), true, body, cx)
+        self.sub_scroll(
+            t!("pages.settings.tunMode").to_string(),
+            override_on,
+            body,
+            cx,
+        )
     }
 
     /// One TUN boolean row that patches `tun.<key>` on toggle.
+    #[allow(clippy::too_many_arguments)]
     fn tun_toggle(
         &self,
         id: &'static str,
         label: impl Into<SharedString>,
         key: &'static str,
         value: bool,
+        enabled: bool,
         last: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         toggle_row(
             label,
             None,
-            Switch::new(id).checked(value).on_click(cx.listener(
-                move |this, checked: &bool, _, cx| {
+            Switch::new(id)
+                .checked(value)
+                .disabled(!enabled)
+                .on_click(cx.listener(move |this, checked: &bool, _, cx| {
                     this.patch_tun(serde_json::json!({ key: *checked }), cx)
-                },
-            )),
+                })),
             last,
         )
     }
@@ -373,11 +392,13 @@ impl NyxApp {
             input_row(
                 t!("pages.settings.spHost"),
                 self.sub_inputs.host.as_ref(),
+                true,
                 false,
             ),
             input_row(
                 t!("pages.settings.spBypass"),
                 self.sub_inputs.bypass.as_ref(),
+                true,
                 true,
             ),
         ]));
@@ -396,6 +417,7 @@ impl NyxApp {
         let respect_rules = st.ctl_bool("dns.respect-rules", false);
         let use_hosts = st.ctl_bool("dns.use-hosts", false);
         let use_sys_hosts = st.ctl_bool("dns.use-system-hosts", false);
+        let override_on = st.app_flag("controlDns");
 
         let mode_seg = h_flex()
             .gap(px(2.))
@@ -415,17 +437,24 @@ impl NyxApp {
                             .py(px(4.))
                             .rounded(px(6.))
                             .text_xs()
-                            .cursor_pointer()
                             .when(on, |t| t.bg(rgb(GREEN)).text_color(rgb(0x0B1014)))
                             .when(!on, |t| t.text_color(rgb(SUBTLE)))
+                            .when(!override_on, |t| t.opacity(0.5))
+                            .when(override_on, |t| {
+                                t.cursor_pointer()
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.patch_dns(
+                                            serde_json::json!({ "enhanced-mode": m }),
+                                            cx,
+                                        )
+                                    }))
+                            })
                             .child(label)
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.patch_dns(serde_json::json!({ "enhanced-mode": m }), cx)
-                            }))
                     }),
             );
 
         let body = settings_body()
+            .child(self.override_group("dns-override", "controlDns", override_on, cx))
             .child(group(vec![
                 control_row(
                     t!("pages.settings.dnsEnhancedMode"),
@@ -435,6 +464,7 @@ impl NyxApp {
                 input_row(
                     t!("pages.settings.dnsFakeIpRange"),
                     self.sub_inputs.dns_fakeip_range.as_ref(),
+                    override_on,
                     false,
                 ),
                 self.dns_toggle(
@@ -442,6 +472,7 @@ impl NyxApp {
                     t!("pages.settings.dnsIpv6"),
                     "ipv6",
                     ipv6,
+                    override_on,
                     false,
                     cx,
                 ),
@@ -450,6 +481,7 @@ impl NyxApp {
                     t!("pages.settings.dnsRespectRules"),
                     "respect-rules",
                     respect_rules,
+                    override_on,
                     false,
                     cx,
                 ),
@@ -458,6 +490,7 @@ impl NyxApp {
                     t!("pages.settings.dnsUseHosts"),
                     "use-hosts",
                     use_hosts,
+                    override_on,
                     false,
                     cx,
                 ),
@@ -466,6 +499,7 @@ impl NyxApp {
                     t!("pages.settings.dnsUseSystemHosts"),
                     "use-system-hosts",
                     use_sys_hosts,
+                    override_on,
                     true,
                     cx,
                 ),
@@ -473,45 +507,53 @@ impl NyxApp {
             .child(dns_list_card(
                 t!("pages.settings.dnsNameserver"),
                 self.sub_inputs.dns_nameserver.as_ref(),
+                override_on,
             ))
             .child(dns_list_card(
                 t!("pages.settings.dnsDefaultNs"),
                 self.sub_inputs.dns_default_ns.as_ref(),
+                override_on,
             ))
             .child(dns_list_card(
                 t!("pages.settings.dnsProxyNs"),
                 self.sub_inputs.dns_proxy_ns.as_ref(),
+                override_on,
             ))
             .child(dns_list_card(
                 t!("pages.settings.dnsDirectNs"),
                 self.sub_inputs.dns_direct_ns.as_ref(),
+                override_on,
             ))
             .child(dns_list_card(
                 t!("pages.settings.dnsFakeIpFilter"),
                 self.sub_inputs.dns_fakeip_filter.as_ref(),
+                override_on,
             ));
 
-        self.sub_scroll(t!("pages.settings.dns").to_string(), true, body, cx)
+        self.sub_scroll(t!("pages.settings.dns").to_string(), override_on, body, cx)
     }
 
     /// One DNS boolean row that patches `dns.<key>` on toggle.
+    #[allow(clippy::too_many_arguments)]
     fn dns_toggle(
         &self,
         id: &'static str,
         label: impl Into<SharedString>,
         key: &'static str,
         value: bool,
+        enabled: bool,
         last: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         toggle_row(
             label,
             None,
-            Switch::new(id).checked(value).on_click(cx.listener(
-                move |this, checked: &bool, _, cx| {
+            Switch::new(id)
+                .checked(value)
+                .disabled(!enabled)
+                .on_click(cx.listener(move |this, checked: &bool, _, cx| {
                     this.patch_dns(serde_json::json!({ key: *checked }), cx)
-                },
-            )),
+                })),
             last,
         )
     }
@@ -555,26 +597,31 @@ impl NyxApp {
                 input_row(
                     t!("pages.settings.mixedPort"),
                     self.sub_inputs.mixed_port.as_ref(),
+                    true,
                     false,
                 ),
                 input_row(
                     t!("pages.settings.socksPort"),
                     self.sub_inputs.socks_port.as_ref(),
+                    true,
                     false,
                 ),
                 input_row(
                     t!("pages.settings.httpPort"),
                     self.sub_inputs.http_port.as_ref(),
+                    true,
                     false,
                 ),
                 input_row(
                     t!("pages.settings.redirPort"),
                     self.sub_inputs.redir_port.as_ref(),
+                    true,
                     false,
                 ),
                 input_row(
                     t!("pages.settings.tproxyPort"),
                     self.sub_inputs.tproxy_port.as_ref(),
+                    true,
                     true,
                 ),
             ]))
@@ -624,16 +671,19 @@ impl NyxApp {
                 input_row(
                     t!("pages.settings.keepAliveInterval"),
                     self.sub_inputs.keep_alive_interval.as_ref(),
+                    true,
                     false,
                 ),
                 input_row(
                     t!("pages.settings.keepAliveIdle"),
                     self.sub_inputs.keep_alive_idle.as_ref(),
+                    true,
                     false,
                 ),
                 input_row(
                     t!("pages.settings.interfaceName"),
                     self.sub_inputs.interface_name.as_ref(),
+                    true,
                     true,
                 ),
             ]))
@@ -700,14 +750,17 @@ impl NyxApp {
             .child(dns_list_card(
                 t!("pages.settings.skipAuthPrefixes"),
                 self.sub_inputs.skip_auth.as_ref(),
+                true,
             ))
             .child(dns_list_card(
                 t!("pages.settings.lanAllowedIps"),
                 self.sub_inputs.lan_allowed.as_ref(),
+                true,
             ))
             .child(dns_list_card(
                 t!("pages.settings.lanDisallowedIps"),
                 self.sub_inputs.lan_disallowed.as_ref(),
+                true,
             ));
 
         self.sub_scroll(t!("pages.settings.mihomo").to_string(), true, body, cx)
@@ -1060,14 +1113,17 @@ impl NyxApp {
         let sniff_http = st.ctl("sniffer.sniff.HTTP").is_some();
         let sniff_tls = st.ctl("sniffer.sniff.TLS").is_some();
         let sniff_quic = st.ctl("sniffer.sniff.QUIC").is_some();
+        let override_on = st.app_flag("controlSniff");
 
         let body = settings_body()
+            .child(self.override_group("sniffer-override", "controlSniff", override_on, cx))
             .child(group(vec![
                 self.sniffer_toggle(
                     "sn-override",
                     t!("pages.settings.snifferOverrideDest"),
                     "override-destination",
                     override_dest,
+                    override_on,
                     false,
                     cx,
                 ),
@@ -1076,6 +1132,7 @@ impl NyxApp {
                     t!("pages.settings.snifferForceDns"),
                     "force-dns-mapping",
                     force_dns,
+                    override_on,
                     false,
                     cx,
                 ),
@@ -1084,6 +1141,7 @@ impl NyxApp {
                     t!("pages.settings.snifferParsePureIp"),
                     "parse-pure-ip",
                     parse_pure_ip,
+                    override_on,
                     true,
                     cx,
                 ),
@@ -1094,77 +1152,109 @@ impl NyxApp {
                     "HTTP",
                     &["80", "8080-8880"],
                     sniff_http,
+                    override_on,
                     false,
                     cx,
                 ),
-                self.sniff_proto_toggle("sn-tls", "TLS", &["443", "8443"], sniff_tls, false, cx),
-                self.sniff_proto_toggle("sn-quic", "QUIC", &["443", "8443"], sniff_quic, true, cx),
+                self.sniff_proto_toggle(
+                    "sn-tls",
+                    "TLS",
+                    &["443", "8443"],
+                    sniff_tls,
+                    override_on,
+                    false,
+                    cx,
+                ),
+                self.sniff_proto_toggle(
+                    "sn-quic",
+                    "QUIC",
+                    &["443", "8443"],
+                    sniff_quic,
+                    override_on,
+                    true,
+                    cx,
+                ),
             ]))
             .child(dns_list_card(
                 t!("pages.settings.snifferForceDomain"),
                 self.sub_inputs.sniff_force_domain.as_ref(),
+                override_on,
             ))
             .child(dns_list_card(
                 t!("pages.settings.snifferSkipDomain"),
                 self.sub_inputs.sniff_skip_domain.as_ref(),
+                override_on,
             ))
             .child(dns_list_card(
                 t!("pages.settings.snifferSkipDst"),
                 self.sub_inputs.sniff_skip_dst.as_ref(),
+                override_on,
             ))
             .child(dns_list_card(
                 t!("pages.settings.snifferSkipSrc"),
                 self.sub_inputs.sniff_skip_src.as_ref(),
+                override_on,
             ));
-        self.sub_scroll(t!("pages.settings.sniffer").to_string(), true, body, cx)
+        self.sub_scroll(
+            t!("pages.settings.sniffer").to_string(),
+            override_on,
+            body,
+            cx,
+        )
     }
 
     /// One sniffer boolean row (patches `sniffer.<key>` + restarts core).
+    #[allow(clippy::too_many_arguments)]
     fn sniffer_toggle(
         &self,
         id: &'static str,
         label: impl Into<SharedString>,
         key: &'static str,
         value: bool,
+        enabled: bool,
         last: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         toggle_row(
             label,
             None,
-            Switch::new(id).checked(value).on_click(cx.listener(
-                move |this, checked: &bool, _, cx| {
+            Switch::new(id)
+                .checked(value)
+                .disabled(!enabled)
+                .on_click(cx.listener(move |this, checked: &bool, _, cx| {
                     this.patch_sniffer(serde_json::json!({ key: *checked }), cx)
-                },
-            )),
+                })),
             last,
         )
     }
 
     /// A per-protocol sniff toggle: enabling sets `sniffer.sniff.<PROTO>.ports`,
     /// disabling clears it.
+    #[allow(clippy::too_many_arguments)]
     fn sniff_proto_toggle(
         &self,
         id: &'static str,
         proto: &'static str,
         ports: &'static [&'static str],
         value: bool,
+        enabled: bool,
         last: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         toggle_row(
             format!("{} {proto}", t!("pages.settings.snifferSniff")),
             None,
-            Switch::new(id).checked(value).on_click(cx.listener(
-                move |this, checked: &bool, _, cx| {
+            Switch::new(id)
+                .checked(value)
+                .disabled(!enabled)
+                .on_click(cx.listener(move |this, checked: &bool, _, cx| {
                     let entry = if *checked {
                         serde_json::json!({ "ports": ports })
                     } else {
                         serde_json::Value::Null
                     };
                     this.patch_sniffer(serde_json::json!({ "sniff": { proto: entry } }), cx)
-                },
-            )),
+                })),
             last,
         )
     }
@@ -1357,38 +1447,18 @@ impl NyxApp {
 
     fn render_settings_advanced(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let st = self.state.read(cx);
-        let dns = st.app_flag("controlDns");
-        let sniff = st.app_flag("controlSniff");
         let stop_on_disconnect = st.app_flag("stopCoreOnDisconnect");
         let net_detect = st.app_flag("networkDetection");
 
         let body = settings_body()
-            .child(group(vec![
-                self.flag_toggle(
-                    "ad-dns",
-                    t!("pages.settings.takeOverDns"),
-                    "controlDns",
-                    dns,
-                    false,
-                    cx,
-                ),
-                self.flag_toggle(
-                    "ad-sniff",
-                    t!("pages.settings.takeOverSniffer"),
-                    "controlSniff",
-                    sniff,
-                    false,
-                    cx,
-                ),
-                self.flag_toggle(
-                    "ad-stopcore",
-                    t!("pages.settings.stopCoreOnDisconnect"),
-                    "stopCoreOnDisconnect",
-                    stop_on_disconnect,
-                    true,
-                    cx,
-                ),
-            ]))
+            .child(group(vec![self.flag_toggle(
+                "ad-stopcore",
+                t!("pages.settings.stopCoreOnDisconnect"),
+                "stopCoreOnDisconnect",
+                stop_on_disconnect,
+                true,
+                cx,
+            )]))
             .child(group(vec![
                 self.flag_toggle(
                     "ad-netdetect",
@@ -1401,6 +1471,7 @@ impl NyxApp {
                 input_row(
                     t!("pages.settings.detectInterval"),
                     self.sub_inputs.interval.as_ref(),
+                    true,
                     true,
                 ),
             ]));
@@ -1533,6 +1604,37 @@ impl NyxApp {
             )),
             last,
         )
+    }
+
+    /// The "override subscription" toggle shown at the top of the DNS / Sniffer /
+    /// TUN pages, plus the explanatory hint. `key` is the app-config flag
+    /// (`controlDns`/`controlSniff`/`controlTun`) that gates the section policy.
+    fn override_group(
+        &self,
+        id: &'static str,
+        key: &'static str,
+        value: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        v_flex()
+            .w_full()
+            .gap(px(6.))
+            .child(group(vec![toggle_row(
+                t!("pages.settings.overrideSettings"),
+                None,
+                Switch::new(id).checked(value).on_click(cx.listener(
+                    move |this, checked: &bool, _, cx| this.toggle_override(key, *checked, cx),
+                )),
+                true,
+            )]))
+            .child(
+                div()
+                    .px(px(4.))
+                    .text_xs()
+                    .text_color(rgb(MUTED3))
+                    .child(t!("pages.settings.overrideHint").to_string()),
+            )
+            .into_any_element()
     }
 
     /// A clickable gear icon that opens a Settings sub-page.
@@ -1774,23 +1876,35 @@ fn toggle_row(
 }
 
 /// A row with a label and a text input on the right (empty if no input yet).
+/// `enabled` greys out the input when an override toggle gates the page.
 fn input_row(
     label: impl Into<SharedString>,
     input: Option<&Entity<InputState>>,
+    enabled: bool,
     last: bool,
 ) -> AnyElement {
     let control = match input {
-        Some(state) => Input::new(state).w(px(260.)).into_any_element(),
+        Some(state) => Input::new(state)
+            .w(px(260.))
+            .disabled(!enabled)
+            .into_any_element(),
         None => div().into_any_element(),
     };
     control_row(label, control, last)
 }
 
 /// A full-width DNS list card: a label header above a multi-line text input
-/// (one server / entry per line).
-fn dns_list_card(label: impl Into<SharedString>, input: Option<&Entity<InputState>>) -> AnyElement {
+/// (one server / entry per line). `enabled` greys out the input.
+fn dns_list_card(
+    label: impl Into<SharedString>,
+    input: Option<&Entity<InputState>>,
+    enabled: bool,
+) -> AnyElement {
     let control = match input {
-        Some(state) => Input::new(state).w_full().into_any_element(),
+        Some(state) => Input::new(state)
+            .w_full()
+            .disabled(!enabled)
+            .into_any_element(),
         None => div().into_any_element(),
     };
     v_flex()
