@@ -56,6 +56,9 @@ pages:
     refresh: 刷新
     nodes: 节点
     noGroups: 没有代理组 —— 内核是否在运行？
+    searchPlaceholder: 搜索节点…
+    sortByLatency: 按延迟
+    aliveOnly: 仅可用
   rules:
     edit: 编辑规则覆盖
     convertMrs: 转换 MRS 规则集

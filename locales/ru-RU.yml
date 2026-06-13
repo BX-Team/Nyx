@@ -55,6 +55,9 @@ pages:
     refresh: Обновить
     nodes: узлов
     noGroups: Нет групп прокси — ядро запущено?
+    searchPlaceholder: Поиск узлов…
+    sortByLatency: По задержке
+    aliveOnly: Только живые
   rules:
     edit: Редактировать правила
     convertMrs: Конвертировать MRS-набор
