@@ -2,11 +2,16 @@ use std::time::Duration;
 
 use gpui::{App, AsyncApp, Global};
 use tray_icon::{
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
 };
 
 use crate::app::actions;
+use crate::app::state::AppState;
+
+/// Separator embedded in proxy menu ids (`px<US>group<US>node`). U+001F won't
+/// occur in proxy names.
+const SEP: char = '\u{1f}';
 
 /// Keeps the `TrayIcon` alive for the lifetime of the app (dropping it removes
 /// the icon). Never moved off the main thread.
@@ -31,28 +36,69 @@ fn load_icon() -> Option<Icon> {
     Icon::from_rgba(rgba, info.width, info.height).ok()
 }
 
+/// Builds the full tray menu, including a "Proxies" submenu of switchable
+/// (Selector) groups → nodes with the current selection checked.
+fn build_menu(cx: &App) -> Menu {
+    let menu = Menu::new();
+    let _ = menu.append(&MenuItem::with_id("show", "Show Window", true, None));
+    let _ = menu.append(&PredefinedMenuItem::separator());
+
+    let groups = AppState::global(cx).read(cx).groups.clone();
+    let selectors: Vec<_> = groups
+        .iter()
+        .filter(|g| g.kind.as_ref() == "Selector" && !g.all.is_empty())
+        .collect();
+    if !selectors.is_empty() {
+        let proxies = Submenu::new("Proxies", true);
+        for g in selectors {
+            let nodes: Vec<CheckMenuItem> = g
+                .all
+                .iter()
+                .map(|n| {
+                    CheckMenuItem::with_id(
+                        format!("px{SEP}{}{SEP}{}", g.name, n.name),
+                        &n.name,
+                        true,
+                        n.name == g.now,
+                        None,
+                    )
+                })
+                .collect();
+            let refs: Vec<&dyn IsMenuItem> = nodes.iter().map(|n| n as &dyn IsMenuItem).collect();
+            if let Ok(sub) = Submenu::with_items(&g.name, true, &refs) {
+                let _ = proxies.append(&sub);
+            }
+        }
+        let _ = menu.append(&proxies);
+        let _ = menu.append(&PredefinedMenuItem::separator());
+    }
+
+    let _ = menu.append(&MenuItem::with_id("mode-rule", "Rule Mode", true, None));
+    let _ = menu.append(&MenuItem::with_id("mode-global", "Global Mode", true, None));
+    let _ = menu.append(&MenuItem::with_id("mode-direct", "Direct Mode", true, None));
+    let _ = menu.append(&PredefinedMenuItem::separator());
+    let _ = menu.append(&MenuItem::with_id(
+        "restart-core",
+        "Restart Core",
+        true,
+        None,
+    ));
+    let _ = menu.append(&MenuItem::with_id(
+        "quit-no-core",
+        "Quit without Core",
+        true,
+        None,
+    ));
+    let _ = menu.append(&MenuItem::with_id("quit", "Quit", true, None));
+    menu
+}
+
 /// Builds the tray icon + menu and stores it as a global (idempotent).
 fn create_icon(cx: &mut App) {
     if cx.has_global::<GlobalTray>() {
         return;
     }
-    let menu = Menu::new();
-    let items: [&dyn tray_icon::menu::IsMenuItem; 9] = [
-        &MenuItem::with_id("show", "Show Window", true, None),
-        &PredefinedMenuItem::separator(),
-        &MenuItem::with_id("mode-rule", "Rule Mode", true, None),
-        &MenuItem::with_id("mode-global", "Global Mode", true, None),
-        &MenuItem::with_id("mode-direct", "Direct Mode", true, None),
-        &PredefinedMenuItem::separator(),
-        &MenuItem::with_id("restart-core", "Restart Core", true, None),
-        &MenuItem::with_id("quit-no-core", "Quit without Core", true, None),
-        &MenuItem::with_id("quit", "Quit", true, None),
-    ];
-    if let Err(e) = menu.append_items(&items) {
-        log::error!("[tray] menu build failed: {e}");
-        return;
-    }
-
+    let menu = build_menu(cx);
     let mut builder = TrayIconBuilder::new()
         .with_tooltip("Nyx")
         .with_menu(Box::new(menu));
@@ -62,6 +108,13 @@ fn create_icon(cx: &mut App) {
     match builder.build() {
         Ok(tray) => cx.set_global(GlobalTray(tray)),
         Err(e) => log::error!("[tray] build failed: {e}"),
+    }
+}
+
+/// Rebuilds the tray menu from current state (call when proxy groups change).
+pub fn rebuild(cx: &App) {
+    if let Some(tray) = cx.try_global::<GlobalTray>() {
+        tray.0.set_menu(Some(Box::new(build_menu(cx))));
     }
 }
 
@@ -107,6 +160,13 @@ pub fn init(cx: &mut App) {
 }
 
 fn handle_menu(id: &str, cx: &mut App) {
+    if let Some(rest) = id.strip_prefix(&format!("px{SEP}")) {
+        let mut parts = rest.splitn(2, SEP);
+        if let (Some(group), Some(node)) = (parts.next(), parts.next()) {
+            actions::set_proxy(group.to_string(), node.to_string(), cx);
+        }
+        return;
+    }
     match id {
         "show" => actions::show_window(cx),
         "mode-rule" => actions::set_mode("rule", cx),
