@@ -178,6 +178,8 @@ pub(crate) struct NyxApp {
     pub(crate) profile_add_open: bool,
     pub(crate) profile_add_local: bool,
     pub(crate) profile_add_name: Entity<InputState>,
+    /// Auto-update interval input (hours, remote profiles); empty = off.
+    pub(crate) profile_interval: Entity<InputState>,
     pub(crate) profile_add_file: Option<(String, String)>,
     /// When the add/edit modal is editing an existing profile, its id; `None`
     /// means the modal is creating a new profile.
@@ -279,6 +281,7 @@ impl NyxApp {
         let state = AppState::global(cx);
         let import_url = cx.new(|cx| InputState::new(window, cx).placeholder("https://…"));
         let profile_add_name = cx.new(|cx| InputState::new(window, cx).placeholder("Name"));
+        let profile_interval = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
         let conns_filter = cx.new(|cx| InputState::new(window, cx));
         // Re-render the connections list as the user types in the filter box.
         let conns_filter_sub = cx.subscribe(
@@ -354,6 +357,7 @@ impl NyxApp {
             profile_add_open: false,
             profile_add_local: false,
             profile_add_name,
+            profile_interval,
             profile_add_file: None,
             profile_edit_id: None,
             mrs_open: false,
@@ -1132,6 +1136,8 @@ impl NyxApp {
             .update(cx, |s, c| s.set_value("", window, c));
         self.profile_add_name
             .update(cx, |s, c| s.set_value("", window, c));
+        self.profile_interval
+            .update(cx, |s, c| s.set_value("", window, c));
         self.profile_add_open = true;
         cx.notify();
     }
@@ -1159,6 +1165,12 @@ impl NyxApp {
             let is_local = item["type"].as_str() == Some("local");
             let url = item["url"].as_str().unwrap_or_default().to_string();
             let name = item["name"].as_str().unwrap_or_default().to_string();
+            let interval_min = item["interval"].as_i64().unwrap_or(0);
+            let hours = if interval_min > 0 {
+                (interval_min / 60).to_string()
+            } else {
+                String::new()
+            };
             let _ = cx.update(|window, cx| {
                 let _ = this.update(cx, |this, cx| {
                     this.profile_add_local = is_local;
@@ -1166,6 +1178,8 @@ impl NyxApp {
                         .update(cx, |s, c| s.set_value(url.clone(), window, c));
                     this.profile_add_name
                         .update(cx, |s, c| s.set_value(name.clone(), window, c));
+                    this.profile_interval
+                        .update(cx, |s, c| s.set_value(hours.clone(), window, c));
                     cx.notify();
                 });
             });
@@ -1270,7 +1284,17 @@ impl NyxApp {
             if url.is_empty() {
                 return;
             }
-            let mut v = serde_json::json!({ "type": "remote", "url": url, "name": name });
+            let interval_min = self
+                .profile_interval
+                .read(cx)
+                .value()
+                .trim()
+                .parse::<i64>()
+                .map(|h| h.max(0) * 60)
+                .unwrap_or(0);
+            let mut v = serde_json::json!({
+                "type": "remote", "url": url, "name": name, "interval": interval_min,
+            });
             if let Some(id) = &edit_id {
                 v["id"] = serde_json::Value::String(id.clone());
             }

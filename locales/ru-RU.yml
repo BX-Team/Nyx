@@ -88,6 +88,11 @@ pages:
     fileSelected: Файл выбран
     urlLabel: Ссылка на подписку
     nameLabel: Имя (необязательно)
+    intervalLabel: Автообновление каждые (часов, 0 = выкл)
+    autoEvery: "⟳ %{n}ч"
+    autoUpdated: Подписки обновлены
+    quotaWarn: "%{name}: трафик подписки почти исчерпан"
+    expiryWarn: "%{name}: подписка скоро истекает"
     expires: Истекает
     active: АКТИВНЫЙ
     days: "%{n} дн."

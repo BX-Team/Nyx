@@ -89,6 +89,11 @@ pages:
     fileSelected: 已选择文件
     urlLabel: 订阅 URL
     nameLabel: 名称（可选）
+    intervalLabel: 自动更新间隔（小时，0 = 关闭）
+    autoEvery: "⟳ %{n}小时"
+    autoUpdated: 订阅已更新
+    quotaWarn: "%{name}：订阅流量即将用尽"
+    expiryWarn: "%{name}：订阅即将到期"
     expires: 到期时间
     active: 已启用
     days: "%{n} 天"

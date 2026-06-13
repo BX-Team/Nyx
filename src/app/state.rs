@@ -63,6 +63,8 @@ pub struct ProfileItem {
     pub used: u64,
     pub total: u64,
     pub expire: i64,
+    /// Auto-update interval in minutes (0 = off). Remote profiles only.
+    pub interval: i64,
 }
 
 /// One log line for the Logs page / ring buffer.
@@ -708,6 +710,7 @@ pub fn parse_profiles(cfg: &Value) -> Vec<ProfileItem> {
                         .and_then(|e| e.get("expire"))
                         .and_then(Value::as_i64)
                         .unwrap_or(0);
+                    let interval = it.get("interval").and_then(Value::as_i64).unwrap_or(0);
                     ProfileItem {
                         id: id.into(),
                         name: name.into(),
@@ -716,6 +719,7 @@ pub fn parse_profiles(cfg: &Value) -> Vec<ProfileItem> {
                         used: upload.saturating_add(download),
                         total,
                         expire,
+                        interval,
                     }
                 })
                 .collect()

@@ -49,6 +49,8 @@ pub fn run() {
         app::bootstrap::spawn_backend_startup(cx);
         // System tray (icon + menu) living in the gpui event loop.
         app::tray::init(cx);
+        // Background scheduler: subscription auto-update + quota/expiry warnings.
+        app::scheduler::init(cx);
         // Global hotkeys (re-registered from config once it loads).
         app::hotkeys::init(cx);
         // Deep links: register the `nyx://` scheme, then drain URLs forwarded by
