@@ -177,6 +177,15 @@ pages:
     corePrerelease: Предварительная
     coreUpdate: Обновить ядро
     svcSection: Системная служба
+    tunSection: Доступ TUN
+    tunStatus: Права TUN
+    tunGranted: Выданы
+    tunNotGranted: Не выданы
+    tunGrant: Выдать…
+    tunHint: "Для TUN нужен CAP_NET_ADMIN. На NixOS укажите programs.nyx.tunMode = true; иначе нажмите «Выдать» (setcap через pkexec) или вручную: sudo setcap cap_net_admin,cap_net_bind_service,cap_net_raw=+ep $(which nyx). Перезапустите Nyx, чтобы применить."
+    tunHintMac: TUN на macOS требует запуска Nyx от root.
+    tunGrantedToast: Права TUN выданы — перезапустите Nyx, чтобы применить.
+    tunGrantFailed: Не удалось выдать права TUN
     svcStatus: Статус
     svcRunning: Запущена
     svcStopped: Остановлена
@@ -291,6 +300,9 @@ onboarding:
   serviceTitle: Установите сервис
   serviceBody: Фоновый сервис позволяет Nyx управлять ядром и режимом TUN без запросов прав администратора.
   serviceHint: Откройте настройки Mihomo и установите сервис.
+  tunTitle: Предоставьте доступ к TUN
+  tunBody: Для режима TUN/VPN ядро требует привилегий сети. Предоставьте их в настройках Mihomo. Если вы на NixOS, включите programs.nyx.tunMode.
+  tunHint: Откройте настройки Mihomo и предоставьте доступ к TUN.
   proxyTitle: Включите прокси
   proxyBody: Переключите главный тумблер на главном экране, чтобы направить трафик.
   proxyHint: Используйте главный переключатель на «Главной».

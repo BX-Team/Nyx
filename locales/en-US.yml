@@ -177,6 +177,15 @@ pages:
     corePrerelease: Prerelease
     coreUpdate: Update core
     svcSection: System service
+    tunSection: TUN access
+    tunStatus: TUN privileges
+    tunGranted: Granted
+    tunNotGranted: Not granted
+    tunGrant: Grant…
+    tunHint: "TUN needs CAP_NET_ADMIN. On NixOS set programs.nyx.tunMode = true; otherwise click Grant (runs setcap via pkexec) or run manually: sudo setcap cap_net_admin,cap_net_bind_service,cap_net_raw=+ep $(which nyx). Restart Nyx to apply."
+    tunHintMac: TUN on macOS requires launching Nyx as root.
+    tunGrantedToast: TUN privileges granted — restart Nyx to apply.
+    tunGrantFailed: Failed to grant TUN privileges
     svcStatus: Status
     svcRunning: Running
     svcStopped: Stopped
@@ -291,6 +300,9 @@ onboarding:
   serviceTitle: Install the service
   serviceBody: The background service lets Nyx manage the core and TUN mode without admin prompts.
   serviceHint: Open Mihomo settings and install the service.
+  tunTitle: Grant TUN access
+  tunBody: For TUN/VPN mode the core needs network privileges. Grant them in Mihomo settings. If you're on NixOS, enable programs.nyx.tunMode.
+  tunHint: Open Mihomo settings and grant TUN access.
   proxyTitle: Turn on the proxy
   proxyBody: Flip the main switch on the Home screen to route your traffic.
   proxyHint: Use the main toggle on Home.

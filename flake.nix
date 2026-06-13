@@ -155,12 +155,27 @@
               default = self.packages.${pkgs.system}.default;
               description = "The Nyx package to use.";
             };
+            tunMode = lib.mkEnableOption ''
+              TUN mode. Wraps the Nyx binary with cap_net_admin/cap_net_raw/
+              cap_net_bind_service so the mihomo core it spawns can create a TUN
+              device without running as root'';
           };
 
           config = lib.mkIf cfg.enable {
             environment.systemPackages = [ cfg.package ];
             programs.dconf.enable = lib.mkDefault true;
             services.gnome.gnome-keyring.enable = lib.mkDefault true;
+
+            # Give the Nyx binary the net capabilities; Nyx raises them into the
+            # ambient set before spawning the core, which then inherits them.
+            security.wrappers = lib.mkIf cfg.tunMode {
+              nyx = {
+                owner = "root";
+                group = "root";
+                capabilities = "cap_net_bind_service,cap_net_raw,cap_net_admin=+ep";
+                source = lib.getExe cfg.package;
+              };
+            };
           };
         };
     };
