@@ -31,8 +31,11 @@ fn load_icon() -> Option<Icon> {
     Icon::from_rgba(rgba, info.width, info.height).ok()
 }
 
-/// Builds the tray icon + menu and starts the gpui event-drain loop.
-pub fn init(cx: &mut App) {
+/// Builds the tray icon + menu and stores it as a global (idempotent).
+fn create_icon(cx: &mut App) {
+    if cx.has_global::<GlobalTray>() {
+        return;
+    }
     let menu = Menu::new();
     let items: [&dyn tray_icon::menu::IsMenuItem; 9] = [
         &MenuItem::with_id("show", "Show Window", true, None),
@@ -58,10 +61,23 @@ pub fn init(cx: &mut App) {
     }
     match builder.build() {
         Ok(tray) => cx.set_global(GlobalTray(tray)),
-        Err(e) => {
-            log::error!("[tray] build failed: {e}");
-            return;
-        }
+        Err(e) => log::error!("[tray] build failed: {e}"),
+    }
+}
+
+/// Adds or removes the tray icon to match the `disableTray` setting at runtime.
+pub fn set_enabled(cx: &mut App, enabled: bool) {
+    if enabled {
+        create_icon(cx);
+    } else if cx.has_global::<GlobalTray>() {
+        cx.remove_global::<GlobalTray>();
+    }
+}
+
+/// Builds the tray icon (unless disabled) and starts the gpui event-drain loop.
+pub fn init(cx: &mut App) {
+    if !crate::backend::config::app_config_bool("disableTray") {
+        create_icon(cx);
     }
 
     cx.spawn(async move |cx: &mut AsyncApp| {

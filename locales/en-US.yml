@@ -57,6 +57,12 @@ pages:
     noGroups: No proxy groups — is the core running?
   rules:
     edit: Edit rule overrides
+    convertMrs: Convert MRS ruleset
+    convertPick: Pick .mrs file
+    convertBehavior: Behavior
+    convertDo: Convert
+    convertDone: Converted
+    convertFailed: Conversion failed
     noProfile: Select a profile first to edit its rule overrides.
     summary: "%{n} rules · mode %{mode}"
     colType: Type
@@ -255,6 +261,8 @@ tooltips:
   editInfo: Edit info
   delete: Delete
   configure: Configure
+  unfix: Reset to auto
+  restartConnections: Restart connections
 updater:
   versionReady: Version %{version} is available
   changelog: What's new
@@ -265,3 +273,20 @@ updater:
   upToDate: You're on the latest version
   checkFailed: Update check failed
   installFailed: Update failed
+onboarding:
+  welcomeTitle: Welcome to Nyx
+  welcomeBody: A desktop GUI for the Mihomo proxy core. Let's get you set up in three quick steps.
+  step: Step %{n} of %{total}
+  profileTitle: Add a profile
+  profileBody: Import a subscription URL or a local config file — this is your proxy source.
+  profileHint: Use the “Add” button at the top right.
+  serviceTitle: Install the service
+  serviceBody: The background service lets Nyx manage the core and TUN mode without admin prompts.
+  serviceHint: Open Mihomo settings and install the service.
+  proxyTitle: Turn on the proxy
+  proxyBody: Flip the main switch on the Home screen to route your traffic.
+  proxyHint: Use the main toggle on Home.
+  skip: Skip
+  next: Next
+  start: Get started
+  finish: Done

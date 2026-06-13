@@ -80,6 +80,32 @@ pub fn toggle_now() {
     }
 }
 
+/// Pins/unpins the main window above all others. Same borrow caveat as
+/// [`hide_now`] — schedule via `App::spawn`.
+#[cfg(windows)]
+pub fn set_always_on_top(on: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+    if let Some(h) = hwnd() {
+        let after = if on { HWND_TOPMOST } else { HWND_NOTOPMOST };
+        unsafe {
+            let _ = SetWindowPos(
+                h,
+                Some(after),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn set_always_on_top(_on: bool) {}
+
 /// Non-Windows fallback: minimize stands in for tray-hide.
 #[cfg(not(windows))]
 pub fn hide(window: &Window) {

@@ -132,6 +132,8 @@ pub(crate) struct RuleEditState {
 pub(crate) struct NyxApp {
     pub(crate) state: Entity<AppState>,
     pub(crate) route: Route,
+    /// First-run welcome flow: `Some(step)` while active (0..=3), `None` once done.
+    pub(crate) onboarding_step: Option<u8>,
     pub(crate) rail_expanded: bool,
     /// Currently focused proxy group on the Proxies page (right-hand node grid).
     pub(crate) proxies_group: Option<gpui::SharedString>,
@@ -180,6 +182,11 @@ pub(crate) struct NyxApp {
     /// When the add/edit modal is editing an existing profile, its id; `None`
     /// means the modal is creating a new profile.
     pub(crate) profile_edit_id: Option<String>,
+    /// MRS ruleset converter modal: open flag, picked input file, and the
+    /// selected mihomo behavior (`domain` / `ipcidr` / `classical`).
+    pub(crate) mrs_open: bool,
+    pub(crate) mrs_input: Option<std::path::PathBuf>,
+    pub(crate) mrs_behavior: &'static str,
     pub(crate) connected_since: Option<std::time::Instant>,
     pub(crate) stats_open: bool,
     /// Settings language picker (a real dropdown over [`LANGUAGES`]).
@@ -315,6 +322,11 @@ impl NyxApp {
         Self {
             state,
             route: Route::Home,
+            onboarding_step: if backend::config::app_config_bool("onboardingDone") {
+                None
+            } else {
+                Some(0)
+            },
             rail_expanded: false,
             proxies_group: None,
             logs_filter: crate::ui::root::LogFilter::All,
@@ -344,6 +356,9 @@ impl NyxApp {
             profile_add_name,
             profile_add_file: None,
             profile_edit_id: None,
+            mrs_open: false,
+            mrs_input: None,
+            mrs_behavior: "domain",
             connected_since: None,
             stats_open: true,
             lang_select,
@@ -583,6 +598,108 @@ impl NyxApp {
     pub(crate) fn refresh_proxies(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |_this, cx| refresh_groups(cx).await)
             .detach();
+    }
+
+    /// Clears a group's fixed (manually pinned) selection, returning it to
+    /// automatic selection (URLTest/Fallback), then re-fetches groups.
+    pub(crate) fn unfix_group(&mut self, group: String, cx: &mut Context<Self>) {
+        cx.spawn(async move |_this, cx| {
+            let g = group.clone();
+            let _ = runtime::spawn(async move { backend::api::unfixed_proxy(&g).await }).await;
+            refresh_groups(cx).await;
+        })
+        .detach();
+    }
+
+    /// Closes and re-establishes all active connections (forces them through the
+    /// current rules/selection).
+    pub(crate) fn restart_connections(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |_this, _cx| {
+            let _ = runtime::spawn(backend::api::restart_connections()).await;
+        })
+        .detach();
+    }
+
+    pub(crate) fn open_mrs_convert(&mut self, cx: &mut Context<Self>) {
+        self.mrs_open = true;
+        self.mrs_input = None;
+        cx.notify();
+    }
+
+    pub(crate) fn close_mrs_convert(&mut self, cx: &mut Context<Self>) {
+        self.mrs_open = false;
+        cx.notify();
+    }
+
+    pub(crate) fn mrs_set_behavior(&mut self, behavior: &'static str, cx: &mut Context<Self>) {
+        self.mrs_behavior = behavior;
+        cx.notify();
+    }
+
+    pub(crate) fn mrs_pick_input(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let rx = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: None,
+        });
+        cx.spawn_in(window, async move |this, cx| {
+            let Ok(Ok(Some(paths))) = rx.await else {
+                return;
+            };
+            let Some(path) = paths.into_iter().next() else {
+                return;
+            };
+            let _ = cx.update(|_window, cx| {
+                let _ = this.update(cx, |this, cx| {
+                    this.mrs_input = Some(path);
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
+    }
+
+    /// Runs `mihomo convert-ruleset` on the picked `.mrs` file and writes the
+    /// text output next to it, then toasts the result path.
+    pub(crate) fn submit_mrs_convert(&mut self, cx: &mut Context<Self>) {
+        let Some(input) = self.mrs_input.clone() else {
+            return;
+        };
+        let behavior = self.mrs_behavior;
+        self.mrs_open = false;
+        cx.notify();
+        cx.spawn(async move |_this, cx| {
+            let p = input.to_string_lossy().to_string();
+            let res = runtime::spawn(backend::config::convert_mrs_ruleset(
+                p,
+                behavior.to_string(),
+            ))
+            .await;
+            let note = match res {
+                Ok(Ok(content)) => {
+                    let stem = input
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "ruleset".to_string());
+                    let out = input.with_file_name(format!("{stem}-{behavior}.txt"));
+                    match std::fs::write(&out, content) {
+                        Ok(_) => gpui_component::notification::Notification::info(format!(
+                            "{}: {}",
+                            t!("pages.rules.convertDone"),
+                            out.display()
+                        )),
+                        Err(e) => gpui_component::notification::Notification::error(e.to_string()),
+                    }
+                }
+                Ok(Err(e)) => gpui_component::notification::Notification::error(e),
+                Err(_) => gpui_component::notification::Notification::error(
+                    t!("pages.rules.convertFailed").to_string(),
+                ),
+            };
+            cx.update(|cx| crate::app::actions::notify(note, cx));
+        })
+        .detach();
     }
 }
 
@@ -878,6 +995,8 @@ impl Render for NyxApp {
         let profile_add_modal = self
             .profile_add_open
             .then(|| self.render_profile_add_modal(cx));
+        let mrs_modal = self.mrs_open.then(|| self.render_mrs_modal(cx));
+        let onboarding = self.onboarding_active().then(|| self.render_onboarding(cx));
 
         v_flex()
             .size_full()
@@ -906,14 +1025,37 @@ impl Render for NyxApp {
             .children(reset_modal)
             .children(provider_viewer_modal)
             .children(profile_add_modal)
+            .children(mrs_modal)
             .children(dialog_layer)
             .children(notification_layer)
+            .children(onboarding)
     }
 }
 
-/// Opens the main application window.
-pub fn open_main_window(cx: &mut App) {
-    let window_bounds = WindowBounds::centered(size(px(1000.0), px(700.0)), cx);
+/// Reads `window.window_bounds()` and persists the restore geometry into the app
+/// config. Called from the close/hide path (no live gpui borrow conflict).
+fn save_main_window_bounds(window: &Window) {
+    let b = match window.window_bounds() {
+        WindowBounds::Windowed(b) | WindowBounds::Maximized(b) | WindowBounds::Fullscreen(b) => b,
+    };
+    backend::config::save_window_state(
+        b.origin.x.to_f64(),
+        b.origin.y.to_f64(),
+        b.size.width.to_f64(),
+        b.size.height.to_f64(),
+    );
+}
+
+/// Opens the main application window. When `silent` is set (silent-start), the
+/// window is created but immediately hidden to the tray.
+pub fn open_main_window(cx: &mut App, silent: bool) {
+    let window_bounds = match backend::config::load_window_state() {
+        Some((x, y, w, h)) if w >= 400.0 && h >= 300.0 => WindowBounds::Windowed(gpui::Bounds {
+            origin: gpui::point(px(x as f32), px(y as f32)),
+            size: size(px(w as f32), px(h as f32)),
+        }),
+        _ => WindowBounds::centered(size(px(1000.0), px(700.0)), cx),
+    };
     cx.spawn(async move |cx| {
         let options = WindowOptions {
             titlebar: Some(TitleBar::title_bar_options()),
@@ -936,7 +1078,12 @@ pub fn open_main_window(cx: &mut App) {
             // the tray); holding Ctrl while closing performs a full quit.
             let _ = handle.update(cx, |_root, window, cx| {
                 crate::app::window::remember(window);
+                #[cfg(not(windows))]
+                if silent {
+                    crate::app::window::hide(window);
+                }
                 window.on_window_should_close(cx, |window, cx| {
+                    save_main_window_bounds(window);
                     if window.modifiers().control {
                         crate::app::actions::quit_with_core(cx);
                         return true;
@@ -957,6 +1104,11 @@ pub fn open_main_window(cx: &mut App) {
                     false
                 });
             });
+            #[cfg(windows)]
+            if silent {
+                cx.spawn(async move |_cx| crate::app::window::hide_now())
+                    .detach();
+            }
         });
     })
     .detach();

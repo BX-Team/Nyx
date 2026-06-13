@@ -15,7 +15,15 @@ pub fn data_dir() -> PathBuf {
 }
 
 pub fn app_config_path() -> PathBuf {
+    data_dir().join("app-config.yaml")
+}
+
+pub fn legacy_app_config_path() -> PathBuf {
     data_dir().join("config.yaml")
+}
+
+pub fn legacy_window_state_path() -> PathBuf {
+    data_dir().join("window-state.json")
 }
 
 pub fn controled_mihomo_config_path() -> PathBuf {

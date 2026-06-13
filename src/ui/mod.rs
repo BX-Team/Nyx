@@ -1,3 +1,4 @@
+mod onboarding;
 mod pages;
 mod rail;
 mod root;

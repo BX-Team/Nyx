@@ -57,6 +57,12 @@ pages:
     noGroups: Нет групп прокси — ядро запущено?
   rules:
     edit: Редактировать правила
+    convertMrs: Конвертировать MRS-набор
+    convertPick: Выбрать .mrs файл
+    convertBehavior: Поведение
+    convertDo: Конвертировать
+    convertDone: Сконвертировано
+    convertFailed: Ошибка конвертации
     noProfile: Сначала выберите профиль, чтобы редактировать его правила.
     summary: "Правил: %{n} · режим %{mode}"
     colType: Тип
@@ -255,6 +261,8 @@ tooltips:
   editInfo: Изменить данные
   delete: Удалить
   configure: Настроить
+  unfix: Сбросить в авто
+  restartConnections: Перезапустить соединения
 updater:
   versionReady: Доступна версия %{version}
   changelog: Что нового
@@ -265,3 +273,20 @@ updater:
   upToDate: У вас последняя версия
   checkFailed: Не удалось проверить обновления
   installFailed: Не удалось обновить
+onboarding:
+  welcomeTitle: Добро пожаловать в Nyx
+  welcomeBody: Десктоп-интерфейс для прокси-ядра Mihomo. Настроим всё за три коротких шага.
+  step: Шаг %{n} из %{total}
+  profileTitle: Добавьте профиль
+  profileBody: Импортируйте ссылку на подписку или локальный файл конфигурации — это источник ваших прокси.
+  profileHint: Нажмите кнопку «Добавить» справа вверху.
+  serviceTitle: Установите сервис
+  serviceBody: Фоновый сервис позволяет Nyx управлять ядром и режимом TUN без запросов прав администратора.
+  serviceHint: Откройте настройки Mihomo и установите сервис.
+  proxyTitle: Включите прокси
+  proxyBody: Переключите главный тумблер на главном экране, чтобы направить трафик.
+  proxyHint: Используйте главный переключатель на «Главной».
+  skip: Пропустить
+  next: Далее
+  start: Начать
+  finish: Готово

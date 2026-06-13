@@ -1273,7 +1273,6 @@ impl NyxApp {
         let st = self.state.read(cx);
         let on_top = st.app_flag("alwaysOnTop");
         let disable_tray = st.app_flag("disableTray");
-        let tray_node = st.app_flag("proxyInTray");
 
         let body = settings_body().child(group(vec![
             self.flag_toggle(
@@ -1290,14 +1289,6 @@ impl NyxApp {
                 "disableTray",
                 disable_tray,
                 false,
-                cx,
-            ),
-            self.flag_toggle(
-                "ap-traynode",
-                t!("pages.settings.trayNodeInfo"),
-                "proxyInTray",
-                tray_node,
-                true,
                 cx,
             ),
         ]));
