@@ -55,6 +55,9 @@ pages:
     refresh: Refresh
     nodes: nodes
     noGroups: No proxy groups — is the core running?
+    searchPlaceholder: Search nodes…
+    sortByLatency: By latency
+    aliveOnly: Alive only
   rules:
     edit: Edit rule overrides
     convertMrs: Convert MRS ruleset

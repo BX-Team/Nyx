@@ -3,7 +3,7 @@ use gpui::{
     div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window,
 };
-use gpui_component::{h_flex, tooltip::Tooltip, v_flex, Icon, IconName, StyledExt};
+use gpui_component::{h_flex, input::Input, tooltip::Tooltip, v_flex, Icon, IconName, StyledExt};
 use rust_i18n::t;
 
 use crate::app::state::{ProxyGroup, ProxyNode};
@@ -230,8 +230,20 @@ impl NyxApp {
         let group_name = group.name.to_string();
         let now = group.now.to_string();
 
+        let query = self.proxies_search.read(cx).value().trim().to_lowercase();
+        let alive_only = self.proxies_alive_only;
+        let mut nodes: Vec<&ProxyNode> = group
+            .all
+            .iter()
+            .filter(|n| query.is_empty() || n.name.to_lowercase().contains(&query))
+            .filter(|n| !alive_only || n.delay.map(|d| d > 0).unwrap_or(false))
+            .collect();
+        if self.proxies_sort_latency {
+            nodes.sort_by_key(|n| n.delay.unwrap_or(u32::MAX));
+        }
+
         let mut col = v_flex().w_full().gap(px(11.));
-        for chunk in group.all.chunks(3) {
+        for chunk in nodes.chunks(3) {
             let mut row = h_flex().w_full().gap(px(11.)).items_stretch();
             for node in chunk {
                 row = row.child(self.render_node(group_name.clone(), node, &now, cx));
@@ -246,9 +258,75 @@ impl NyxApp {
         v_flex()
             .w_full()
             .h_full()
-            .id("proxies-grid")
-            .overflow_y_scroll()
-            .child(col)
+            .gap_3()
+            .child(self.render_node_toolbar(cx))
+            .child(
+                v_flex()
+                    .w_full()
+                    .flex_1()
+                    .min_h_0()
+                    .id("proxies-grid")
+                    .overflow_y_scroll()
+                    .child(col),
+            )
+    }
+
+    /// Search box + sort-by-latency and alive-only toggles above the node grid.
+    fn render_node_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let toggle = |id: &'static str, label: String, active: bool| {
+            div()
+                .id(SharedString::from(id))
+                .px(px(11.))
+                .py(px(6.))
+                .rounded(px(8.))
+                .text_xs()
+                .cursor_pointer()
+                .border_1()
+                .when(active, |this| {
+                    this.bg(rgb(GREEN))
+                        .text_color(rgb(0x0B1014))
+                        .border_color(rgb(GREEN))
+                })
+                .when(!active, |this| {
+                    this.bg(rgb(CONTROL_BG))
+                        .text_color(rgb(SUBTLE))
+                        .border_color(rgb(CONTROL_BORDER))
+                })
+                .child(label)
+        };
+
+        h_flex()
+            .w_full()
+            .gap_2()
+            .items_center()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(Input::new(&self.proxies_search)),
+            )
+            .child(
+                toggle(
+                    "px-sort",
+                    t!("pages.proxies.sortByLatency").to_string(),
+                    self.proxies_sort_latency,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.proxies_sort_latency = !this.proxies_sort_latency;
+                    cx.notify();
+                })),
+            )
+            .child(
+                toggle(
+                    "px-alive",
+                    t!("pages.proxies.aliveOnly").to_string(),
+                    self.proxies_alive_only,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.proxies_alive_only = !this.proxies_alive_only;
+                    cx.notify();
+                })),
+            )
     }
 
     fn render_node(

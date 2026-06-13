@@ -137,6 +137,11 @@ pub(crate) struct NyxApp {
     pub(crate) rail_expanded: bool,
     /// Currently focused proxy group on the Proxies page (right-hand node grid).
     pub(crate) proxies_group: Option<gpui::SharedString>,
+    /// Proxies page node-grid controls: search box, sort-by-latency toggle, and
+    /// "alive only" filter.
+    pub(crate) proxies_search: Entity<InputState>,
+    pub(crate) proxies_sort_latency: bool,
+    pub(crate) proxies_alive_only: bool,
     pub(crate) logs_filter: LogFilter,
     /// Connections page: process-name filter input + the process whose detail
     /// view is open (if any).
@@ -205,6 +210,7 @@ pub(crate) struct NyxApp {
     _state_sub: Subscription,
     _lang_sub: Subscription,
     _conns_filter_sub: Subscription,
+    _proxies_search_sub: Subscription,
 }
 
 /// Human-readable byte count (e.g. `1.2 MB`).
@@ -288,6 +294,14 @@ impl NyxApp {
             &conns_filter,
             |_this, _input, _event: &gpui_component::input::InputEvent, cx| cx.notify(),
         );
+        let proxies_search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("pages.proxies.searchPlaceholder").to_string())
+        });
+        let proxies_search_sub = cx.subscribe(
+            &proxies_search,
+            |_this, _input, _event: &gpui_component::input::InputEvent, cx| cx.notify(),
+        );
         // Re-render on any shared-state change, and track when the TUN
         // "connection" came up so Home can show an uptime timer.
         let sub = cx.observe(&state, |this: &mut Self, observed, cx| {
@@ -332,6 +346,9 @@ impl NyxApp {
             },
             rail_expanded: false,
             proxies_group: None,
+            proxies_search,
+            proxies_sort_latency: false,
+            proxies_alive_only: false,
             logs_filter: crate::ui::root::LogFilter::All,
             conns_filter,
             conns_detail: None,
@@ -375,6 +392,7 @@ impl NyxApp {
             _state_sub: sub,
             _lang_sub: lang_sub,
             _conns_filter_sub: conns_filter_sub,
+            _proxies_search_sub: proxies_search_sub,
         }
     }
 
