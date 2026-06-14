@@ -607,6 +607,39 @@ impl NyxApp {
             .detach();
     }
 
+    pub(crate) fn refresh_subscription(&mut self, cx: &mut Context<Self>) {
+        let current_id = self
+            .state
+            .read(cx)
+            .profiles
+            .iter()
+            .find(|p| p.is_current && p.kind.as_ref() == "remote")
+            .map(|p| p.id.to_string());
+        cx.spawn(async move |_this, cx| {
+            let Some(id) = current_id else {
+                refresh_groups(cx).await;
+                return;
+            };
+            let ok = match runtime::spawn(backend::config::get_profile_item(id)).await {
+                Ok(Ok(item)) => {
+                    matches!(
+                        runtime::spawn(backend::config::add_profile_item(item)).await,
+                        Ok(Ok(_))
+                    )
+                }
+                _ => false,
+            };
+            crate::app::bootstrap::refresh_runtime_data(cx).await;
+            let note = if ok {
+                gpui_component::notification::Notification::success(t!("pages.home.subUpdated"))
+            } else {
+                gpui_component::notification::Notification::error(t!("pages.home.subUpdateFailed"))
+            };
+            cx.update(|cx| crate::app::actions::notify(note, cx));
+        })
+        .detach();
+    }
+
     /// Clears a group's pinned selection (back to URLTest/Fallback), then re-fetches.
     pub(crate) fn unfix_group(&mut self, group: String, cx: &mut Context<Self>) {
         cx.spawn(async move |_this, cx| {

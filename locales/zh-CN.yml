@@ -52,6 +52,8 @@ pages:
     expires: 到期时间
     subscriptionNews: 订阅公告
     never: 永不
+    subUpdated: 订阅已更新
+    subUpdateFailed: 订阅更新失败
   proxies:
     testGroup: 测试
     refresh: 刷新

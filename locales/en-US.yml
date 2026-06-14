@@ -52,6 +52,8 @@ pages:
     expires: Expires
     subscriptionNews: Subscription news
     never: Never
+    subUpdated: Subscription updated
+    subUpdateFailed: Failed to update subscription
   proxies:
     testGroup: Test
     refresh: Refresh

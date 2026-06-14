@@ -52,6 +52,8 @@ pages:
     expires: Истекает
     subscriptionNews: Новости подписки
     never: Никогда
+    subUpdated: Подписка обновлена
+    subUpdateFailed: Не удалось обновить подписку
   proxies:
     testGroup: Тест
     refresh: Обновить

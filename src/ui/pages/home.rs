@@ -237,7 +237,7 @@ impl NyxApp {
                             .small()
                             .icon(Icon::empty().path("icons/refresh.svg"))
                             .tooltip(t!("tooltips.refresh").to_string())
-                            .on_click(cx.listener(|this, _, _, cx| this.refresh_proxies(cx))),
+                            .on_click(cx.listener(|this, _, _, cx| this.refresh_subscription(cx))),
                     )
                     .child(
                         Button::new("home-stats-toggle")
