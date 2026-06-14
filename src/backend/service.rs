@@ -314,9 +314,8 @@ fn install_service_elevated() -> Result<(), String> {
     run_elevated_bat(&bat_cmd)
 }
 
-/// Ensures the service is running and mihomo is started inside it. On success
-/// the controller URL + API client are synced. Caller restores selections /
-/// starts streaming.
+/// Ensures the service is running and mihomo started inside it, syncing the
+/// controller URL + API client on success.
 #[cfg(windows)]
 async fn start_windows_service() -> Result<(), String> {
     let binary = ensure_core_binary().await?;
@@ -485,9 +484,8 @@ pub async fn uninstall_service() -> Result<(), String> {
     }
 }
 
-/// Starts the core (service mode on Windows, direct spawn elsewhere). On
-/// success the API client is initialized. Caller restores selections / starts
-/// streaming.
+/// Starts the core (service on Windows, direct spawn elsewhere), initializing
+/// the API client on success.
 pub async fn start_service() -> Result<(), String> {
     #[cfg(windows)]
     {

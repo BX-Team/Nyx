@@ -8,8 +8,7 @@ use gpui_component::notification::Notification;
 use crate::app::{actions, bootstrap, runtime};
 use crate::backend;
 
-/// Registers the `nyx://` URI scheme so the OS launches this exe with the URL as
-/// its argument. Idempotent; call once on primary-instance startup.
+/// Registers the `nyx://` URI scheme so the OS launches this exe with the URL. Idempotent.
 #[cfg(windows)]
 pub fn register_scheme() {
     use winreg::enums::HKEY_CURRENT_USER;
@@ -33,9 +32,8 @@ pub fn register_scheme() {
     }
 }
 
-/// Linux: install a `.desktop` entry that claims the `x-scheme-handler/nyx`
-/// MIME type, then make it the default handler so the desktop launches Nyx for
-/// `nyx://` links. Idempotent.
+/// Linux: install a `.desktop` entry claiming `x-scheme-handler/nyx` and set it
+/// as the default handler. Idempotent.
 #[cfg(target_os = "linux")]
 pub fn register_scheme() {
     let Ok(exe) = std::env::current_exe() else {
@@ -74,8 +72,7 @@ pub fn register_scheme() {
 #[cfg(not(any(windows, target_os = "linux")))]
 pub fn register_scheme() {}
 
-/// Starts the deep-link drain loop on the gpui main thread, consuming URLs that
-/// `single_instance::serve` (and our own launch arg) push onto `rx`.
+/// Starts the deep-link drain loop on the gpui main thread, consuming URLs from `rx`.
 pub fn start(rx: Receiver<String>, cx: &mut App) {
     cx.spawn(async move |cx: &mut AsyncApp| loop {
         cx.background_executor()
@@ -108,8 +105,7 @@ fn handle_url(url: &str, cx: &mut App) {
     }
 }
 
-/// Adds a remote profile from `nyx://install-config?url=…`, activates it, and
-/// toasts the outcome.
+/// Adds a remote profile from `nyx://install-config?url=…` and activates it.
 fn install_config(params: HashMap<String, String>, cx: &mut App) {
     let Some(config_url) = params.get("url").cloned() else {
         log::warn!("[deep-link] install-config: missing 'url'");

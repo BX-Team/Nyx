@@ -63,9 +63,8 @@ const TUN_CAPS: [caps::Capability; 3] = [
     caps::Capability::CAP_NET_RAW,
 ];
 
-/// Raises the TUN net caps into the ambient set so a spawned child (the core)
-/// inherits them. No-op unless this process holds them in its permitted set
-/// (granted via `setcap` / the NixOS `programs.nyx.tunMode` wrapper).
+/// Raises the TUN net caps into the ambient set so the spawned core inherits
+/// them. No-op unless this process already holds them (via `setcap`).
 #[cfg(target_os = "linux")]
 pub fn raise_net_ambient_caps() {
     use caps::CapSet;

@@ -58,8 +58,7 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-/// Re-registers all hotkeys from the current app config. Safe to call on every
-/// config change (gear-less: invoked from `refresh_runtime_data`).
+/// Re-registers all hotkeys from the current app config. Safe to call on every config change.
 pub fn reload(cx: &mut App) {
     if cx.try_global::<Hotkeys>().is_none() {
         return;

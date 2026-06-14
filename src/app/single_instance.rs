@@ -5,13 +5,12 @@ use std::time::{Duration, Instant};
 /// Fixed loopback port for the single-instance lock / deep-link IPC.
 const PORT: u16 = 47654;
 
-/// Arg the relaunched process carries so it waits for the dying instance to free
-/// the port instead of treating itself as a secondary (see `actions::restart_app`).
+/// Arg telling the relaunched process to wait for the dying instance to free the port.
 pub const RELAUNCH_FLAG: &str = "--nyx-relaunch";
 
-/// Acquires the single-instance lock. Returns the bound listener if this is the
-/// primary instance; returns `None` if another instance owns the lock — in which
-/// case any `nyx://` argument has already been forwarded and the caller must exit.
+/// Acquires the single-instance lock, returning the bound listener for the
+/// primary instance, or `None` if another instance owns it (deep link already
+/// forwarded; caller must exit).
 pub fn acquire_or_forward() -> Option<TcpListener> {
     let relaunch = std::env::args().any(|a| a == RELAUNCH_FLAG);
     // A relaunch (restart) races the dying instance for the port; wait it out.
@@ -50,9 +49,7 @@ pub fn deep_link_arg() -> Option<String> {
     std::env::args().find(|a| a.starts_with("nyx://"))
 }
 
-/// Spawns the background acceptor: reads forwarded deep-link URLs from later
-/// instances and pushes each onto `tx`. A gpui timer drains `tx` on the main
-/// thread (see `deep_link::start`).
+/// Spawns the acceptor that pushes forwarded deep-link URLs onto `tx`.
 pub fn serve(listener: TcpListener, tx: std::sync::mpsc::Sender<String>) {
     std::thread::spawn(move || {
         for stream in listener.incoming() {

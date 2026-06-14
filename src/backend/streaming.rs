@@ -7,8 +7,7 @@ use crate::backend::manager;
 /// One update produced by the streaming loops.
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
-    /// Raw payload of `GET /connections` (carries `downloadTotal`,
-    /// `uploadTotal`, and the `connections` array).
+    /// Raw payload of `GET /connections`.
     Connections(serde_json::Value),
     /// One parsed log line `{ "type": <level>, "payload": <msg> }`.
     Log(serde_json::Value),

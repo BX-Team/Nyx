@@ -2,9 +2,7 @@ use std::borrow::Cow;
 
 use gpui::{AssetSource, Result, SharedString};
 
-/// Nyx-owned assets embedded from `assets/` at build time (the app logo under
-/// `brand/`, plus the hand-picked lucide SVGs under `icons/` that gpui-component
-/// doesn't bundle).
+/// Nyx-owned assets embedded from `assets/` at build time (logo, extra icons, flags).
 #[derive(rust_embed::RustEmbed)]
 #[folder = "assets"]
 #[include = "brand/*"]

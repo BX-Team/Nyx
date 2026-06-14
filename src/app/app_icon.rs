@@ -67,8 +67,7 @@ fn extract(path: &str) -> Option<RenderImage> {
     }
     let hicon = info.hIcon;
 
-    // Pull the icon's color bitmap into a top-down 32-bit BGRA buffer (the exact
-    // layout gpui's `RenderImage` expects).
+    // Top-down 32-bit BGRA is the layout gpui's `RenderImage` expects.
     let result = (|| {
         let mut icon_info: ICONINFO = unsafe { std::mem::zeroed() };
         unsafe { GetIconInfo(hicon, &mut icon_info) }.ok()?;
@@ -110,8 +109,7 @@ fn extract(path: &str) -> Option<RenderImage> {
             unsafe { ReleaseDC(None, hdc) };
 
             if scanned != 0 {
-                // Some (older) icons leave the alpha channel zeroed; treat a
-                // fully-transparent result as opaque so it isn't invisible.
+                // Older icons leave alpha zeroed; treat fully-transparent as opaque.
                 if buf.chunks_exact(4).all(|p| p[3] == 0) {
                     for p in buf.chunks_exact_mut(4) {
                         p[3] = 255;

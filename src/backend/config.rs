@@ -139,9 +139,8 @@ pub async fn get_controled_mihomo_config() -> Result<Value> {
     read_yaml_as_json(&path)
 }
 
-/// Persist a patch to the controlled mihomo overrides, mirror it into the live
-/// runtime config, and PATCH it to the running core. Used by the Home
-/// main-switch (TUN toggle) and other live config tweaks.
+/// Persist a patch to the controlled overrides, mirror it into the live runtime
+/// config, and PATCH it to the running core.
 pub async fn patch_controled_mihomo_config(config: Value) -> Result<()> {
     let overrides_path = dirs::controled_mihomo_config_path();
     let mut base = if overrides_path.exists() {
@@ -278,9 +277,8 @@ fn parse_subscription_userinfo(info: &str) -> Value {
     serde_json::json!({ "upload": upload, "download": download, "total": total, "expire": expire })
 }
 
-/// Imports or refreshes a profile item (remote subscription or local file),
-/// updates `profile.yaml`, and hot-reloads the core if the active profile
-/// changed. Returns the profile id.
+/// Imports or refreshes a profile item, updates `profile.yaml`, and hot-reloads
+/// the core if the active profile changed. Returns the profile id.
 pub async fn add_profile_item(item: Value) -> Result<String, String> {
     let id = match item["id"].as_str().filter(|s| !s.is_empty()) {
         Some(existing_id) => existing_id.to_string(),
@@ -318,8 +316,7 @@ pub async fn add_profile_item(item: Value) -> Result<String, String> {
                     }
                 }
             }
-            // The subscription's own update interval is only a default — a
-            // manually-set interval on the item takes precedence and is kept.
+            // A manually-set interval on the item takes precedence over the subscription's.
             let has_manual_interval = meta
                 .get("interval")
                 .and_then(Value::as_i64)
@@ -458,9 +455,8 @@ pub async fn update_profile_item(item: Value) -> Result<(), String> {
     Err(format!("profile '{id}' not found"))
 }
 
-/// Re-downloads every remote profile whose `interval` (minutes) has elapsed
-/// since its last `updated` timestamp. Returns the display names of the
-/// profiles that were refreshed.
+/// Re-downloads every remote profile whose `interval` has elapsed. Returns the
+/// names of the refreshed profiles.
 pub async fn run_due_auto_updates() -> Vec<String> {
     let Ok(cfg) = profile_config().await else {
         return Vec::new();
@@ -575,10 +571,9 @@ pub async fn set_file_str(path: String, str: String) -> Result<(), String> {
     fs::write(&full, str).map_err(|e| e.to_string())
 }
 
-/// Reads the contents of a rule/proxy provider for the Resources viewer.
-/// Resolves the on-disk path from the running mihomo config (`path`, else
-/// `<rules|proxies>/<md5(url)>`), converting `.mrs` rulesets to text on the fly
-/// and surfacing inline providers' embedded payloads. Mirrors the old `Viewer`.
+/// Reads a rule/proxy provider's content for the Resources viewer, resolving the
+/// on-disk path from the running config, decoding `.mrs` to text and surfacing
+/// inline payloads.
 pub async fn read_provider_content(name: String, is_rule: bool) -> Result<String, String> {
     use md5::{Digest, Md5};
 
@@ -649,9 +644,8 @@ pub async fn read_provider_content(name: String, is_rule: bool) -> Result<String
     }
 }
 
-/// Wipes the entire app data directory (config, profiles, core, geo data) after
-/// best-effort stopping the core. The caller is expected to relaunch the app so
-/// it re-initialises from scratch. Mirrors the old `reset_app_config` command.
+/// Wipes the entire app data directory after best-effort stopping the core; the
+/// caller is expected to relaunch.
 pub async fn reset_app_config() -> Result<(), String> {
     let _ = crate::backend::manager::stop_core().await;
     let data_dir = dirs::data_dir();

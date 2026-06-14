@@ -54,8 +54,7 @@ async fn spawn_mihomo(binary: &std::path::Path, config: &std::path::Path) -> Res
         cmd.creation_flags(0x08000000);
     }
 
-    // Let the core inherit CAP_NET_ADMIN (etc.) for TUN. No-op unless Nyx itself
-    // holds the caps (setcap / NixOS `programs.nyx.tunMode`).
+    // Let the core inherit CAP_NET_ADMIN for TUN; no-op unless Nyx holds the caps.
     #[cfg(target_os = "linux")]
     crate::backend::elevation::raise_net_ambient_caps();
 
@@ -256,11 +255,9 @@ fn merge_yaml(base: &str, patch: &str) -> String {
     serde_yaml::to_string(&base_val).unwrap_or_default()
 }
 
-/// Decides, per overridable section (`dns`/`sniffer`/`tun`), whether the app's
-/// override block should be layered onto the profile. When `force` is set the
-/// app block always wins; otherwise, if the profile already defines a non-empty
-/// section we drop the app block so the subscription's own config is used. The
-/// `tun` section keeps its `enable` key regardless — that's the master switch.
+/// Layers the app's override block onto a section (`dns`/`sniffer`/`tun`). With
+/// `force`, the app block wins; otherwise a non-empty profile section is kept.
+/// `tun` always retains its `enable` key (the master switch).
 fn apply_section_policy(
     profile: &serde_yaml::Value,
     overrides: &mut serde_yaml::Value,

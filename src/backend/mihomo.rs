@@ -2,9 +2,8 @@ use serde_json::Value;
 
 use crate::backend::{api, config, dirs, manager};
 
-/// Returns proxy groups as an array of JSON objects, each with its `all`
-/// member proxies resolved to full proxy objects (matching the old
-/// `mihomo_groups` command shape that the UI consumes).
+/// Returns proxy groups as JSON objects, each with its `all` members resolved to
+/// full proxy objects.
 pub async fn groups() -> anyhow::Result<Value> {
     let proxies = api::get_raw_proxies_map().await?;
 
@@ -93,9 +92,8 @@ pub async fn restore_proxy_selections() {
         return;
     }
 
-    // Validate each saved selection against the live proxy set first. Selections
-    // are stored globally across profiles, so a group/proxy from a previously
-    // active profile may be absent now — restoring it blindly used to 404.
+    // Selections are stored globally across profiles, so validate each against
+    // the live proxy set first — a stale group/proxy would 404 if restored blindly.
     let proxies = match api::get_raw_proxies_map().await {
         Ok(p) => p,
         Err(e) => {

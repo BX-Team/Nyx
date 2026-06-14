@@ -14,9 +14,9 @@ pub fn set_main_window(handle: WindowHandle<Root>, cx: &mut App) {
     cx.set_global(MainWindow(handle));
 }
 
-/// Shows a toast on the main window (in-app notification). No-op until the main
-/// window handle has been recorded. Uses `update_window` (not `WindowHandle::update`)
-/// so it doesn't lock `Root` — `push_notification` updates `Root` itself.
+/// Shows a toast on the main window. Uses `update_window` (not
+/// `WindowHandle::update`) so it doesn't lock `Root`, which `push_notification`
+/// updates itself.
 pub fn notify(note: Notification, cx: &mut App) {
     let Some(handle) = cx.try_global::<MainWindow>().map(|m| m.0) else {
         return;
@@ -32,10 +32,8 @@ pub fn show_window(cx: &mut App) {
     cx.activate(true);
     #[cfg(windows)]
     {
-        // Run the Win32 show on the next foreground tick, i.e. fully outside the
-        // current gpui update/flush — `ShowWindow` pumps WM_* messages back into
-        // gpui's window proc, which would otherwise re-enter a live borrow and
-        // log "RefCell already borrowed". (`defer` still runs inside the flush.)
+        // `spawn` (not `defer`) so the Win32 ShowWindow runs outside this gpui
+        // flush — otherwise its WM_* messages re-enter a live borrow and panic.
         cx.spawn(async move |_cx| crate::app::window::show_now())
             .detach();
     }
@@ -129,8 +127,7 @@ pub fn restart_core(_cx: &mut App) {
 }
 
 /// Relaunches the app executable, then quits this instance. The relaunch flag
-/// tells the new process to wait for this one to release the single-instance
-/// lock instead of treating itself as a secondary.
+/// tells the new process to wait for this one to release the single-instance lock.
 pub fn restart_app(cx: &mut App) {
     if let Ok(exe) = std::env::current_exe() {
         let _ = std::process::Command::new(exe)

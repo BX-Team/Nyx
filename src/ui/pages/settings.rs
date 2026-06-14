@@ -144,8 +144,7 @@ impl NyxApp {
         )
     }
 
-    /// The "Reset application" row — opens a confirmation dialog before wiping
-    /// all app data (config, profiles, core) and relaunching.
+    /// The "Reset application" row — confirms before wiping all app data and relaunching.
     fn reset_row(&self, cx: &mut Context<Self>) -> AnyElement {
         row_shell(true)
             .child(
@@ -959,8 +958,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// Non-Windows replacement for the service card: shows whether the core can
-    /// create a TUN device and (on Linux) offers to grant the capability.
+    /// Non-Windows service-card replacement: TUN capability status + (Linux) a grant button.
     fn tun_permission_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let granted = tun_granted();
         let (label, color) = if granted {
@@ -1046,8 +1044,7 @@ impl NyxApp {
         )
     }
 
-    /// A boolean row nested under the controlled config's `profile` map
-    /// (`store-selected` / `store-fake-ip`).
+    /// A boolean row under the config's `profile` map (`store-selected` / `store-fake-ip`).
     fn profile_toggle(
         &self,
         id: &'static str,
@@ -1069,8 +1066,7 @@ impl NyxApp {
         )
     }
 
-    /// A full-width card with a title and a wrapping row of choice pills that
-    /// instantly patch `key` to the picked value (empty string clears it).
+    /// A titled card of choice pills that patch `key` to the picked value (empty clears).
     fn core_choice_card(
         &self,
         key: &'static str,
@@ -1248,8 +1244,7 @@ impl NyxApp {
         )
     }
 
-    /// A per-protocol sniff toggle: enabling sets `sniffer.sniff.<PROTO>.ports`,
-    /// disabling clears it.
+    /// Per-protocol sniff toggle: sets/clears `sniffer.sniff.<PROTO>.ports`.
     #[allow(clippy::too_many_arguments)]
     fn sniff_proto_toggle(
         &self,
@@ -1310,8 +1305,7 @@ impl NyxApp {
         )
     }
 
-    /// A card listing providers with a per-row view + update button, plus an
-    /// "Update all" button in the header.
+    /// A card listing providers (per-row view + update) with an "Update all" header button.
     fn providers_card(
         &self,
         title: String,
@@ -1553,8 +1547,7 @@ impl NyxApp {
             .text_color(rgb(MUTED3))
             .child(t!("pages.settings.scHint").to_string());
 
-        // Focusable key-capture surface: rows set `recording_shortcut` + focus
-        // this, and the next keystroke is recorded by `on_recorder_key`.
+        // Key-capture surface: rows focus this, the next keystroke is recorded.
         let body = div()
             .track_focus(&self.recorder_focus)
             .child(settings_body().child(card).child(hint))
@@ -1636,9 +1629,8 @@ impl NyxApp {
         )
     }
 
-    /// The "override subscription" toggle shown at the top of the DNS / Sniffer /
-    /// TUN pages, plus the explanatory hint. `key` is the app-config flag
-    /// (`controlDns`/`controlSniff`/`controlTun`) that gates the section policy.
+    /// The "override subscription" toggle + hint atop the DNS/Sniffer/TUN pages;
+    /// `key` is the gating flag (`controlDns`/`controlSniff`/`controlTun`).
     fn override_group(
         &self,
         id: &'static str,
@@ -1713,8 +1705,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// Wraps a sub-page body with a back-navigation header, an optional Save
-    /// button, and an optional right-aligned header action element.
+    /// Wraps a sub-page body with a back header plus optional Save + action elements.
     fn sub_scroll(
         &self,
         title: String,
@@ -1792,8 +1783,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// The "Check for updates" row — clickable, shows a checking state while a
-    /// GitHub check is in flight (see `NyxApp::check_update`).
+    /// The "Check for updates" row; shows a checking state while a GitHub check runs.
     fn check_update_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let checking = self.update_checking;
         let button_label = if checking {
@@ -1828,8 +1818,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// The language selector row: a real dropdown that pops open the list of
-    /// languages (selection handled in `NyxApp::on_language_selected`).
+    /// The language selector row (a dropdown over the language list).
     fn language_row(&self) -> AnyElement {
         let control = div()
             .w(px(160.))
@@ -1959,8 +1948,6 @@ fn dns_list_card(
         .into_any_element()
 }
 
-/// A read-only shortcut binding row (label + current key, until M5 wiring).
-/// A titled full-width card (header label on top, caller appends rows).
 /// Whether the running process can give the core TUN access (Linux: holds
 /// `CAP_NET_ADMIN`; elsewhere: running as root).
 fn tun_granted() -> bool {

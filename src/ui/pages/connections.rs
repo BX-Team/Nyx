@@ -243,8 +243,7 @@ impl NyxApp {
             .to_uppercase()
             .to_string();
         let name = p.name.clone();
-        // Prefer the real executable icon (Windows); fall back to a colored
-        // letter tile elsewhere or when the icon can't be read.
+        // Prefer the real executable icon; fall back to a colored letter tile.
         let avatar = match crate::app::app_icon::for_path(p.process_path.as_ref()) {
             Some(icon) => img(icon)
                 .size(px(38.))
@@ -460,8 +459,7 @@ impl NyxApp {
         v_flex().size_full().child(header).child(body)
     }
 
-    /// A single connection row in the detail view — clickable to open the
-    /// per-connection metadata popup.
+    /// A connection row in the detail view, clickable to open the metadata popup.
     fn conn_detail_row(&self, idx: usize, c: ConnItem, cx: &mut Context<Self>) -> impl IntoElement {
         let item = c.clone();
         conn_detail_row_inner(c)
@@ -474,9 +472,8 @@ impl NyxApp {
             }))
     }
 
-    /// The per-connection metadata popup (rule, IPs, ASN, ports, process …).
-    /// Each value is click-to-copy; IP/ASN/port/host/process values also offer a
-    /// chip that copies the matching rule fragment (`IP-CIDR,…`, `IP-ASN,…`, …).
+    /// The per-connection metadata popup. Each value is click-to-copy, with a
+    /// chip that copies the matching rule fragment (`IP-CIDR,…` etc.).
     fn render_conn_popup(&self, c: ConnItem, cx: &mut Context<Self>) -> impl IntoElement {
         let host_only = strip_port(c.host.as_ref());
         let host_frag = if host_only.chars().any(|ch| ch.is_ascii_alphabetic()) {
@@ -668,8 +665,7 @@ impl NyxApp {
             )
     }
 
-    /// A titled card grouping detail rows. Rows with an empty value are dropped;
-    /// an all-empty section renders nothing.
+    /// A titled card of detail rows; empty-value rows (and all-empty sections) are dropped.
     fn detail_section(
         &self,
         key: &'static str,
@@ -709,8 +705,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// One `label : value` row. The value is click-to-copy; an optional fragment
-    /// chip copies the matching rule (`IP-CIDR,…` etc.).
+    /// One `label : value` row; click-to-copy with an optional rule-fragment chip.
     fn kv_row(
         &self,
         key: &'static str,

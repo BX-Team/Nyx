@@ -1,8 +1,7 @@
 use gpui::{div, img, px, AnyElement, IntoElement, ParentElement, SharedString, Styled};
 
-/// One piece of a display name: either plain text or a country flag we render
-/// as an embedded SVG image (gpui paints color emoji blank on Windows, so flag
-/// emoji like 🇸🇪 are turned into `assets/flags/se.svg`).
+/// A piece of a display name: plain text, or a flag rendered as an SVG image
+/// (gpui paints color emoji blank on Windows, so 🇸🇪 → `assets/flags/se.svg`).
 enum Seg {
     Text(String),
     Flag(&'static str),
@@ -17,9 +16,8 @@ fn regional_letter(c: char) -> Option<char> {
         .then(|| (b'A' + (cp - 0x1F1E6) as u8) as char)
 }
 
-/// Splits a name into text + flag segments. Adjacent regional-indicator pairs
-/// that form a real flag emoji (validated via the `emojis` crate) become flags;
-/// everything else stays as text.
+/// Splits a name into text + flag segments; regional-indicator pairs validated
+/// by the `emojis` crate become flags.
 fn segments(name: &str) -> Vec<Seg> {
     let chars: Vec<char> = name.chars().collect();
     let mut out: Vec<Seg> = Vec::new();
@@ -49,9 +47,8 @@ fn segments(name: &str) -> Vec<Seg> {
     out
 }
 
-/// Lowercases the two flag letters into a static asset basename (`se`, `us`, …).
-/// flag-icons ships every ISO 3166-1 alpha-2 code, so a leaked `Seg::Flag` always
-/// resolves; the few that don't (`flags/<code>.svg` missing) just render nothing.
+/// Lowercases the two flag letters into a static asset basename (`se`, `us`, …),
+/// or `""` if we ship no SVG for that code.
 fn iso_to_code(a: char, b: char) -> &'static str {
     CODES
         .iter()

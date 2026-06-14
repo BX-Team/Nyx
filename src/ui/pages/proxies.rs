@@ -118,8 +118,7 @@ impl NyxApp {
                 )
                 .into_any_element()
         } else {
-            // The group list is a distinct left column (its own panel) so it
-            // reads as a selector rather than blending into the node cards.
+            // Group list as its own left panel, reading as a selector.
             let list = v_flex()
                 .w(px(228.))
                 .h_full()

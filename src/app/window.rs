@@ -29,8 +29,7 @@ fn hwnd() -> Option<windows::Win32::Foundation::HWND> {
     ))
 }
 
-/// Hides the window from screen + taskbar (it lives on in the tray). Must run
-/// outside any gpui window borrow — schedule via `App::defer`.
+/// Hides the window to the tray. Must run outside any gpui window borrow.
 #[cfg(windows)]
 pub fn hide_now() {
     use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
@@ -41,8 +40,7 @@ pub fn hide_now() {
     }
 }
 
-/// Re-shows + foregrounds a hidden/minimized window. Same borrow caveat as
-/// [`hide_now`] — schedule via `App::defer`.
+/// Re-shows + foregrounds a hidden/minimized window. Borrow caveat as [`hide_now`].
 #[cfg(windows)]
 pub fn show_now() {
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -61,9 +59,8 @@ pub fn show_now() {
     }
 }
 
-/// Toggles the window: if it's visible and already foreground, hide it to the
-/// tray; otherwise show + foreground it. Backs the "toggle window" hotkey. Same
-/// borrow caveat as [`hide_now`] / [`show_now`] — schedule via `App::spawn`.
+/// Hides the window if it's visible and foreground, else shows it. Borrow
+/// caveat as [`hide_now`].
 #[cfg(windows)]
 pub fn toggle_now() {
     use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, IsWindowVisible};
@@ -80,8 +77,7 @@ pub fn toggle_now() {
     }
 }
 
-/// Pins/unpins the main window above all others. Same borrow caveat as
-/// [`hide_now`] — schedule via `App::spawn`.
+/// Pins/unpins the main window above all others. Borrow caveat as [`hide_now`].
 #[cfg(windows)]
 pub fn set_always_on_top(on: bool) {
     use windows::Win32::UI::WindowsAndMessaging::{

@@ -16,10 +16,7 @@ pub fn runtime() -> &'static Runtime {
     })
 }
 
-/// Spawns `fut` on the tokio runtime and returns a receiver for its result.
-///
-/// The receiver is a `Future`, so a view awaits it inside `cx.spawn(async move
-/// |this, cx| { if let Ok(v) = rx.await { ... } })`.
+/// Spawns `fut` on the tokio runtime and returns an awaitable receiver for its result.
 pub fn spawn<T, F>(fut: F) -> oneshot::Receiver<T>
 where
     T: Send + 'static,

@@ -48,8 +48,7 @@ pub fn spawn_backend_startup(cx: &mut App) {
 
         refresh_runtime_data(cx).await;
 
-        // Re-apply the saved system-proxy state now the core (and its mixed
-        // port) are up — also clears any proxy left over from a prior crash.
+        // Re-apply saved system-proxy now the core is up; also clears any left by a crash.
         if let Ok(Ok(cfg)) = runtime::spawn(backend::config::get_app_config()).await {
             let enable = cfg
                 .get("sysProxy")

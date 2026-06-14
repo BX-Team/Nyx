@@ -166,9 +166,8 @@ impl NyxApp {
                     ),
             );
 
-        // The welcome step is a centered modal; the action steps float in the
-        // bottom-right corner WITHOUT a scrim so the real UI behind (nav, the
-        // "Add" button, the add-subscription modal) stays clickable.
+        // Welcome step is a centered modal; action steps float bottom-right with
+        // no scrim, keeping the real UI behind clickable.
         if step == 0 {
             div()
                 .id("onboarding-scrim")

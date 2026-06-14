@@ -165,8 +165,7 @@ impl NyxApp {
     ) -> gpui::AnyElement {
         let on = self.route == route;
         let on_click = cx.listener(move |this, _, _, cx| {
-            // Always land on a page's root view, not wherever the user left it:
-            // drop any open detail/sub-page state when switching destinations.
+            // Drop open detail/sub-page state so each destination lands on its root view.
             this.editor_target = None;
             this.editor = None;
             this.rule_editor = None;
@@ -205,9 +204,8 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// Shared rail cell: an icon-only square when collapsed, or a full-width
-    /// icon+label row when expanded. Active state is a faint green wash — no
-    /// heavy border or glow bar (kept deliberately light, like the old rail).
+    /// Shared rail cell: icon-only when collapsed, icon+label when expanded;
+    /// active state is a faint green wash.
     fn rail_cell(&self, icon: Icon, label: impl Into<SharedString>, on: bool) -> impl IntoElement {
         let color = if on { GREEN_HI } else { RAIL_ICON };
         let glyph = icon.size(px(19.)).text_color(rgb(color));

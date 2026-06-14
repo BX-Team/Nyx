@@ -48,10 +48,8 @@ impl NyxApp {
             .rev()
             .collect();
 
-        // Stick to the bottom whenever new log lines have arrived since the last
-        // render, so the latest output is always visible without manual
-        // scrolling. Keyed off the monotonic `log_seq` (not `logs.len()`, which
-        // saturates at the ring-buffer cap once full).
+        // Autoscroll on new lines, keyed off monotonic `log_seq` (not `logs.len()`,
+        // which saturates at the ring-buffer cap).
         let seq = st.log_seq;
         if self.logs_seen.get() != seq {
             self.logs_seen.set(seq);

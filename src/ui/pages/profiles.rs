@@ -287,15 +287,13 @@ impl NyxApp {
         row.child(del)
     }
 
-    /// The "Add subscription" modal: scrim + card with a Remote/Local source
-    /// toggle, a URL field or file picker, an optional name, and Import/Cancel.
+    /// The "Add subscription" modal: Remote/Local toggle, URL or file picker, name, Import/Cancel.
     pub(crate) fn render_profile_add_modal(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let local = self.profile_add_local;
         let editing = self.profile_edit_id.is_some();
         let file_name = self.profile_add_file.as_ref().map(|(n, _)| n.clone());
         let can_submit = if local {
-            // When editing a local profile, re-picking the file is optional
-            // (a bare save renames it).
+            // When editing a local profile, re-picking the file is optional (bare save renames).
             editing || self.profile_add_file.is_some()
         } else {
             !self.import_url.read(cx).value().trim().is_empty()

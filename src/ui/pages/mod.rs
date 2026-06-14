@@ -8,9 +8,8 @@ mod settings;
 
 pub(crate) use rules::{rule_example, RULE_TYPES};
 
-/// Converts a captured [`gpui::Keystroke`] into a `global-hotkey` accelerator
-/// string (e.g. `Ctrl+Shift+KeyT`). Returns `None` for modifier-only presses or
-/// keys we can't map to a W3C `Code` name.
+/// Converts a [`gpui::Keystroke`] into a `global-hotkey` accelerator string
+/// (e.g. `Ctrl+Shift+KeyT`), or `None` if it can't be mapped.
 pub(crate) fn keystroke_to_accel(ks: &gpui::Keystroke) -> Option<String> {
     let code = key_to_code(&ks.key)?;
     let m = &ks.modifiers;

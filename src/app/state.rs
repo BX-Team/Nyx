@@ -143,16 +143,14 @@ pub struct AppState {
     /// Full controlled mihomo config (used by the TUN settings sub-page).
     pub controled_config: Value,
     pub logs: VecDeque<LogLine>,
-    /// Monotonic counter of every log line ever appended. Unlike `logs.len()`
-    /// (which saturates at the ring-buffer cap) this keeps growing, so the Logs
-    /// view can reliably detect new lines and keep itself scrolled to the tail.
+    /// Monotonic count of all log lines ever appended; unlike `logs.len()` it
+    /// keeps growing past the ring-buffer cap, so the Logs view can autoscroll.
     pub log_seq: usize,
     pub connections: Vec<ConnProcess>,
-    /// Recently-closed connections (grouped by process), built by diffing
-    /// consecutive `/connections` snapshots. Powers the Connections "Closed" tab.
+    /// Recently-closed connections, built by diffing consecutive `/connections`
+    /// snapshots. Powers the Connections "Closed" tab.
     pub closed_connections: Vec<ConnProcess>,
-    /// Last snapshot's active connections keyed by id (process-name, item) — used
-    /// to detect which ones disappeared (closed) on the next snapshot.
+    /// Last snapshot's active connections keyed by id, to detect closures.
     active_by_id: std::collections::HashMap<String, (String, ConnItem)>,
     /// Capped ring of closed (process-name, item) pairs.
     closed_items: VecDeque<(String, ConnItem)>,
@@ -203,8 +201,7 @@ impl AppState {
         cx.global::<GlobalAppState>().0.clone()
     }
 
-    /// Switches the UI language, persists it, and notifies observers so the
-    /// whole UI re-renders with the new translations.
+    /// Switches the UI language, persists it, and notifies observers.
     pub fn set_language(&mut self, lang: impl Into<SharedString>, cx: &mut Context<Self>) {
         let lang: SharedString = lang.into();
         if lang == self.language {
@@ -333,8 +330,7 @@ impl AppState {
         let conns = data.get("connections").and_then(Value::as_array);
         self.conn_count = conns.map(|a| a.len()).unwrap_or(0);
 
-        // Parse the snapshot, then diff against the previous active set: any id we
-        // had before that's gone now has closed — remember it for the Closed tab.
+        // Diff against the previous active set: any id now gone has closed.
         let parsed: Vec<(String, String, ConnItem)> = conns
             .map(|arr| arr.iter().filter_map(parse_conn).collect())
             .unwrap_or_default();

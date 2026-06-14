@@ -10,9 +10,8 @@ fn read_app_config_sync() -> Value {
         .unwrap_or_default()
 }
 
-/// One-time data-dir cleanup: rename the legacy `config.yaml` to
-/// `app-config.yaml` and drop the stale Tauri `window-state.json` (window
-/// geometry now lives inside the app config). Safe to call on every launch.
+/// One-time data-dir cleanup: rename legacy `config.yaml` → `app-config.yaml`
+/// and drop the stale `window-state.json`. Safe on every launch.
 pub fn migrate_data_dir() {
     let new = dirs::app_config_path();
     let old = dirs::legacy_app_config_path();

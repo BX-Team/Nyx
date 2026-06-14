@@ -56,8 +56,7 @@ pub(crate) const RULE_TYPES: &[&str] = &[
     "MATCH",
 ];
 
-/// Example payload shown as the placeholder for a given rule type in the smart
-/// editor's "add rule" form (mirrors the old web UI's `ruleDefinitionsMap`).
+/// Example payload placeholder for a given rule type in the "add rule" form.
 pub(crate) fn rule_example(kind: &str) -> &'static str {
     match kind {
         "DOMAIN" => "example.com",
@@ -274,8 +273,7 @@ impl NyxApp {
         v_flex().size_full().child(header).child(table)
     }
 
-    /// The MRS ruleset converter modal: pick a binary `.mrs` file, choose the
-    /// mihomo behavior, and write a decoded text ruleset beside it.
+    /// The MRS converter modal: pick a `.mrs` file + behavior, write a decoded ruleset beside it.
     pub(crate) fn render_mrs_modal(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let input_name = self
             .mrs_input

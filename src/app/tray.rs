@@ -40,8 +40,7 @@ fn load_icon() -> Option<Icon> {
     Icon::from_rgba(rgba, info.width, info.height).ok()
 }
 
-/// Builds the full tray menu, including a "Proxies" submenu of switchable
-/// (Selector) groups → nodes with the current selection checked.
+/// Builds the tray menu, including a "Proxies" submenu of Selector groups → nodes.
 fn build_menu(cx: &App) -> Menu {
     let menu = Menu::new();
     let _ = menu.append(&MenuItem::with_id("show", &t!("tray.show"), true, None));

@@ -107,9 +107,8 @@ pub(crate) enum EditorTarget {
     RuntimeReadonly,
 }
 
-/// State of the smart rule-override editor (the Rules page edit button). Custom
-/// rules are stored as `prepend` (inserted above the subscription's rules) and
-/// `append` (added below); the subscription's own rules are shown read-only.
+/// State of the smart rule-override editor: `prepend`/`append` custom rules plus
+/// the subscription's read-only rules.
 pub(crate) struct RuleEditState {
     pub(crate) profile_id: String,
     pub(crate) profile_name: String,
@@ -117,9 +116,8 @@ pub(crate) struct RuleEditState {
     pub(crate) append: Vec<String>,
     /// Subscription rule strings the user has chosen to drop (override `delete`).
     pub(crate) delete: Vec<String>,
-    /// "Add rule" form: rule type, payload, target policy, and where to insert.
-    /// The policy is a dropdown of the live proxy groups/nodes (+ DIRECT/REJECT/…)
-    /// so the user never types a target by hand.
+    /// "Add rule" form: type, payload, target policy (a dropdown of live groups/
+    /// nodes + DIRECT/REJECT/…), and where to insert.
     pub(crate) type_select: Entity<SelectState<Vec<gpui::SharedString>>>,
     pub(crate) payload: Entity<InputState>,
     pub(crate) policy_select: Entity<SelectState<Vec<gpui::SharedString>>>,
@@ -137,14 +135,12 @@ pub(crate) struct NyxApp {
     pub(crate) rail_expanded: bool,
     /// Currently focused proxy group on the Proxies page (right-hand node grid).
     pub(crate) proxies_group: Option<gpui::SharedString>,
-    /// Proxies page node-grid controls: search box, sort-by-latency toggle, and
-    /// "alive only" filter.
+    /// Proxies page node-grid controls: search, sort-by-latency, alive-only.
     pub(crate) proxies_search: Entity<InputState>,
     pub(crate) proxies_sort_latency: bool,
     pub(crate) proxies_alive_only: bool,
     pub(crate) logs_filter: LogFilter,
-    /// Connections page: process-name filter input + the process whose detail
-    /// view is open (if any).
+    /// Connections page: process-name filter + the process whose detail is open.
     pub(crate) conns_filter: Entity<InputState>,
     pub(crate) conns_detail: Option<gpui::SharedString>,
     /// Connections page tab: `false` = active, `true` = recently closed.
@@ -158,12 +154,10 @@ pub(crate) struct NyxApp {
     /// Active Settings sub-page, if any (gear / section navigation).
     pub(crate) settings_sub: Option<SettingsSub>,
     pub(crate) sub_inputs: SubInputs,
-    /// Shortcuts page: the app-config key currently being recorded (if any) plus
-    /// a focus handle for the key-capture surface.
+    /// Shortcuts page: the app-config key currently being recorded, if any.
     pub(crate) recording_shortcut: Option<&'static str>,
     pub(crate) recorder_focus: gpui::FocusHandle,
-    /// Mihomo settings: Windows service status + installed core version (fetched
-    /// async when the page opens) and an in-flight guard for service/core actions.
+    /// Mihomo settings: Windows service status + installed core version, plus a busy guard.
     pub(crate) service_status: gpui::SharedString,
     pub(crate) core_version_installed: gpui::SharedString,
     pub(crate) service_busy: bool,
@@ -178,19 +172,16 @@ pub(crate) struct NyxApp {
     /// Active smart rule editor, if open (Rules page).
     pub(crate) rule_editor: Option<RuleEditState>,
     pub(crate) import_url: Entity<InputState>,
-    /// "Add profile" modal: open flag, remote/local toggle, name input, and the
-    /// picked local file (name + contents) when in local mode.
+    /// "Add profile" modal: open flag, remote/local toggle, name, picked local file.
     pub(crate) profile_add_open: bool,
     pub(crate) profile_add_local: bool,
     pub(crate) profile_add_name: Entity<InputState>,
     /// Auto-update interval input (hours, remote profiles); empty = off.
     pub(crate) profile_interval: Entity<InputState>,
     pub(crate) profile_add_file: Option<(String, String)>,
-    /// When the add/edit modal is editing an existing profile, its id; `None`
-    /// means the modal is creating a new profile.
+    /// Id of the profile being edited; `None` when the modal is creating a new one.
     pub(crate) profile_edit_id: Option<String>,
-    /// MRS ruleset converter modal: open flag, picked input file, and the
-    /// selected mihomo behavior (`domain` / `ipcidr` / `classical`).
+    /// MRS converter modal: open flag, input file, mihomo behavior.
     pub(crate) mrs_open: bool,
     pub(crate) mrs_input: Option<std::path::PathBuf>,
     pub(crate) mrs_behavior: &'static str,
@@ -198,7 +189,7 @@ pub(crate) struct NyxApp {
     pub(crate) stats_open: bool,
     /// Settings language picker (a real dropdown over [`LANGUAGES`]).
     pub(crate) lang_select: Entity<SelectState<Vec<gpui::SharedString>>>,
-    /// Auto-updater (M6): pending newer release + in-flight flags + modal open.
+    /// Auto-updater: pending newer release + in-flight flags + modal open.
     pub(crate) update_info: Option<backend::updater::UpdateInfo>,
     pub(crate) update_checking: bool,
     pub(crate) update_installing: bool,
@@ -302,8 +293,7 @@ impl NyxApp {
             &proxies_search,
             |_this, _input, _event: &gpui_component::input::InputEvent, cx| cx.notify(),
         );
-        // Re-render on any shared-state change, and track when the TUN
-        // "connection" came up so Home can show an uptime timer.
+        // Re-render on shared-state change; track TUN up-time for Home's timer.
         let sub = cx.observe(&state, |this: &mut Self, observed, cx| {
             let connected = observed.read(cx).tun_enabled;
             if connected && this.connected_since.is_none() {
@@ -311,8 +301,7 @@ impl NyxApp {
             } else if !connected {
                 this.connected_since = None;
             }
-            // Once app config has loaded, optionally run a one-time silent update
-            // check if the user enabled auto-check.
+            // One-time silent update check once config loads, if auto-check is on.
             if !this.auto_update_checked && !observed.read(cx).app_config.is_null() {
                 this.auto_update_checked = true;
                 if observed.read(cx).app_flag("autoCheckUpdate") {
@@ -322,8 +311,7 @@ impl NyxApp {
             cx.notify();
         });
 
-        // Language dropdown over the display names in LANGUAGES, preselected to
-        // the active locale.
+        // Language dropdown over LANGUAGES, preselected to the active locale.
         use crate::app::state::LANGUAGES;
         let current_lang = state.read(cx).language.clone();
         let names: Vec<gpui::SharedString> =
@@ -396,8 +384,8 @@ impl NyxApp {
         }
     }
 
-    /// Checks GitHub for a newer release; opens the updater modal if one exists.
-    /// When not `silent`, also toasts "up to date" / failures (manual button).
+    /// Checks GitHub for a newer release and opens the updater modal if one
+    /// exists. When not `silent`, also toasts the outcome.
     pub(crate) fn check_update(&mut self, silent: bool, cx: &mut Context<Self>) {
         if self.update_checking || self.update_installing {
             return;
@@ -405,7 +393,6 @@ impl NyxApp {
         self.update_checking = true;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            // Flatten Result<Result<Option<_>, String>, cancelled> → outcome.
             let outcome = match runtime::spawn(backend::updater::check()).await {
                 Ok(inner) => inner,
                 Err(_) => Err("update check was cancelled".to_string()),
@@ -518,8 +505,7 @@ impl NyxApp {
 }
 
 impl NyxApp {
-    /// Toggles the TUN "main switch": optimistically flips state, patches the
-    /// controlled config, then reconciles with the core's actual value.
+    /// Toggles the TUN main switch (optimistic), then reconciles with the core.
     pub(crate) fn toggle_tun(&mut self, cx: &mut Context<Self>) {
         let new = !self.state.read(cx).tun_enabled;
         self.state.update(cx, |st, c| st.set_tun_enabled(new, c));
@@ -622,8 +608,7 @@ impl NyxApp {
             .detach();
     }
 
-    /// Clears a group's fixed (manually pinned) selection, returning it to
-    /// automatic selection (URLTest/Fallback), then re-fetches groups.
+    /// Clears a group's pinned selection (back to URLTest/Fallback), then re-fetches.
     pub(crate) fn unfix_group(&mut self, group: String, cx: &mut Context<Self>) {
         cx.spawn(async move |_this, cx| {
             let g = group.clone();
@@ -633,8 +618,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Closes and re-establishes all active connections (forces them through the
-    /// current rules/selection).
+    /// Closes and re-establishes all active connections through the current rules.
     pub(crate) fn restart_connections(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |_this, _cx| {
             let _ = runtime::spawn(backend::api::restart_connections()).await;
@@ -682,8 +666,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Runs `mihomo convert-ruleset` on the picked `.mrs` file and writes the
-    /// text output next to it, then toasts the result path.
+    /// Runs `mihomo convert-ruleset` on the picked `.mrs` file, writing the text output beside it.
     pub(crate) fn submit_mrs_convert(&mut self, cx: &mut Context<Self>) {
         let Some(input) = self.mrs_input.clone() else {
             return;
@@ -786,8 +769,7 @@ impl NyxApp {
 }
 
 impl NyxApp {
-    /// The auto-updater modal: scrim + centered card with version, changelog and
-    /// Later/Update buttons. Rendered only while `updater_open`.
+    /// The auto-updater modal (version, changelog, Later/Update). Rendered while `updater_open`.
     fn render_updater_modal(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let (version, changelog) = self
             .update_info
@@ -862,8 +844,7 @@ impl NyxApp {
 }
 
 impl NyxApp {
-    /// The "reset application" confirmation dialog: a destructive warning with
-    /// Cancel / Reset buttons. Rendered only while `reset_confirm_open`.
+    /// The "reset application" confirmation dialog. Rendered while `reset_confirm_open`.
     fn render_reset_confirm(&self, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .id("reset-scrim")
@@ -929,8 +910,7 @@ impl NyxApp {
 }
 
 impl NyxApp {
-    /// The Resources provider-content viewer modal: a large read-only code editor
-    /// showing the rules/proxies of the picked provider.
+    /// The Resources provider-content viewer: a read-only editor of the picked provider.
     fn render_provider_viewer(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(viewer) = self.provider_viewer.as_ref() else {
             return div().into_any_element();
@@ -1002,8 +982,8 @@ impl NyxApp {
 
 impl Render for NyxApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // gpui-component's `Root` does NOT paint the overlay layers itself — the
-        // top-level view must render them, or toasts/modals never appear.
+        // The top-level view must render `Root`'s overlay layers itself, or
+        // toasts/modals never appear.
         let dialog_layer = Root::render_dialog_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
         let updater_modal = self.updater_open.then(|| self.render_updater_modal(cx));
@@ -1043,8 +1023,7 @@ impl Render for NyxApp {
                     .child(self.render_rail(cx))
                     .child(self.render_content(window, cx)),
             )
-            // Onboarding coach card sits below the modals so the add-subscription
-            // dialog (and others) open above it.
+            // Onboarding card sits below the modals so dialogs open above it.
             .children(onboarding)
             .children(updater_modal)
             .children(reset_modal)
@@ -1098,8 +1077,7 @@ pub fn open_main_window(cx: &mut App, silent: bool) {
             .expect("failed to open main window");
         cx.update(|cx| {
             crate::app::actions::set_main_window(handle, cx);
-            // Close-to-tray: the X button hides the window (app keeps running in
-            // the tray); holding Ctrl while closing performs a full quit.
+            // Close-to-tray: X hides the window; Ctrl+close performs a full quit.
             let _ = handle.update(cx, |_root, window, cx| {
                 crate::app::window::remember(window);
                 #[cfg(not(windows))]
@@ -1112,8 +1090,7 @@ pub fn open_main_window(cx: &mut App, silent: bool) {
                         crate::app::actions::quit_with_core(cx);
                         return true;
                     }
-                    // Hide to tray. Run the Win32 call on the next foreground tick
-                    // (outside this borrow), or ShowWindow re-enters gpui's borrow.
+                    // `spawn` so the Win32 hide runs outside this borrow (else it re-enters).
                     #[cfg(windows)]
                     {
                         let _ = window;
@@ -1162,8 +1139,7 @@ impl NyxApp {
         cx.notify();
     }
 
-    /// Opens the modal pre-filled with an existing profile's metadata so the
-    /// user can change its name or subscription link (then re-fetch on save).
+    /// Opens the modal pre-filled with an existing profile's name/link for editing.
     pub(crate) fn open_profile_edit_info(
         &mut self,
         id: String,
@@ -1262,9 +1238,8 @@ impl NyxApp {
         .detach();
     }
 
-    /// Validates + submits the add/edit modal, then refreshes and closes. In
-    /// edit mode the existing id is carried through so the profile is updated in
-    /// place (a remote save re-fetches from the possibly-changed URL).
+    /// Validates + submits the add/edit modal, then refreshes and closes. Edit
+    /// mode updates in place (a remote save re-fetches from the URL).
     pub(crate) fn submit_profile_add(&mut self, cx: &mut Context<Self>) {
         let name = self.profile_add_name.read(cx).value().trim().to_string();
         let edit_id = self.profile_edit_id.clone();
@@ -1476,8 +1451,7 @@ impl NyxApp {
         let first_example = crate::ui::pages::rule_example(crate::ui::pages::RULE_TYPES[0]);
         let payload = cx.new(|cx| InputState::new(window, cx).placeholder(first_example));
 
-        // Build the policy dropdown from the live proxy groups + their nodes,
-        // followed by the built-in policies. Default to DIRECT.
+        // Policy dropdown: live groups + nodes, then built-in policies; default DIRECT.
         let mut policies: Vec<gpui::SharedString> = Vec::new();
         let mut seen = std::collections::HashSet::new();
         {
@@ -1737,8 +1711,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Opens a Settings detail sub-page, creating any text inputs it needs
-    /// (prefilled from the current config).
+    /// Opens a Settings sub-page, creating any text inputs it needs (prefilled from config).
     pub(crate) fn open_settings_sub(
         &mut self,
         sub: SettingsSub,
@@ -1802,8 +1775,7 @@ impl NyxApp {
                 inputs.interval = Some(mk(window, cx, interval, "10"));
             }
             SettingsSub::Dns => {
-                // Compute all owned values first so the `st` borrow ends before
-                // the `cx.new` input-creation calls below.
+                // Compute owned values first so the `st` borrow ends before `cx.new` below.
                 let join_arr = |path: &str| -> String {
                     st.ctl(path)
                         .and_then(|v| v.as_array())
@@ -1976,8 +1948,8 @@ impl NyxApp {
         cx.notify();
     }
 
-    /// Handles a keystroke while recording: Esc cancels, Backspace/Delete clears,
-    /// any other recognized combo is saved to the app config + re-registered.
+    /// Handles a keystroke while recording: Esc cancels, Backspace clears, any
+    /// other combo is saved + re-registered.
     pub(crate) fn on_recorder_key(&mut self, ev: &gpui::KeyDownEvent, cx: &mut Context<Self>) {
         let Some(key) = self.recording_shortcut else {
             return;
@@ -2322,8 +2294,7 @@ impl NyxApp {
         cx.notify();
     }
 
-    /// Asks the running core to re-download its geo databases
-    /// (`geoip`/`geosite`/`mmdb`) via `PATCH /configs/geo`.
+    /// Asks the core to re-download its geo databases via `PATCH /configs/geo`.
     pub(crate) fn update_geo(&mut self, cx: &mut Context<Self>) {
         if self.resources_busy {
             return;
@@ -2352,8 +2323,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Patches top-level keys of the controlled mihomo config and restarts the
-    /// core (used by the Mihomo-core sub-page: ports, allow-lan, …).
+    /// Patches top-level mihomo config keys (ports, allow-lan, …) and restarts the core.
     pub(crate) fn patch_core(&mut self, patch: serde_json::Value, cx: &mut Context<Self>) {
         cx.spawn(async move |_this, cx| {
             let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(patch)).await;
@@ -2381,8 +2351,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Runs a Windows service action (install/uninstall/start/stop/restart),
-    /// then refreshes runtime data + the service status display.
+    /// Runs a Windows service action, then refreshes runtime data + status.
     pub(crate) fn service_action(&mut self, action: &'static str, cx: &mut Context<Self>) {
         if self.service_busy {
             return;
@@ -2420,8 +2389,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Grants TUN capabilities to the Nyx binary via `pkexec setcap` (Linux).
-    /// Takes effect on the next launch.
+    /// Grants TUN caps to the Nyx binary via `pkexec setcap` (Linux); effective next launch.
     #[cfg(target_os = "linux")]
     pub(crate) fn grant_tun(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |_this, cx| {
@@ -2440,8 +2408,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Persists the selected core channel and (re)installs that core, then
-    /// restarts. `channel` is `mihomo` (stable) or `mihomo-alpha` (prerelease).
+    /// Persists + (re)installs the core channel (`mihomo` stable / `mihomo-alpha`), then restarts.
     pub(crate) fn install_core(&mut self, channel: &'static str, cx: &mut Context<Self>) {
         if self.service_busy {
             return;
@@ -2482,8 +2449,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Flips an app-config override flag (`controlDns`/`controlSniff`/`controlTun`)
-    /// and rebuilds the core config so the new section policy takes effect.
+    /// Flips an override flag (`controlDns`/`controlSniff`/`controlTun`) and rebuilds the core config.
     pub(crate) fn toggle_override(
         &mut self,
         key: &'static str,
@@ -2510,8 +2476,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Closes the connections with the given ids (a whole process card, or one
-    /// row). The next `/connections` poll refreshes the list automatically.
+    /// Closes the connections with the given ids; the next `/connections` poll refreshes the list.
     pub(crate) fn close_connections(&mut self, ids: Vec<String>, cx: &mut Context<Self>) {
         cx.spawn(async move |_this, _cx| {
             for id in ids {
