@@ -23,8 +23,10 @@ impl Global for GlobalTray {}
 /// Decodes the embedded app icon (PNG) into a tray `Icon`.
 fn load_icon() -> Option<Icon> {
     static PNG: &[u8] = include_bytes!("../../assets/brand/logo.png");
-    let mut reader = png::Decoder::new(PNG).read_info().ok()?;
-    let mut buf = vec![0; reader.output_buffer_size()];
+    let mut reader = png::Decoder::new(std::io::Cursor::new(PNG))
+        .read_info()
+        .ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()?];
     let info = reader.next_frame(&mut buf).ok()?;
     buf.truncate(info.buffer_size());
     let rgba = match info.color_type {

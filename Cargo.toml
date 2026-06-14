@@ -11,7 +11,6 @@ repository = "https://github.com/BX-Team/Nyx"
 [profile.dev]
 incremental = true
 
-# gpui is very slow at opt-level 0; bump it so the dev UI is usable.
 [profile.dev.package.gpui]
 opt-level = 3
 
@@ -28,11 +27,6 @@ crate-type = ["rlib"]
 
 [dependencies]
 # --- UI stack (gpui + gpui-component) ---
-# gpui / gpui_platform are intentionally UNPINNED git deps: gpui-component pulls
-# `gpui = { git = zed }` unpinned itself, and as a git dependency its transitive
-# ref always resolves to zed HEAD in our lockfile. Pinning a different rev here
-# would produce two incompatible gpui versions. Reproducibility comes from the
-# committed Cargo.lock (which freezes the exact resolved zed/longbridge commits).
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
     "font-kit",
@@ -50,7 +44,7 @@ log = "0.4"
 env_logger = "0.11"
 anyhow = "1"
 
-# --- config / state / i18n (M1) ---
+# --- config / state / i18n ---
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
@@ -58,7 +52,7 @@ dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 rust-i18n = "4"
 
-# --- backend bridge + mihomo (M2) ---
+# --- backend bridge + mihomo ---
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.13", features = ["json", "stream"] }
 mihomo-rs = "2.2"
@@ -68,17 +62,18 @@ rust-embed = "8"
 url = "2"
 futures-util = "0.3"
 base64 = "0.22"
-md-5 = "0.10"
-emojis = "0.6"
+md-5 = "0.11"
+emojis = "0.8"
 
-# --- system integration (M5) ---
-tray-icon = "0.19"
-global-hotkey = "0.6"
-auto-launch = "0.5"
-png = "0.17"
+# --- system integration ---
+tray-icon = "0.24"
+global-hotkey = "0.8"
+auto-launch = "0.6"
+png = "0.18"
 
-# --- auto-update (M6) ---
-self_update = { version = "0.42", default-features = false, features = [
+# --- auto-update ---
+self_update = { version = "0.44", default-features = false, features = [
+    "reqwest",
     "rustls",
     "compression-flate2",
     "archive-tar",
@@ -87,7 +82,7 @@ self_update = { version = "0.42", default-features = false, features = [
 
 [target.'cfg(windows)'.dependencies]
 windows-service = "0.8"
-winreg = "0.55"
+winreg = "0.56"
 raw-window-handle = "0.6"
 image = "0.25"
 windows = { version = "0.62", features = [

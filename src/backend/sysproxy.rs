@@ -94,7 +94,7 @@ fn set_windows_connections(hkcu: &winreg::RegKey, path: &str, enable: bool, prox
             &name,
             &winreg::RegValue {
                 vtype: winreg::enums::REG_BINARY,
-                bytes,
+                bytes: bytes.into(),
             },
         );
     }
