@@ -61,6 +61,7 @@
           gtk3
           glib
           libayatana-appindicator
+          xdotool
           openssl
         ];
 

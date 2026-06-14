@@ -22,16 +22,16 @@ Grab the latest build from the [Releases page](https://github.com/BX-Team/Nyx/re
 ## Windows (x86_64)
 
 - **Installer:** `Nyx_<version>_x64-setup.exe` — run it and follow the prompts. On first launch Nyx asks for elevation to install the helper service required for TUN mode; accept it once and you are set.
-- **Portable:** `nyx-x86_64-pc-windows-msvc.zip` — unzip anywhere and run `nyx.exe`. No install, settings live in your user data dir.
+- **Portable:** `Nyx-x86_64-windows.zip` — unzip anywhere and run `nyx.exe`. No install, settings live in your user data dir.
 
 ## Linux (x86_64)
 
 Pick the package for your distro, or the portable tarball:
 
-- **Debian/Ubuntu:** `nyx_<version>_amd64.deb` — `sudo apt install ./nyx_<version>_amd64.deb`
-- **Fedora/RHEL:** `nyx-<version>.x86_64.rpm` — `sudo dnf install ./nyx-<version>.x86_64.rpm`
-- **Arch:** `nyx-<version>-x86_64.pkg.tar.xz` — `sudo pacman -U ./nyx-<version>-x86_64.pkg.tar.xz`
-- **Portable:** `nyx-x86_64-unknown-linux-gnu.tar.gz` — extract and run `./nyx`
+- **Debian/Ubuntu:** `Nyx_<version>_amd64.deb` — `sudo apt install ./Nyx_<version>_amd64.deb`
+- **Fedora/RHEL:** `Nyx-<version>.x86_64.rpm` — `sudo dnf install ./Nyx-<version>.x86_64.rpm`
+- **Arch:** `Nyx-<version>-x86_64.pkg.tar.xz` — `sudo pacman -U ./Nyx-<version>-x86_64.pkg.tar.xz`
+- **Portable:** `Nyx-x86_64-linux.tar.gz` — extract and run `./nyx`
 
 ### Nix
 

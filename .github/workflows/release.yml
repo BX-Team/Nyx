@@ -128,8 +128,11 @@ jobs:
       - name: Portable zip
         shell: pwsh
         run: |
-          $name = "nyx-x86_64-pc-windows-msvc.zip"
+          $name = "Nyx-x86_64-windows.zip"
           Compress-Archive -Path "target/release/nyx.exe" -DestinationPath $name -Force
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
 
       - name: Build installer (NSIS)
         shell: pwsh
@@ -145,7 +148,7 @@ jobs:
         with:
           tag_name: v${{ inputs.version }}
           files: |
-            nyx-x86_64-pc-windows-msvc.zip
+            Nyx-x86_64-windows.zip
             Nyx_${{ inputs.version }}_x64-setup.exe
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -165,7 +168,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libgtk-3-dev libxdo-dev libayatana-appindicator3-dev \
-            libxkbcommon-dev libwayland-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
             libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             libfontconfig1-dev libfreetype6-dev \
             libvulkan-dev mesa-vulkan-drivers
@@ -187,15 +190,15 @@ jobs:
           tool: cargo-deb,cargo-generate-rpm
 
       - name: Portable tarball
-        run: tar -C target/release -czf nyx-x86_64-unknown-linux-gnu.tar.gz nyx
+        run: tar -C target/release -czf Nyx-x86_64-linux.tar.gz nyx
 
       - name: Build .deb
-        run: cargo deb --no-build --output nyx_${{ inputs.version }}_amd64.deb
+        run: cargo deb --no-build --output Nyx_${{ inputs.version }}_amd64.deb
 
       - name: Build .rpm
         run: |
           cargo generate-rpm
-          cp target/generate-rpm/*.rpm "nyx-${{ inputs.version }}.x86_64.rpm"
+          cp target/generate-rpm/*.rpm "Nyx-${{ inputs.version }}.x86_64.rpm"
 
       - name: Build .pkg.tar.xz (Arch)
         run: |
@@ -212,17 +215,17 @@ jobs:
               sudo -u builder env PKGEXT=.pkg.tar.xz makepkg -f --nodeps
               cp *.pkg.tar.xz /pkg/
             '
-          cp installer/arch/*.pkg.tar.xz .
+          cp installer/arch/*.pkg.tar.xz "Nyx-${{ inputs.version }}-x86_64.pkg.tar.xz"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ inputs.version }}
           files: |
-            nyx-x86_64-unknown-linux-gnu.tar.gz
-            nyx_${{ inputs.version }}_amd64.deb
-            nyx-${{ inputs.version }}.x86_64.rpm
-            nyx-*-x86_64.pkg.tar.xz
+            Nyx-x86_64-linux.tar.gz
+            Nyx_${{ inputs.version }}_amd64.deb
+            Nyx-${{ inputs.version }}.x86_64.rpm
+            Nyx-${{ inputs.version }}-x86_64.pkg.tar.xz
           token: ${{ secrets.GITHUB_TOKEN }}
 
   cachix:
@@ -245,7 +248,7 @@ jobs:
       - name: Set up Cachix
         uses: cachix/cachix-action@v17
         with:
-          name: nyx
+          name: bx-team
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Build (and push) the flake package

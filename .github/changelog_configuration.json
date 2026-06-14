@@ -1,6 +1,6 @@
 {
   "template": "#{{CHANGELOG}}",
-  "commit_template": "- [`#{{SHORT_MERGE_SHA}}`](https://github.com/OWNER/Nyx/commit/#{{MERGE_SHA}}) #{{TITLE}}",
+  "commit_template": "- [`#{{SHORT_MERGE_SHA}}`](https://github.com/BX-Team/Nyx/commit/#{{MERGE_SHA}}) #{{TITLE}}",
   "categories": [
     {
       "title": "## 🚀 Features",

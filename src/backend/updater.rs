@@ -49,9 +49,15 @@ pub async fn download_and_install() -> Result<(), String> {
     }
 
     tokio::task::spawn_blocking(|| {
+        #[cfg(windows)]
+        let target = "x86_64-windows";
+        #[cfg(not(windows))]
+        let target = "x86_64-linux";
+
         self_update::backends::github::Update::configure()
             .repo_owner(REPO_OWNER)
             .repo_name(REPO_NAME)
+            .target(target)
             .bin_name("nyx")
             .current_version(self_update::cargo_crate_version!())
             .no_confirm(true)
