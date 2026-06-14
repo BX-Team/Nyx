@@ -9,7 +9,9 @@ use gpui_component::select::{SelectEvent, SelectState};
 use gpui_component::IndexPath;
 use gpui_component::{
     button::{Button, ButtonVariants},
-    h_flex, v_flex, Disableable, Root, StyledExt, TitleBar,
+    h_flex,
+    text::TextView,
+    v_flex, Disableable, Root, StyledExt, TitleBar,
 };
 use rust_i18n::t;
 
@@ -872,7 +874,7 @@ impl NyxApp {
                             .overflow_y_scroll()
                             .text_sm()
                             .text_color(rgb(MUTED))
-                            .child(changelog),
+                            .child(TextView::markdown("updater-changelog-md", changelog)),
                     )
                     .child(
                         h_flex()

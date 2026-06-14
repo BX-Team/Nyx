@@ -76,6 +76,7 @@ self_update = { version = "0.44", default-features = false, features = [
     "reqwest",
     "rustls",
     "compression-flate2",
+    "compression-zip-deflate",
     "archive-tar",
     "archive-zip",
 ] }
