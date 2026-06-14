@@ -18,6 +18,9 @@ pub fn set_main_window(handle: WindowHandle<Root>, cx: &mut App) {
 /// `WindowHandle::update`) so it doesn't lock `Root`, which `push_notification`
 /// updates itself.
 pub fn notify(note: Notification, cx: &mut App) {
+    if AppState::global(cx).read(cx).onboarding_active {
+        return;
+    }
     let Some(handle) = cx.try_global::<MainWindow>().map(|m| m.0) else {
         return;
     };

@@ -125,6 +125,7 @@ pub struct AppState {
     pub core_status: CoreStatus,
     pub mihomo_version: Option<SharedString>,
     pub tun_enabled: bool,
+    pub onboarding_active: bool,
 
     pub up_speed: u64,
     pub down_speed: u64,
@@ -171,6 +172,7 @@ impl AppState {
             core_status: CoreStatus::Stopped,
             mihomo_version: None,
             tun_enabled: false,
+            onboarding_active: false,
             up_speed: 0,
             down_speed: 0,
             total_up: 0,

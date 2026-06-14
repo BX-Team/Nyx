@@ -127,4 +127,6 @@ pub fn apply(cx: &mut App) {
 
     c.title_bar = rgb(TITLEBAR_BG).into();
     c.title_bar_border = rgb(TITLEBAR_BORDER).into();
+
+    t.notification.placement = gpui::Anchor::BottomRight;
 }

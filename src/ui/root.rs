@@ -324,14 +324,13 @@ impl NyxApp {
             .new(|cx| SelectState::new(names, Some(IndexPath::default().row(cur_idx)), window, cx));
         let lang_sub = cx.subscribe(&lang_select, Self::on_language_selected);
 
+        let onboarding_pending = !backend::config::app_config_bool("onboardingDone");
+        state.update(cx, |s, _| s.onboarding_active = onboarding_pending);
+
         Self {
             state,
             route: Route::Home,
-            onboarding_step: if backend::config::app_config_bool("onboardingDone") {
-                None
-            } else {
-                Some(0)
-            },
+            onboarding_step: if onboarding_pending { Some(0) } else { None },
             rail_expanded: false,
             proxies_group: None,
             proxies_search,

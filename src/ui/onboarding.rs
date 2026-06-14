@@ -44,6 +44,7 @@ impl NyxApp {
     /// Dismisses the flow and records it so it never shows again.
     pub(crate) fn onboarding_finish(&mut self, cx: &mut Context<Self>) {
         self.onboarding_step = None;
+        self.state.update(cx, |s, _| s.onboarding_active = false);
         runtime::detach(async {
             let _ = backend::config::patch_app_config(json!({ "onboardingDone": true })).await;
         });
