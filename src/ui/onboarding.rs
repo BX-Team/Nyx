@@ -1,5 +1,7 @@
 use gpui::prelude::FluentBuilder;
-use gpui::{div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, Styled};
+use gpui::{
+    div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, Styled, Window,
+};
 use gpui_component::{
     button::{Button, ButtonVariants},
     h_flex, v_flex, StyledExt,
@@ -21,7 +23,7 @@ impl NyxApp {
     }
 
     /// Advances the welcome flow, routing to the screen the next step is about.
-    pub(crate) fn onboarding_advance(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn onboarding_advance(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let step = self.onboarding_step.unwrap_or(0);
         if step >= LAST_STEP {
             self.onboarding_finish(cx);
@@ -33,7 +35,7 @@ impl NyxApp {
             1 => self.route = Route::Profiles,
             2 => {
                 self.route = Route::Settings;
-                self.settings_sub = Some(SettingsSub::Mihomo);
+                self.open_settings_sub(SettingsSub::Mihomo, window, cx);
             }
             3 => self.route = Route::Home,
             _ => {}
@@ -160,9 +162,9 @@ impl NyxApp {
                                 Button::new("onb-next")
                                     .primary()
                                     .label(primary_label.to_string())
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.onboarding_advance(cx)),
-                                    ),
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.onboarding_advance(window, cx)
+                                    })),
                             ),
                     ),
             );

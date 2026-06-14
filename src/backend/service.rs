@@ -455,8 +455,13 @@ pub async fn install_service() -> Result<(), String> {
 pub async fn uninstall_service() -> Result<(), String> {
     #[cfg(windows)]
     {
-        if service_query_state()?.is_none() {
+        let state = service_query_state()?;
+        if state.is_none() {
             return Ok(());
+        }
+        if state.as_deref() == Some("running") {
+            let _ = send_ipc_request(&crate::backend::service_host::IpcRequest::StopCore).await;
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         }
         if !elevation::is_elevated() {
             let bat_cmd = format!(

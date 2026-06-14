@@ -152,3 +152,13 @@ pub fn quit_with_core(cx: &mut App) {
     let _ = runtime::runtime().block_on(backend::service::stop_core_complete());
     cx.quit();
 }
+
+/// Ctrl+close: turns the proxy off and clears the system proxy, but leaves the
+/// core running in the background.
+pub fn disconnect_and_quit(cx: &mut App) {
+    backend::sysproxy::clear();
+    let _ = runtime::runtime().block_on(backend::config::patch_controled_mihomo_config(
+        json!({ "tun": { "enable": false } }),
+    ));
+    cx.quit();
+}

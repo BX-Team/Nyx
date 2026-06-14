@@ -181,6 +181,10 @@ pub(crate) struct NyxApp {
     pub(crate) profile_add_file: Option<(String, String)>,
     /// Id of the profile being edited; `None` when the modal is creating a new one.
     pub(crate) profile_edit_id: Option<String>,
+    /// Set while a profile import is downloading; keeps the modal open + disabled.
+    pub(crate) profile_add_busy: bool,
+    /// Last import error, shown inline in the modal.
+    pub(crate) profile_add_error: Option<gpui::SharedString>,
     /// MRS converter modal: open flag, input file, mihomo behavior.
     pub(crate) mrs_open: bool,
     pub(crate) mrs_input: Option<std::path::PathBuf>,
@@ -364,6 +368,8 @@ impl NyxApp {
             profile_interval,
             profile_add_file: None,
             profile_edit_id: None,
+            profile_add_busy: false,
+            profile_add_error: None,
             mrs_open: false,
             mrs_input: None,
             mrs_behavior: "domain",
@@ -504,12 +510,22 @@ impl NyxApp {
 }
 
 impl NyxApp {
-    /// Toggles the TUN main switch (optimistic), then reconciles with the core.
     pub(crate) fn toggle_tun(&mut self, cx: &mut Context<Self>) {
         let new = !self.state.read(cx).tun_enabled;
+        let running = self.state.read(cx).core_status.is_running();
         self.state.update(cx, |st, c| st.set_tun_enabled(new, c));
         cx.spawn(async move |_this, cx| {
-            let patch = serde_json::json!({ "tun": { "enable": new } });
+            if !running && !crate::app::bootstrap::start_core_and_streams(cx).await {
+                cx.update(|cx| {
+                    AppState::global(cx).update(cx, |st, c| st.set_tun_enabled(false, c));
+                });
+                return;
+            }
+            let patch = if new {
+                serde_json::json!({ "tun": { "enable": true }, "dns": { "enable": true } })
+            } else {
+                serde_json::json!({ "tun": { "enable": false } })
+            };
             let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(patch)).await;
             if let Ok(Ok(cfg)) =
                 runtime::spawn(backend::config::get_controled_mihomo_config()).await
@@ -752,12 +768,20 @@ async fn refresh_groups(cx: &mut gpui::AsyncApp) {
 
 impl NyxApp {
     fn render_content(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let has_profiles = !self.state.read(cx).profiles.is_empty();
+        let route = if !has_profiles
+            && !matches!(self.route, Route::Home | Route::Profiles | Route::Settings)
+        {
+            Route::Home
+        } else {
+            self.route
+        };
         let body = if self.rule_editor.is_some() {
             self.render_rule_editor(window, cx).into_any_element()
         } else if self.editor_target.is_some() {
             self.render_editor(cx).into_any_element()
         } else {
-            match self.route {
+            match route {
                 Route::Home => self.render_home(window, cx).into_any_element(),
                 Route::Proxies => self.render_proxies(window, cx).into_any_element(),
                 Route::Profiles => self.render_profiles(window, cx).into_any_element(),
@@ -1109,7 +1133,8 @@ pub fn open_main_window(cx: &mut App, silent: bool) {
             .expect("failed to open main window");
         cx.update(|cx| {
             crate::app::actions::set_main_window(handle, cx);
-            // Close-to-tray: X hides the window; Ctrl+close performs a full quit.
+            // Close-to-tray: X hides the window; Ctrl+close disconnects the proxy
+            // and quits, leaving the core running in the background.
             let _ = handle.update(cx, |_root, window, cx| {
                 crate::app::window::remember(window);
                 #[cfg(not(windows))]
@@ -1119,7 +1144,7 @@ pub fn open_main_window(cx: &mut App, silent: bool) {
                 window.on_window_should_close(cx, |window, cx| {
                     save_main_window_bounds(window);
                     if window.modifiers().control {
-                        crate::app::actions::quit_with_core(cx);
+                        crate::app::actions::disconnect_and_quit(cx);
                         return true;
                     }
                     // `spawn` so the Win32 hide runs outside this borrow (else it re-enters).
@@ -1167,6 +1192,8 @@ impl NyxApp {
             .update(cx, |s, c| s.set_value("", window, c));
         self.profile_interval
             .update(cx, |s, c| s.set_value("", window, c));
+        self.profile_add_busy = false;
+        self.profile_add_error = None;
         self.profile_add_open = true;
         cx.notify();
     }
@@ -1184,6 +1211,8 @@ impl NyxApp {
         self.profile_add_name
             .update(cx, |s, c| s.set_value("", window, c));
         self.profile_edit_id = Some(id.clone());
+        self.profile_add_busy = false;
+        self.profile_add_error = None;
         self.profile_add_open = true;
         cx.notify();
         cx.spawn_in(window, async move |this, cx| {
@@ -1217,8 +1246,12 @@ impl NyxApp {
 
     /// Closes the "Add profile" modal.
     pub(crate) fn close_profile_add(&mut self, cx: &mut Context<Self>) {
+        if self.profile_add_busy {
+            return;
+        }
         self.profile_add_open = false;
         self.profile_edit_id = None;
+        self.profile_add_error = None;
         cx.notify();
     }
 
@@ -1289,18 +1322,22 @@ impl NyxApp {
                 // Editing a local profile without re-picking a file: rename only.
                 None => {
                     let Some(id) = edit_id else { return };
-                    self.profile_add_open = false;
-                    self.profile_edit_id = None;
+                    self.profile_add_busy = true;
+                    self.profile_add_error = None;
                     cx.notify();
-                    cx.spawn(async move |_this, cx| {
-                        if let Ok(Ok(mut existing)) =
-                            runtime::spawn(backend::config::get_profile_item(id)).await
-                        {
+                    cx.spawn(async move |this, cx| {
+                        let res = runtime::spawn(async move {
+                            let mut existing = backend::config::get_profile_item(id).await?;
                             existing["name"] = serde_json::Value::String(name);
-                            let _ = runtime::spawn(backend::config::update_profile_item(existing))
-                                .await;
-                        }
-                        crate::app::bootstrap::refresh_runtime_data(cx).await;
+                            backend::config::update_profile_item(existing).await
+                        })
+                        .await;
+                        let err = match res {
+                            Ok(Ok(())) => None,
+                            Ok(Err(e)) => Some(e),
+                            Err(_) => Some("task cancelled".to_string()),
+                        };
+                        Self::finish_profile_add(this, cx, err).await;
                     })
                     .detach();
                     return;
@@ -1327,14 +1364,45 @@ impl NyxApp {
             }
             v
         };
-        self.profile_add_open = false;
-        self.profile_edit_id = None;
+        self.profile_add_busy = true;
+        self.profile_add_error = None;
         cx.notify();
-        cx.spawn(async move |_this, cx| {
-            let _ = runtime::spawn(backend::config::add_profile_item(item)).await;
-            crate::app::bootstrap::refresh_runtime_data(cx).await;
+        cx.spawn(async move |this, cx| {
+            let added = runtime::spawn(backend::config::add_profile_item(item)).await;
+            let err = match added {
+                Ok(Ok(_)) => None,
+                Ok(Err(e)) => Some(e),
+                Err(_) => Some("task cancelled".to_string()),
+            };
+            Self::finish_profile_add(this, cx, err).await;
         })
         .detach();
+    }
+
+    /// Closes the modal on success, or surfaces the error in the still-open modal.
+    async fn finish_profile_add(
+        this: gpui::WeakEntity<Self>,
+        cx: &mut gpui::AsyncApp,
+        err: Option<String>,
+    ) {
+        if err.is_none() {
+            crate::app::bootstrap::refresh_runtime_data(cx).await;
+        }
+        let _ = this.update(cx, |this, cx| {
+            this.profile_add_busy = false;
+            match err {
+                None => {
+                    this.profile_add_open = false;
+                    this.profile_edit_id = None;
+                    this.profile_add_error = None;
+                }
+                Some(e) => {
+                    log::warn!("[profile] import failed: {e}");
+                    this.profile_add_error = Some(e.into());
+                }
+            }
+            cx.notify();
+        });
     }
 
     /// Activates a profile and hot-reloads the core.
@@ -2418,7 +2486,21 @@ impl NyxApp {
                     );
                 });
             }
-            crate::app::bootstrap::refresh_runtime_data(cx).await;
+            if matches!(action, "stop" | "uninstall") && matches!(res, Ok(Ok(()))) {
+                // Stopping/uninstalling kills the core — drop the stale state.
+                cx.update(|cx| {
+                    AppState::global(cx).update(cx, |st, c| {
+                        st.set_core_status(crate::app::state::CoreStatus::Stopped, c);
+                        st.set_tun_enabled(false, c);
+                    });
+                });
+                crate::app::bootstrap::refresh_runtime_data(cx).await;
+            } else if action == "install" && matches!(res, Ok(Ok(()))) {
+                // Bring the core up (TUN stays off) so its version/groups populate.
+                crate::app::bootstrap::start_core_disconnected(cx).await;
+            } else {
+                crate::app::bootstrap::refresh_runtime_data(cx).await;
+            }
             let _ = this.update(cx, |this, cx| {
                 this.service_busy = false;
                 this.refresh_service_info(cx);

@@ -18,8 +18,10 @@ impl NyxApp {
     pub(crate) fn render_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let expanded = self.rail_expanded;
         let mode = self.state.read(cx).mode.clone();
+        // No profile yet: keep only Home, Profiles, Settings; hide proxy pages.
+        let has_profiles = !self.state.read(cx).profiles.is_empty();
 
-        let nav = v_flex().w_full().items_center().gap(px(2.)).children([
+        let mut nav_items = vec![
             self.rail_nav(
                 "home",
                 IconName::LayoutDashboard,
@@ -34,42 +36,52 @@ impl NyxApp {
                 Route::Profiles,
                 cx,
             ),
-            self.rail_nav(
-                "proxies",
-                IconName::Globe,
-                t!("sider.proxyGroup"),
-                Route::Proxies,
-                cx,
-            ),
-            self.rail_nav(
-                "rules",
-                IconName::BookOpen,
-                t!("sider.rules"),
-                Route::Rules,
-                cx,
-            ),
-            self.rail_nav(
-                "conns",
-                IconName::Network,
-                t!("sider.connection"),
-                Route::Connections,
-                cx,
-            ),
-            self.rail_nav(
-                "logs",
-                IconName::SquareTerminal,
-                t!("sider.logs"),
-                Route::Logs,
-                cx,
-            ),
-            self.rail_nav(
-                "settings",
-                IconName::Settings,
-                t!("common.settings"),
-                Route::Settings,
-                cx,
-            ),
-        ]);
+        ];
+        if has_profiles {
+            nav_items.extend([
+                self.rail_nav(
+                    "proxies",
+                    IconName::Globe,
+                    t!("sider.proxyGroup"),
+                    Route::Proxies,
+                    cx,
+                ),
+                self.rail_nav(
+                    "rules",
+                    IconName::BookOpen,
+                    t!("sider.rules"),
+                    Route::Rules,
+                    cx,
+                ),
+                self.rail_nav(
+                    "conns",
+                    IconName::Network,
+                    t!("sider.connection"),
+                    Route::Connections,
+                    cx,
+                ),
+                self.rail_nav(
+                    "logs",
+                    IconName::SquareTerminal,
+                    t!("sider.logs"),
+                    Route::Logs,
+                    cx,
+                ),
+            ]);
+        }
+        nav_items.push(self.rail_nav(
+            "settings",
+            IconName::Settings,
+            t!("common.settings"),
+            Route::Settings,
+            cx,
+        ));
+
+        let nav = v_flex()
+            .w_full()
+            .items_center()
+            .gap(px(2.))
+            .children(nav_items);
 
         let top = v_flex()
             .w_full()

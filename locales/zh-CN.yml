@@ -54,6 +54,9 @@ pages:
     never: 永不
     subUpdated: 订阅已更新
     subUpdateFailed: 订阅更新失败
+    emptyTitle: 尚未添加配置
+    emptyBody: 添加订阅或本地配置文件即可开始使用 Nyx。
+    emptyCta: 添加配置
   proxies:
     testGroup: 测试
     refresh: 刷新
@@ -89,6 +92,7 @@ pages:
     count: "%{n} 个订阅"
     updateAll: 全部更新
     add: 添加
+    importFailed: 导入失败
     addTitle: 添加订阅
     editTitle: 编辑订阅
     selectFile: 选择文件

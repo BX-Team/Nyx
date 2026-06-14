@@ -109,8 +109,11 @@ impl NyxApp {
         &self,
         _window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> gpui::AnyElement {
         let st = self.state.read(cx);
+        if st.profiles.is_empty() {
+            return self.render_home_empty(cx).into_any_element();
+        }
         let tun = st.tun_enabled;
         let total_up = st.total_up;
         let total_down = st.total_down;
@@ -171,10 +174,60 @@ impl NyxApp {
             )
             .child(render_proxy_card(current_proxy, cx));
 
-        h_flex().size_full().p_5().gap_4().child(main).when(
-            stats_open && (stats.has_traffic || !stats.announce.is_empty()),
-            |this| this.child(render_stats(&stats)),
-        )
+        h_flex()
+            .size_full()
+            .p_5()
+            .gap_4()
+            .child(main)
+            .when(
+                stats_open && (stats.has_traffic || !stats.announce.is_empty()),
+                |this| this.child(render_stats(&stats)),
+            )
+            .into_any_element()
+    }
+
+    /// Fresh-install home
+    fn render_home_empty(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_4()
+            .p_5()
+            .child(
+                div()
+                    .size(px(72.))
+                    .rounded_full()
+                    .bg(rgb(CARD_BG))
+                    .border_1()
+                    .border_color(rgb(CARD_BORDER))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(Icon::new(IconName::Folder).large().text_color(rgb(MUTED))),
+            )
+            .child(
+                div()
+                    .text_xl()
+                    .font_bold()
+                    .text_color(rgb(TEXT))
+                    .child(t!("pages.home.emptyTitle").to_string()),
+            )
+            .child(
+                div()
+                    .max_w(px(360.))
+                    .text_sm()
+                    .text_center()
+                    .text_color(rgb(MUTED))
+                    .child(t!("pages.home.emptyBody").to_string()),
+            )
+            .child(
+                Button::new("home-empty-add")
+                    .primary()
+                    .icon(IconName::Plus)
+                    .label(t!("pages.home.emptyCta").to_string())
+                    .on_click(cx.listener(|this, _, window, cx| this.open_profile_add(window, cx))),
+            )
     }
 
     fn render_topbar(

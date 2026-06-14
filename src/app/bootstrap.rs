@@ -1,68 +1,153 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use gpui::{App, AsyncApp};
 
 use crate::app::runtime;
 use crate::app::state::{self, AppState, CoreStatus};
 use crate::backend;
 
-/// Starts the mihomo core and live data flow. Call once after the main window
-/// is open. Non-blocking: all work runs on the tokio runtime / gpui foreground.
+/// Streams are long-lived reconnect loops — wire them at most once per process.
+static STREAMS_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// On launch: seed config, prefetch the binary, and — if setup is complete —
+/// start the core (with TUN forced off, so opening the app never connects).
 pub fn spawn_backend_startup(cx: &mut App) {
-    let state = AppState::global(cx);
-    state.update(cx, |st, cx| st.set_core_status(CoreStatus::Starting, cx));
-
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<backend::streaming::StreamEvent>();
-
-    // Drain the streaming channel into AppState on the gpui foreground.
     cx.spawn(async move |cx: &mut AsyncApp| {
-        while let Some(ev) = rx.recv().await {
-            cx.update(|cx| {
-                AppState::global(cx).update(cx, |st, c| st.apply_stream_event(ev, c));
-            });
-        }
-    })
-    .detach();
+        let _ = runtime::spawn(async { backend::startup::ensure_default_app_config() }).await;
+        prefetch_core_binary();
 
-    // Start the core, then streams + initial fetches.
-    cx.spawn(async move |cx: &mut AsyncApp| {
-        let outcome = runtime::spawn(backend::startup::start_core_flow()).await;
-        let started = matches!(outcome, Ok(Ok(())));
-        cx.update(|cx| {
-            let state = AppState::global(cx);
-            state.update(cx, |st, cx| match &outcome {
-                Ok(Ok(())) => st.set_core_status(CoreStatus::Running, cx),
-                Ok(Err(e)) => st.set_core_status(CoreStatus::Failed(e.clone().into()), cx),
-                Err(_) => {
-                    st.set_core_status(CoreStatus::Failed("startup task was cancelled".into()), cx)
-                }
-            });
-        });
-
-        if !started {
-            log::error!("[bootstrap] core failed to start: {outcome:?}");
+        if can_autostart_core().await {
+            start_core_disconnected(cx).await;
             return;
         }
 
+        cx.update(|cx| {
+            AppState::global(cx).update(cx, |st, cx| st.set_core_status(CoreStatus::Stopped, cx));
+        });
+        refresh_runtime_data(cx).await;
+    })
+    .detach();
+}
+
+/// Core may be started unattended only once a profile exists and the runtime is
+/// available (Windows service installed / core binary present).
+async fn can_autostart_core() -> bool {
+    if !has_any_profile().await {
+        return false;
+    }
+    matches!(
+        runtime::spawn(backend::service::service_status()).await,
+        Ok(Ok(s)) if s != "not-installed"
+    )
+}
+
+async fn has_any_profile() -> bool {
+    matches!(
+        runtime::spawn(backend::config::get_profile_config()).await,
+        Ok(Ok(cfg)) if cfg
+            .get("items")
+            .and_then(|v| v.as_array())
+            .map(|a| !a.is_empty())
+            .unwrap_or(false)
+    )
+}
+
+pub async fn start_core_disconnected(cx: &mut AsyncApp) -> bool {
+    let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(
+        serde_json::json!({ "tun": { "enable": false } }),
+    ))
+    .await;
+    start_core_and_streams(cx).await
+}
+
+pub async fn start_core_and_streams(cx: &mut AsyncApp) -> bool {
+    cx.update(|cx| {
+        AppState::global(cx).update(cx, |st, cx| st.set_core_status(CoreStatus::Starting, cx));
+    });
+
+    let outcome = runtime::spawn(backend::startup::start_core_flow()).await;
+    let started = matches!(outcome, Ok(Ok(())));
+    cx.update(|cx| {
+        AppState::global(cx).update(cx, |st, cx| match &outcome {
+            Ok(Ok(())) => st.set_core_status(CoreStatus::Running, cx),
+            Ok(Err(e)) => st.set_core_status(CoreStatus::Failed(e.clone().into()), cx),
+            Err(_) => {
+                st.set_core_status(CoreStatus::Failed("startup task was cancelled".into()), cx)
+            }
+        });
+    });
+
+    if !started {
+        log::error!("[bootstrap] core failed to start: {outcome:?}");
+        return false;
+    }
+
+    wait_for_core_ready().await;
+
+    if !STREAMS_STARTED.swap(true, Ordering::SeqCst) {
+        let (tx, mut rx) =
+            tokio::sync::mpsc::unbounded_channel::<backend::streaming::StreamEvent>();
+        cx.update(|cx| {
+            cx.spawn(async move |cx: &mut AsyncApp| {
+                while let Some(ev) = rx.recv().await {
+                    cx.update(|cx| {
+                        AppState::global(cx).update(cx, |st, c| st.apply_stream_event(ev, c));
+                    });
+                }
+            })
+            .detach();
+        });
         let tx_conn = tx.clone();
         runtime::detach(async move { backend::streaming::stream_connections(tx_conn).await });
         runtime::detach(async move { backend::streaming::stream_logs(tx).await });
+    }
 
-        refresh_runtime_data(cx).await;
+    refresh_runtime_data(cx).await;
 
-        // Re-apply saved system-proxy now the core is up; also clears any left by a crash.
-        if let Ok(Ok(cfg)) = runtime::spawn(backend::config::get_app_config()).await {
-            let enable = cfg
-                .get("sysProxy")
-                .and_then(|v| v.get("enable"))
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let affect = cfg
-                .get("affectVPNConnections")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let _ = runtime::spawn(backend::sysproxy::apply(enable, affect)).await;
+    // Re-apply saved system-proxy now the core is up; also clears any left by a crash.
+    if let Ok(Ok(cfg)) = runtime::spawn(backend::config::get_app_config()).await {
+        let enable = cfg
+            .get("sysProxy")
+            .and_then(|v| v.get("enable"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let affect = cfg
+            .get("affectVPNConnections")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let _ = runtime::spawn(backend::sysproxy::apply(enable, affect)).await;
+    }
+    true
+}
+
+/// Polls the core's HTTP controller until it answers — mihomo needs a moment to
+/// bind after spawn, else the first groups/version fetch comes back empty.
+async fn wait_for_core_ready() {
+    let _ = runtime::spawn(async {
+        for _ in 0..40 {
+            if backend::api::get_version().await.is_ok() {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
         }
     })
-    .detach();
+    .await;
+}
+
+fn prefetch_core_binary() {
+    let core = backend::config::app_config_str("core", "mihomo");
+    if core == "system" {
+        return;
+    }
+    runtime::detach(async move {
+        if backend::manager::core_installed().await {
+            return;
+        }
+        log::info!("[bootstrap] prefetching mihomo core binary ({core})");
+        if let Err(e) = backend::manager::install_core_for_core_type(&core).await {
+            log::warn!("[bootstrap] core prefetch failed: {e}");
+        }
+    });
 }
 
 /// Re-fetches groups, TUN state, mihomo version, and the current profile name.
@@ -111,6 +196,7 @@ pub async fn refresh_runtime_data(cx: &mut AsyncApp) {
             .to_string();
         cx.update(|cx| {
             AppState::global(cx).update(cx, |st, c| {
+                let tun = tun && st.core_status.is_running();
                 st.set_tun_enabled(tun, c);
                 st.set_mode(mode, c);
                 st.set_controled_config(cfg.clone(), c);

@@ -15,7 +15,7 @@ use rust_i18n::t;
 use crate::app::state::ProfileItem;
 use crate::ui::root::{
     brand_gradient, fmt_bytes, NyxApp, ACTIVE_CARD_BG, ACTIVE_CARD_BORDER, BLUE, CARD_BG,
-    CARD_BORDER, CONTROL_BG, CONTROL_BORDER, DIVIDER, GREEN, MUTED, MUTED2, SUBTLE, TEXT,
+    CARD_BORDER, CONTROL_BG, CONTROL_BORDER, DIVIDER, GREEN, MUTED, MUTED2, RED, SUBTLE, TEXT,
 };
 
 /// Days until `expire` (unix ts), or a localized "never" when unset.
@@ -291,6 +291,8 @@ impl NyxApp {
     pub(crate) fn render_profile_add_modal(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let local = self.profile_add_local;
         let editing = self.profile_edit_id.is_some();
+        let busy = self.profile_add_busy;
+        let error = self.profile_add_error.clone();
         let file_name = self.profile_add_file.as_ref().map(|(n, _)| n.clone());
         let can_submit = if local {
             // When editing a local profile, re-picking the file is optional (bare save renames).
@@ -392,6 +394,13 @@ impl NyxApp {
                                 .child(Input::new(&self.profile_interval)),
                         )
                     })
+                    .when_some(error, |this, e| {
+                        this.child(div().text_xs().text_color(rgb(RED)).child(format!(
+                            "{}: {}",
+                            t!("pages.profiles.importFailed"),
+                            e
+                        )))
+                    })
                     .child(
                         h_flex()
                             .justify_end()
@@ -400,6 +409,7 @@ impl NyxApp {
                                 Button::new("profadd-cancel")
                                     .ghost()
                                     .label(t!("common.cancel").to_string())
+                                    .disabled(busy)
                                     .on_click(
                                         cx.listener(|this, _, _, cx| this.close_profile_add(cx)),
                                     ),
@@ -412,7 +422,8 @@ impl NyxApp {
                                     } else {
                                         t!("pages.profiles.add").to_string()
                                     })
-                                    .disabled(!can_submit)
+                                    .loading(busy)
+                                    .disabled(!can_submit || busy)
                                     .on_click(
                                         cx.listener(|this, _, _, cx| this.submit_profile_add(cx)),
                                     ),

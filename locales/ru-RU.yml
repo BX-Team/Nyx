@@ -54,6 +54,9 @@ pages:
     never: Никогда
     subUpdated: Подписка обновлена
     subUpdateFailed: Не удалось обновить подписку
+    emptyTitle: Профиль ещё не добавлен
+    emptyBody: Добавьте подписку или локальный файл конфигурации, чтобы начать работу с Nyx.
+    emptyCta: Добавить профиль
   proxies:
     testGroup: Тест
     refresh: Обновить
@@ -89,6 +92,7 @@ pages:
     count: "Подписок: %{n}"
     updateAll: Обновить все
     add: Добавить
+    importFailed: Не удалось импортировать
     addTitle: Добавить подписку
     editTitle: Редактировать подписку
     selectFile: Выбрать файл

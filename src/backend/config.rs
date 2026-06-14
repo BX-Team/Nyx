@@ -81,6 +81,16 @@ pub fn app_config_bool(key: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Reads a string key from the app config, falling back to `default`.
+pub fn app_config_str(key: &str, default: &str) -> String {
+    let path = dirs::app_config_path();
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_yaml::from_str::<Value>(&s).ok())
+        .and_then(|v| v.get(key).and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_else(|| default.to_string())
+}
+
 /// Reads the persisted main-window geometry `(x, y, width, height)` from the app
 /// config, if present. Sync — called while opening the window.
 pub fn load_window_state() -> Option<(f64, f64, f64, f64)> {
@@ -165,11 +175,7 @@ pub async fn patch_controled_mihomo_config(config: Value) -> Result<()> {
     }
 
     let patch_url = format!("{}/configs", crate::backend::manager::controller_url());
-    let _ = reqwest::Client::new()
-        .patch(&patch_url)
-        .json(&config)
-        .send()
-        .await;
+    let _ = local_http().patch(&patch_url).json(&config).send().await;
     Ok(())
 }
 
@@ -370,6 +376,13 @@ pub async fn add_profile_item(item: Value) -> Result<String, String> {
 
     let config_path = dirs::profile_config_path();
     let mut cfg = profile_config().await?;
+    // Fresh install: profile.yaml is absent, so seed the structure before pushing.
+    if !cfg.is_object() {
+        cfg = Value::Object(Default::default());
+    }
+    if !cfg["items"].is_array() {
+        cfg["items"] = Value::Array(Vec::new());
+    }
     let items = cfg["items"]
         .as_array_mut()
         .ok_or("invalid profile config")?;
@@ -429,7 +442,7 @@ async fn reload_core() {
         "{}/configs?force=false",
         crate::backend::manager::controller_url()
     );
-    if let Err(e) = reqwest::Client::new()
+    if let Err(e) = local_http()
         .put(&reload_url)
         .json(&serde_json::json!({ "path": path_str }))
         .send()
@@ -437,6 +450,13 @@ async fn reload_core() {
     {
         log::warn!("[reload_core] hot-reload request failed: {e}");
     }
+}
+
+fn local_http() -> reqwest::Client {
+    reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .unwrap_or_default()
 }
 
 pub async fn update_profile_item(item: Value) -> Result<(), String> {

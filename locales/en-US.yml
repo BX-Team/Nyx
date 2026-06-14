@@ -54,6 +54,9 @@ pages:
     never: Never
     subUpdated: Subscription updated
     subUpdateFailed: Failed to update subscription
+    emptyTitle: No profile yet
+    emptyBody: Add a subscription or local config file to start using Nyx.
+    emptyCta: Add profile
   proxies:
     testGroup: Test
     refresh: Refresh
@@ -89,6 +92,7 @@ pages:
     count: "%{n} subscriptions"
     updateAll: Update all
     add: Add
+    importFailed: Import failed
     addTitle: Add subscription
     editTitle: Edit subscription
     selectFile: Select file

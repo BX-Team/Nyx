@@ -70,14 +70,7 @@ pub async fn start_core_flow() -> Result<(), String> {
 
     if use_service_mode {
         match service::service_status().await {
-            Ok(status) if status == "running" => {
-                let connected = service::test_service_connection().await.unwrap_or(false);
-                if !connected {
-                    log::warn!("service running but mihomo not reachable, (re)starting core");
-                    service::start_service().await?;
-                }
-            }
-            Ok(status) if status == "stopped" => {
+            Ok(status) if status == "running" || status == "stopped" => {
                 service::start_service().await?;
             }
             Ok(status) if status == "not-installed" => {
