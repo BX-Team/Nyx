@@ -4,6 +4,7 @@ common:
   toggleSidebar: Раскрыть
   language: Язык
   save: Сохранить
+  saved: Настройки сохранены
   close: Закрыть
   cancel: Отмена
   back: Назад

@@ -4,6 +4,7 @@ common:
   toggleSidebar: Expand
   language: Language
   save: Save
+  saved: Settings saved
   close: Close
   cancel: Cancel
   back: Back

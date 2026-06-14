@@ -4,6 +4,7 @@ common:
   toggleSidebar: 展开
   language: 语言
   save: 保存
+  saved: 设置已保存
   close: 关闭
   cancel: 取消
   back: 返回

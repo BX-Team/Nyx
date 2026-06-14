@@ -2163,8 +2163,14 @@ impl NyxApp {
                 );
                 self.patch_sniffer(serde_json::Value::Object(sniffer), cx);
             }
-            _ => {}
+            _ => return,
         }
+        cx.defer(|cx| {
+            crate::app::actions::notify(
+                gpui_component::notification::Notification::success(t!("common.saved")),
+                cx,
+            );
+        });
     }
 
     /// Patches the controlled mihomo config under `sniffer` and restarts the core.
