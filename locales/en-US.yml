@@ -323,7 +323,8 @@ tray:
   proxies: Proxies
   modeRule: Rule mode
   modeGlobal: Global mode
-  modeDirect: Direct mode
+  connect: Connect
+  disconnect: Disconnect
   restartCore: Restart core
   quitNoCore: Quit without core
   quit: Quit

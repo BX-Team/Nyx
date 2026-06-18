@@ -323,7 +323,8 @@ tray:
   proxies: Прокси
   modeRule: Режим правил
   modeGlobal: Глобальный режим
-  modeDirect: Прямой режим
+  connect: Подключить
+  disconnect: Отключить
   restartCore: Перезапустить ядро
   quitNoCore: Выйти, оставив ядро
   quit: Выход

@@ -36,9 +36,22 @@ fn load_icon() -> Option<Icon> {
 }
 
 /// Builds the tray menu, including a "Proxies" submenu of Selector groups → nodes.
-fn build_menu(groups: &[ProxyGroup]) -> Menu {
+fn build_menu(groups: &[ProxyGroup], connected: bool) -> Menu {
     let menu = Menu::new();
     let _ = menu.append(&MenuItem::with_id("show", &t!("tray.show"), true, None));
+    let _ = menu.append(&PredefinedMenuItem::separator());
+
+    let toggle_label = if connected {
+        t!("tray.disconnect")
+    } else {
+        t!("tray.connect")
+    };
+    let _ = menu.append(&MenuItem::with_id(
+        "toggle-proxy",
+        &toggle_label,
+        true,
+        None,
+    ));
     let _ = menu.append(&PredefinedMenuItem::separator());
 
     let selectors: Vec<_> = groups
@@ -82,12 +95,6 @@ fn build_menu(groups: &[ProxyGroup]) -> Menu {
         true,
         None,
     ));
-    let _ = menu.append(&MenuItem::with_id(
-        "mode-direct",
-        &t!("tray.modeDirect"),
-        true,
-        None,
-    ));
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id(
         "restart-core",
@@ -106,8 +113,8 @@ fn build_menu(groups: &[ProxyGroup]) -> Menu {
 }
 
 /// Builds the tray icon + menu from current proxy groups.
-fn build_tray(groups: &[ProxyGroup]) -> Option<TrayIcon> {
-    let menu = build_menu(groups);
+fn build_tray(groups: &[ProxyGroup], connected: bool) -> Option<TrayIcon> {
+    let menu = build_menu(groups, connected);
     let mut builder = TrayIconBuilder::new()
         .with_tooltip("Nyx")
         .with_menu(Box::new(menu));
@@ -129,13 +136,20 @@ struct GlobalTray(#[allow(dead_code)] TrayIcon);
 #[cfg(not(target_os = "linux"))]
 impl gpui::Global for GlobalTray {}
 
+/// Snapshots the tray-relevant slice of app state: proxy groups and whether the
+/// proxy is currently connected (TUN on).
+fn tray_state(cx: &App) -> (Vec<ProxyGroup>, bool) {
+    let st = AppState::global(cx).read(cx);
+    (st.groups.clone(), st.tun_enabled)
+}
+
 #[cfg(not(target_os = "linux"))]
 fn create_icon(cx: &mut App) {
     if cx.has_global::<GlobalTray>() {
         return;
     }
-    let groups = AppState::global(cx).read(cx).groups.clone();
-    if let Some(tray) = build_tray(&groups) {
+    let (groups, connected) = tray_state(cx);
+    if let Some(tray) = build_tray(&groups, connected) {
         cx.set_global(GlobalTray(tray));
     }
 }
@@ -144,8 +158,9 @@ fn create_icon(cx: &mut App) {
 #[cfg(not(target_os = "linux"))]
 pub fn rebuild(cx: &App) {
     if let Some(tray) = cx.try_global::<GlobalTray>() {
-        let groups = AppState::global(cx).read(cx).groups.clone();
-        tray.0.set_menu(Some(Box::new(build_menu(&groups))));
+        let (groups, connected) = tray_state(cx);
+        tray.0
+            .set_menu(Some(Box::new(build_menu(&groups, connected))));
     }
 }
 
@@ -161,14 +176,14 @@ pub fn set_enabled(cx: &mut App, enabled: bool) {
 
 #[cfg(target_os = "linux")]
 pub fn rebuild(cx: &App) {
-    let groups = AppState::global(cx).read(cx).groups.clone();
-    linux::send(linux::TrayCmd::Rebuild(groups));
+    let (groups, connected) = tray_state(cx);
+    linux::send(linux::TrayCmd::Rebuild(groups, connected));
 }
 
 #[cfg(target_os = "linux")]
 pub fn set_enabled(cx: &mut App, enabled: bool) {
-    let groups = AppState::global(cx).read(cx).groups.clone();
-    linux::send(linux::TrayCmd::SetEnabled(enabled, groups));
+    let (groups, connected) = tray_state(cx);
+    linux::send(linux::TrayCmd::SetEnabled(enabled, groups, connected));
 }
 
 /// Builds the tray icon (unless disabled) and starts the gpui event-drain loop.
@@ -182,8 +197,8 @@ pub fn init(cx: &mut App) {
 
     #[cfg(target_os = "linux")]
     {
-        let groups = AppState::global(cx).read(cx).groups.clone();
-        linux::start(enabled, groups);
+        let (groups, connected) = tray_state(cx);
+        linux::start(enabled, groups, connected);
     }
 
     cx.spawn(async move |cx: &mut AsyncApp| {
@@ -224,7 +239,7 @@ fn handle_menu(id: &str, cx: &mut App) {
         "show" => actions::show_window(cx),
         "mode-rule" => actions::set_mode("rule", cx),
         "mode-global" => actions::set_mode("global", cx),
-        "mode-direct" => actions::set_mode("direct", cx),
+        "toggle-proxy" => actions::toggle_tun(cx),
         "restart-core" => actions::restart_core(cx),
         "quit-no-core" => actions::quit_without_core(cx),
         "quit" => actions::quit_with_core(cx),
@@ -244,18 +259,18 @@ mod linux {
     use crate::app::state::ProxyGroup;
 
     pub enum TrayCmd {
-        Rebuild(Vec<ProxyGroup>),
-        SetEnabled(bool, Vec<ProxyGroup>),
+        Rebuild(Vec<ProxyGroup>, bool),
+        SetEnabled(bool, Vec<ProxyGroup>, bool),
     }
 
     static SENDER: OnceLock<Sender<TrayCmd>> = OnceLock::new();
 
-    pub fn start(enabled: bool, groups: Vec<ProxyGroup>) {
+    pub fn start(enabled: bool, groups: Vec<ProxyGroup>, connected: bool) {
         SENDER.get_or_init(|| {
             let (tx, rx) = channel::<TrayCmd>();
             let _ = std::thread::Builder::new()
                 .name("nyx-tray".into())
-                .spawn(move || run(rx, enabled, groups));
+                .spawn(move || run(rx, enabled, groups, connected));
             tx
         });
     }
@@ -266,26 +281,30 @@ mod linux {
         }
     }
 
-    fn run(rx: Receiver<TrayCmd>, enabled: bool, groups: Vec<ProxyGroup>) {
+    fn run(rx: Receiver<TrayCmd>, enabled: bool, groups: Vec<ProxyGroup>, connected: bool) {
         if let Err(e) = gtk::init() {
             log::error!("[tray] gtk init failed: {e}");
             return;
         }
-        let mut tray: Option<TrayIcon> = if enabled { build_tray(&groups) } else { None };
+        let mut tray: Option<TrayIcon> = if enabled {
+            build_tray(&groups, connected)
+        } else {
+            None
+        };
         gtk::glib::timeout_add_local(Duration::from_millis(120), move || {
             while let Ok(cmd) = rx.try_recv() {
                 match cmd {
-                    TrayCmd::Rebuild(g) => {
+                    TrayCmd::Rebuild(g, connected) => {
                         if let Some(t) = &tray {
-                            t.set_menu(Some(Box::new(build_menu(&g))));
+                            t.set_menu(Some(Box::new(build_menu(&g, connected))));
                         }
                     }
-                    TrayCmd::SetEnabled(true, g) => {
+                    TrayCmd::SetEnabled(true, g, connected) => {
                         if tray.is_none() {
-                            tray = build_tray(&g);
+                            tray = build_tray(&g, connected);
                         }
                     }
-                    TrayCmd::SetEnabled(false, _) => tray = None,
+                    TrayCmd::SetEnabled(false, _, _) => tray = None,
                 }
             }
             gtk::glib::ControlFlow::Continue

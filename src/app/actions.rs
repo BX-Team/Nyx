@@ -89,6 +89,7 @@ pub fn set_mode(mode: &'static str, cx: &mut App) {
 pub fn toggle_tun(cx: &mut App) {
     let new = !AppState::global(cx).read(cx).tun_enabled;
     AppState::global(cx).update(cx, |st, c| st.set_tun_enabled(new, c));
+    crate::app::tray::rebuild(cx);
     runtime::detach(async move {
         let _ = backend::config::patch_controled_mihomo_config(json!({ "tun": { "enable": new } }))
             .await;

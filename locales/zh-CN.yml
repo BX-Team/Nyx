@@ -323,7 +323,8 @@ tray:
   proxies: 代理
   modeRule: 规则模式
   modeGlobal: 全局模式
-  modeDirect: 直连模式
+  connect: 连接
+  disconnect: 断开
   restartCore: 重启内核
   quitNoCore: 退出（保留内核）
   quit: 退出

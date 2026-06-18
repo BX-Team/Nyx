@@ -19,9 +19,9 @@ pub fn spawn_backend_startup(cx: &mut App) {
         refresh_profiles(cx).await;
 
         if can_autostart_core().await {
-            if crate::app::autostart::launched_at_boot()
-                && backend::config::app_config_bool("lastConnected")
-            {
+            // Restore the proxy connection if it was on when we last exited,
+            // otherwise start the core idle.
+            if backend::config::app_config_bool("lastConnected") {
                 start_core_connected(cx).await;
             } else {
                 start_core_disconnected(cx).await;

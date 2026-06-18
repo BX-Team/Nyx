@@ -444,7 +444,10 @@ impl NyxApp {
                 Err(_) => Err("update task was cancelled".to_string()),
             };
             match outcome {
-                Ok(()) => {
+                // `true` → an external helper swaps the binary and relaunches
+                // (Windows); leave this process for it to replace.
+                Ok(true) => {}
+                Ok(false) => {
                     cx.update(crate::app::actions::restart_app);
                 }
                 Err(e) => {
@@ -517,10 +520,12 @@ impl NyxApp {
         let new = !self.state.read(cx).tun_enabled;
         let running = self.state.read(cx).core_status.is_running();
         self.state.update(cx, |st, c| st.set_tun_enabled(new, c));
+        crate::app::tray::rebuild(cx);
         cx.spawn(async move |_this, cx| {
             if !running && !crate::app::bootstrap::start_core_and_streams(cx).await {
                 cx.update(|cx| {
                     AppState::global(cx).update(cx, |st, c| st.set_tun_enabled(false, c));
+                    crate::app::tray::rebuild(cx);
                 });
                 return;
             }
@@ -544,6 +549,7 @@ impl NyxApp {
                     .unwrap_or(new);
                 cx.update(|cx| {
                     AppState::global(cx).update(cx, |st, c| st.set_tun_enabled(tun, c));
+                    crate::app::tray::rebuild(cx);
                 });
             }
         })
@@ -854,6 +860,7 @@ impl NyxApp {
             .items_center()
             .justify_center()
             .bg(rgba(0x000000B0))
+            .occlude()
             .child(
                 v_flex()
                     .w(px(440.))

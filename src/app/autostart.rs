@@ -1,17 +1,10 @@
 use auto_launch::AutoLaunchBuilder;
 
-pub const AUTOSTART_FLAG: &str = "--autostart";
-
-pub fn launched_at_boot() -> bool {
-    std::env::args().any(|a| a == AUTOSTART_FLAG)
-}
-
 fn builder() -> Option<auto_launch::AutoLaunch> {
     let exe = std::env::current_exe().ok()?;
     AutoLaunchBuilder::new()
         .set_app_name("Nyx")
         .set_app_path(&exe.to_string_lossy())
-        .set_args(&[AUTOSTART_FLAG])
         .build()
         .map_err(|e| log::warn!("[autostart] builder failed: {e}"))
         .ok()
