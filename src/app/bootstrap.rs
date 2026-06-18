@@ -16,8 +16,16 @@ pub fn spawn_backend_startup(cx: &mut App) {
         let _ = runtime::spawn(async { backend::startup::ensure_default_app_config() }).await;
         prefetch_core_binary();
 
+        refresh_profiles(cx).await;
+
         if can_autostart_core().await {
-            start_core_disconnected(cx).await;
+            if crate::app::autostart::launched_at_boot()
+                && backend::config::app_config_bool("lastConnected")
+            {
+                start_core_connected(cx).await;
+            } else {
+                start_core_disconnected(cx).await;
+            }
             return;
         }
 
@@ -55,6 +63,14 @@ async fn has_any_profile() -> bool {
 pub async fn start_core_disconnected(cx: &mut AsyncApp) -> bool {
     let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(
         serde_json::json!({ "tun": { "enable": false } }),
+    ))
+    .await;
+    start_core_and_streams(cx).await
+}
+
+pub async fn start_core_connected(cx: &mut AsyncApp) -> bool {
+    let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(
+        serde_json::json!({ "tun": { "enable": true }, "dns": { "enable": true } }),
     ))
     .await;
     start_core_and_streams(cx).await
@@ -213,6 +229,10 @@ pub async fn refresh_runtime_data(cx: &mut AsyncApp) {
         });
     }
 
+    refresh_profiles(cx).await;
+}
+
+pub async fn refresh_profiles(cx: &mut AsyncApp) {
     if let Ok(Ok(pcfg)) = runtime::spawn(backend::config::get_profile_config()).await {
         let name = current_profile_name(&pcfg);
         let profiles = state::parse_profiles(&pcfg);

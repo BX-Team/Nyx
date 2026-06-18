@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use gpui::{App, AsyncApp, Global};
+use gpui::{App, AsyncApp};
 use tray_icon::{
     menu::{CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
@@ -9,16 +9,11 @@ use tray_icon::{
 use rust_i18n::t;
 
 use crate::app::actions;
-use crate::app::state::AppState;
+use crate::app::state::{AppState, ProxyGroup};
 
 /// Separator embedded in proxy menu ids (`px<US>group<US>node`). U+001F won't
 /// occur in proxy names.
 const SEP: char = '\u{1f}';
-
-/// Keeps the `TrayIcon` alive for the lifetime of the app (dropping it removes
-/// the icon). Never moved off the main thread.
-struct GlobalTray(#[allow(dead_code)] TrayIcon);
-impl Global for GlobalTray {}
 
 /// Decodes the embedded app icon (PNG) into a tray `Icon`.
 fn load_icon() -> Option<Icon> {
@@ -41,12 +36,11 @@ fn load_icon() -> Option<Icon> {
 }
 
 /// Builds the tray menu, including a "Proxies" submenu of Selector groups → nodes.
-fn build_menu(cx: &App) -> Menu {
+fn build_menu(groups: &[ProxyGroup]) -> Menu {
     let menu = Menu::new();
     let _ = menu.append(&MenuItem::with_id("show", &t!("tray.show"), true, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
 
-    let groups = AppState::global(cx).read(cx).groups.clone();
     let selectors: Vec<_> = groups
         .iter()
         .filter(|g| g.kind.as_ref() == "Selector" && !g.all.is_empty())
@@ -111,12 +105,9 @@ fn build_menu(cx: &App) -> Menu {
     menu
 }
 
-/// Builds the tray icon + menu and stores it as a global (idempotent).
-fn create_icon(cx: &mut App) {
-    if cx.has_global::<GlobalTray>() {
-        return;
-    }
-    let menu = build_menu(cx);
+/// Builds the tray icon + menu from current proxy groups.
+fn build_tray(groups: &[ProxyGroup]) -> Option<TrayIcon> {
+    let menu = build_menu(groups);
     let mut builder = TrayIconBuilder::new()
         .with_tooltip("Nyx")
         .with_menu(Box::new(menu));
@@ -124,19 +115,42 @@ fn create_icon(cx: &mut App) {
         builder = builder.with_icon(icon);
     }
     match builder.build() {
-        Ok(tray) => cx.set_global(GlobalTray(tray)),
-        Err(e) => log::error!("[tray] build failed: {e}"),
+        Ok(tray) => Some(tray),
+        Err(e) => {
+            log::error!("[tray] build failed: {e}");
+            None
+        }
     }
 }
 
-/// Rebuilds the tray menu from current state (call when proxy groups change).
+/// Keeps the `TrayIcon` alive for the lifetime of the app
+#[cfg(not(target_os = "linux"))]
+struct GlobalTray(#[allow(dead_code)] TrayIcon);
+#[cfg(not(target_os = "linux"))]
+impl gpui::Global for GlobalTray {}
+
+#[cfg(not(target_os = "linux"))]
+fn create_icon(cx: &mut App) {
+    if cx.has_global::<GlobalTray>() {
+        return;
+    }
+    let groups = AppState::global(cx).read(cx).groups.clone();
+    if let Some(tray) = build_tray(&groups) {
+        cx.set_global(GlobalTray(tray));
+    }
+}
+
+/// Rebuilds the tray menu from current state
+#[cfg(not(target_os = "linux"))]
 pub fn rebuild(cx: &App) {
     if let Some(tray) = cx.try_global::<GlobalTray>() {
-        tray.0.set_menu(Some(Box::new(build_menu(cx))));
+        let groups = AppState::global(cx).read(cx).groups.clone();
+        tray.0.set_menu(Some(Box::new(build_menu(&groups))));
     }
 }
 
 /// Adds or removes the tray icon to match the `disableTray` setting at runtime.
+#[cfg(not(target_os = "linux"))]
 pub fn set_enabled(cx: &mut App, enabled: bool) {
     if enabled {
         create_icon(cx);
@@ -145,10 +159,31 @@ pub fn set_enabled(cx: &mut App, enabled: bool) {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub fn rebuild(cx: &App) {
+    let groups = AppState::global(cx).read(cx).groups.clone();
+    linux::send(linux::TrayCmd::Rebuild(groups));
+}
+
+#[cfg(target_os = "linux")]
+pub fn set_enabled(cx: &mut App, enabled: bool) {
+    let groups = AppState::global(cx).read(cx).groups.clone();
+    linux::send(linux::TrayCmd::SetEnabled(enabled, groups));
+}
+
 /// Builds the tray icon (unless disabled) and starts the gpui event-drain loop.
 pub fn init(cx: &mut App) {
-    if !crate::backend::config::app_config_bool("disableTray") {
+    let enabled = !crate::backend::config::app_config_bool("disableTray");
+
+    #[cfg(not(target_os = "linux"))]
+    if enabled {
         create_icon(cx);
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let groups = AppState::global(cx).read(cx).groups.clone();
+        linux::start(enabled, groups);
     }
 
     cx.spawn(async move |cx: &mut AsyncApp| {
@@ -194,5 +229,67 @@ fn handle_menu(id: &str, cx: &mut App) {
         "quit-no-core" => actions::quit_without_core(cx),
         "quit" => actions::quit_with_core(cx),
         _ => {}
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::sync::mpsc::{channel, Receiver, Sender};
+    use std::sync::OnceLock;
+    use std::time::Duration;
+
+    use tray_icon::TrayIcon;
+
+    use super::{build_menu, build_tray};
+    use crate::app::state::ProxyGroup;
+
+    pub enum TrayCmd {
+        Rebuild(Vec<ProxyGroup>),
+        SetEnabled(bool, Vec<ProxyGroup>),
+    }
+
+    static SENDER: OnceLock<Sender<TrayCmd>> = OnceLock::new();
+
+    pub fn start(enabled: bool, groups: Vec<ProxyGroup>) {
+        SENDER.get_or_init(|| {
+            let (tx, rx) = channel::<TrayCmd>();
+            let _ = std::thread::Builder::new()
+                .name("nyx-tray".into())
+                .spawn(move || run(rx, enabled, groups));
+            tx
+        });
+    }
+
+    pub fn send(cmd: TrayCmd) {
+        if let Some(tx) = SENDER.get() {
+            let _ = tx.send(cmd);
+        }
+    }
+
+    fn run(rx: Receiver<TrayCmd>, enabled: bool, groups: Vec<ProxyGroup>) {
+        if let Err(e) = gtk::init() {
+            log::error!("[tray] gtk init failed: {e}");
+            return;
+        }
+        let mut tray: Option<TrayIcon> = if enabled { build_tray(&groups) } else { None };
+        gtk::glib::timeout_add_local(Duration::from_millis(120), move || {
+            while let Ok(cmd) = rx.try_recv() {
+                match cmd {
+                    TrayCmd::Rebuild(g) => {
+                        if let Some(t) = &tray {
+                            t.set_menu(Some(Box::new(build_menu(&g))));
+                        }
+                    }
+                    TrayCmd::SetEnabled(true, g) => {
+                        if tray.is_none() {
+                            tray = build_tray(&g);
+                        }
+                    }
+                    TrayCmd::SetEnabled(false, _) => tray = None,
+                }
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+        gtk::main();
     }
 }

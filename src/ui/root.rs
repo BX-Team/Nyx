@@ -507,6 +507,7 @@ impl NyxApp {
         };
         if let Some((code, _)) = LANGUAGES.iter().find(|(_, n)| *n == name.as_ref()) {
             self.state.update(cx, |s, c| s.set_language(*code, c));
+            crate::app::tray::rebuild(cx);
         }
     }
 }
@@ -529,6 +530,10 @@ impl NyxApp {
                 serde_json::json!({ "tun": { "enable": false } })
             };
             let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(patch)).await;
+            let _ = runtime::spawn(backend::config::patch_app_config(
+                serde_json::json!({ "lastConnected": new }),
+            ))
+            .await;
             if let Ok(Ok(cfg)) =
                 runtime::spawn(backend::config::get_controled_mihomo_config()).await
             {

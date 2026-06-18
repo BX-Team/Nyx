@@ -92,6 +92,7 @@ pub fn toggle_tun(cx: &mut App) {
     runtime::detach(async move {
         let _ = backend::config::patch_controled_mihomo_config(json!({ "tun": { "enable": new } }))
             .await;
+        let _ = backend::config::patch_app_config(json!({ "lastConnected": new })).await;
     });
 }
 
