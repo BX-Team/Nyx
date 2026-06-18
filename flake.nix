@@ -49,11 +49,11 @@
         runtimeLibs = with pkgs; [
           wayland
           libxkbcommon
-          xorg.libX11
-          xorg.libxcb
-          xorg.libXcursor
-          xorg.libXi
-          xorg.libXrandr
+          libx11
+          libxcb
+          libxcursor
+          libxi
+          libxrandr
           vulkan-loader
           libGL
           fontconfig
@@ -153,7 +153,7 @@
             enable = lib.mkEnableOption "Nyx Mihomo/Clash GUI";
             package = lib.mkOption {
               type = lib.types.package;
-              default = self.packages.${pkgs.system}.default;
+              default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
               description = "The Nyx package to use.";
             };
             tunMode = lib.mkEnableOption ''
