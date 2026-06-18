@@ -26,7 +26,7 @@ jobs:
             target: x86_64-pc-windows-msvc
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       # gpui (X11/Wayland/Vulkan/font-kit) + tray-icon (GTK/appindicator/xdo).
       - name: Install Linux dependencies
