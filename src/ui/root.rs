@@ -1073,8 +1073,21 @@ impl Render for NyxApp {
         v_flex()
             .size_full()
             .bg(rgb(TITLEBAR_BG))
-            .child(
-                TitleBar::new().child(
+            .child({
+                let title_bar = TitleBar::new();
+                // The X defaults to remove_window(); on Linux route it through our
+                // close logic so it saves bounds and Ctrl+X disconnects + quits.
+                // QuitMode::Explicit keeps the app in the tray after the close.
+                #[cfg(not(windows))]
+                let title_bar = title_bar.on_close_window(|_, window, cx| {
+                    save_main_window_bounds(window);
+                    if window.modifiers().control {
+                        crate::app::actions::disconnect_and_quit(cx);
+                    } else {
+                        window.remove_window();
+                    }
+                });
+                title_bar.child(
                     h_flex()
                         .w_full()
                         .pl_2()
@@ -1083,8 +1096,8 @@ impl Render for NyxApp {
                         .text_size(px(12.5))
                         .font_semibold()
                         .child("Nyx"),
-                ),
-            )
+                )
+            })
             .child(
                 h_flex()
                     .flex_1()
@@ -1107,7 +1120,7 @@ impl Render for NyxApp {
 
 /// Reads `window.window_bounds()` and persists the restore geometry into the app
 /// config. Called from the close/hide path (no live gpui borrow conflict).
-fn save_main_window_bounds(window: &Window) {
+pub(crate) fn save_main_window_bounds(window: &Window) {
     let b = match window.window_bounds() {
         WindowBounds::Windowed(b) | WindowBounds::Maximized(b) | WindowBounds::Fullscreen(b) => b,
     };
@@ -1134,6 +1147,9 @@ pub fn open_main_window(cx: &mut App, silent: bool) {
             titlebar: Some(TitleBar::title_bar_options()),
             window_bounds: Some(window_bounds),
             window_min_size: Some(size(px(800.0), px(600.0))),
+            // Wayland app id: matches nyx.desktop so the compositor finds the
+            // window icon and groups it (gpui leaves it unset otherwise).
+            app_id: Some("nyx".to_owned()),
             ..Default::default()
         };
 
@@ -1167,13 +1183,15 @@ pub fn open_main_window(cx: &mut App, silent: bool) {
                         let _ = window;
                         cx.spawn(async move |_cx| crate::app::window::hide_now())
                             .detach();
+                        false
                     }
+                    // Let the window close; QuitMode::Explicit keeps the app + tray
+                    // alive, and re-showing from the tray recreates the window.
                     #[cfg(not(windows))]
                     {
-                        let _ = cx;
-                        crate::app::window::hide(window);
+                        let _ = (window, cx);
+                        true
                     }
-                    false
                 });
             });
             #[cfg(windows)]

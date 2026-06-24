@@ -11,11 +11,11 @@
   };
 
   outputs =
-    {
-      self,
-      nixpkgs,
-      flake-utils,
-      rust-overlay,
+    { self
+    , nixpkgs
+    , flake-utils
+    , rust-overlay
+    ,
     }:
     let
       supportedSystems = [
@@ -23,128 +23,133 @@
         "aarch64-linux"
       ];
     in
-    flake-utils.lib.eachSystem supportedSystems (
-      system:
-      let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ (import rust-overlay) ];
-        };
+    flake-utils.lib.eachSystem supportedSystems
+      (
+        system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ (import rust-overlay) ];
+          };
 
-        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [
-            "rust-src"
-            "rust-analyzer"
-            "clippy"
-            "rustfmt"
+          rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+            extensions = [
+              "rust-src"
+              "rust-analyzer"
+              "clippy"
+              "rustfmt"
+            ];
+          };
+          rustPlatform = pkgs.makeRustPlatform {
+            cargo = rustToolchain;
+            rustc = rustToolchain;
+          };
+
+          runtimeLibs = with pkgs; [
+            wayland
+            libxkbcommon
+            libx11
+            libxcb
+            libxcursor
+            libxi
+            libxrandr
+            vulkan-loader
+            libGL
+            fontconfig
+            freetype
+            gtk3
+            glib
+            xdotool
+            openssl
           ];
-        };
-        rustPlatform = pkgs.makeRustPlatform {
-          cargo = rustToolchain;
-          rustc = rustToolchain;
-        };
 
-        # Libraries gpui (X11/Wayland/Vulkan/font-kit) and the tray
-        # (GTK/appindicator) need to link against and dlopen at runtime.
-        runtimeLibs = with pkgs; [
-          wayland
-          libxkbcommon
-          libx11
-          libxcb
-          libxcursor
-          libxi
-          libxrandr
-          vulkan-loader
-          libGL
-          fontconfig
-          freetype
-          gtk3
-          glib
-          libayatana-appindicator
-          xdotool
-          openssl
-        ];
+          nativeBuildInputs = with pkgs; [
+            pkg-config
+            rustPlatform.bindgenHook # gpui builds bindgen-based crates
+            autoPatchelfHook
+            makeWrapper
+            wrapGAppsHook3
+          ];
 
-        nativeBuildInputs = with pkgs; [
-          pkg-config
-          rustPlatform.bindgenHook # gpui builds bindgen-based crates
-          autoPatchelfHook
-          makeWrapper
-          wrapGAppsHook3
-        ];
+          nyx = rustPlatform.buildRustPackage {
+            pname = "nyx";
+            version = "2.0.4";
 
-        nyx = rustPlatform.buildRustPackage {
-          pname = "nyx";
-          version = "2.0.4";
+            src = pkgs.lib.cleanSource ./.;
 
-          src = pkgs.lib.cleanSource ./.;
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+              allowBuiltinFetchGit = true;
+            };
 
-          cargoLock = {
-            lockFile = ./Cargo.lock;
-            allowBuiltinFetchGit = true;
+            inherit nativeBuildInputs;
+            buildInputs = runtimeLibs;
+
+            # gpui dlopens Vulkan/Wayland/GL at runtime; bake them into the rpath.
+            runtimeDependencies = runtimeLibs;
+
+            # Heavy GPU/UI crate graph: skip the (nonexistent) test suite.
+            doCheck = false;
+
+            postInstall = ''
+              install -Dm644 installer/linux/nyx.desktop \
+                $out/share/applications/nyx.desktop
+              install -Dm644 assets/brand/logo.png \
+                $out/share/icons/hicolor/512x512/apps/nyx.png
+            '';
+
+            meta = with pkgs.lib; {
+              description = "Mihomo/Clash GUI (pure-Rust gpui app)";
+              homepage = "https://github.com/BX-Team/Nyx";
+              license = licenses.gpl3Plus;
+              platforms = supportedSystems;
+              mainProgram = "nyx";
+            };
+          };
+        in
+        {
+          packages = {
+            default = nyx;
+            inherit nyx;
           };
 
-          inherit nativeBuildInputs;
-          buildInputs = runtimeLibs;
-
-          # gpui dlopens Vulkan/Wayland/GL at runtime; bake them into the rpath.
-          runtimeDependencies = runtimeLibs;
-
-          # Heavy GPU/UI crate graph: skip the (nonexistent) test suite.
-          doCheck = false;
-
-          postInstall = ''
-            install -Dm644 installer/linux/nyx.desktop \
-              $out/share/applications/nyx.desktop
-            install -Dm644 assets/brand/logo.png \
-              $out/share/icons/hicolor/512x512/apps/nyx.png
-          '';
-
-          meta = with pkgs.lib; {
-            description = "Mihomo/Clash GUI (pure-Rust gpui app)";
-            homepage = "https://github.com/BX-Team/Nyx";
-            license = licenses.gpl3Plus;
-            platforms = supportedSystems;
-            mainProgram = "nyx";
+          apps.default = {
+            type = "app";
+            program = "${nyx}/bin/nyx";
           };
-        };
-      in
-      {
-        packages = {
-          default = nyx;
-          inherit nyx;
-        };
 
-        apps.default = {
-          type = "app";
-          program = "${nyx}/bin/nyx";
-        };
+          devShells.default = pkgs.mkShell {
+            buildInputs = runtimeLibs;
+            nativeBuildInputs =
+              nativeBuildInputs
+              ++ (with pkgs; [
+                rustToolchain
+                git
+                cargo-deb
+              ]);
 
-        devShells.default = pkgs.mkShell {
-          buildInputs = runtimeLibs;
-          nativeBuildInputs = nativeBuildInputs ++ (with pkgs; [
-            rustToolchain
-            git
-            cargo-deb
-            cargo-generate-rpm
-          ]);
+            shellHook = ''
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
+              export PKG_CONFIG_PATH="${
+                pkgs.lib.makeSearchPathOutput "dev" "lib/pkgconfig" runtimeLibs
+              }:$PKG_CONFIG_PATH"
+              echo "Nyx dev shell ready."
+              echo "  cargo run             # run the app"
+              echo "  cargo build --release # optimized binary"
+            '';
+          };
 
-          shellHook = ''
-            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
-            export PKG_CONFIG_PATH="${pkgs.lib.makeSearchPathOutput "dev" "lib/pkgconfig" runtimeLibs}:$PKG_CONFIG_PATH"
-            echo "Nyx dev shell ready."
-            echo "  cargo run             # run the app"
-            echo "  cargo build --release # optimized binary"
-          '';
-        };
-
-        formatter = pkgs.nixfmt-rfc-style;
-      }
-    )
+          formatter = pkgs.nixfmt-rfc-style;
+        }
+      )
     // {
       # NixOS module: `imports = [ inputs.nyx.nixosModules.default ];`
       nixosModules.default =
-        { config, lib, pkgs, ... }:
+        { config
+        , lib
+        , pkgs
+        , ...
+        }:
         let
           cfg = config.programs.nyx;
         in
@@ -160,12 +165,42 @@
               TUN mode. Wraps the Nyx binary with cap_net_admin/cap_net_raw/
               cap_net_bind_service so the mihomo core it spawns can create a TUN
               device without running as root'';
+            profiles = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              example = [ "https://example.com/subscription" ];
+              description = ''
+                Subscription URLs imported automatically on launch, so profiles
+                don't have to be added by hand. Idempotent: already-added URLs
+                are skipped and a failed fetch is retried next launch. Profile
+                names come from the subscription headers. Exported as the
+                NYX_PROFILES environment variable.'';
+            };
+            profilesFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = "/run/secrets/nyx-profiles";
+              description = ''
+                Path to a file with subscription URLs (whitespace/newline
+                separated), imported like `profiles`. Use this for secret URLs
+                rendered by sops/agenix so they never land in the Nix store.
+                Exported as NYX_PROFILES_FILE.'';
+            };
           };
 
           config = lib.mkIf cfg.enable {
             environment.systemPackages = [ cfg.package ];
             programs.dconf.enable = lib.mkDefault true;
             services.gnome.gnome-keyring.enable = lib.mkDefault true;
+
+            environment.sessionVariables = lib.mkMerge [
+              (lib.mkIf (cfg.profiles != [ ]) {
+                NYX_PROFILES = lib.concatStringsSep " " cfg.profiles;
+              })
+              (lib.mkIf (cfg.profilesFile != null) {
+                NYX_PROFILES_FILE = cfg.profilesFile;
+              })
+            ];
 
             # Give the Nyx binary the net capabilities; Nyx raises them into the
             # ambient set before spawning the core, which then inherits them.

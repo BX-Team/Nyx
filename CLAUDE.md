@@ -37,6 +37,7 @@ Before every commit, the same checks CI runs must pass: `cargo fmt --check`, `ca
 - Avoid inline `//` comments. Add one only when the code is genuinely non-obvious (a real footgun) — e.g. a gpui borrow re-entry, a wire-format quirk. Then keep it to a line or two.
 - Doc comments (`///`) on public items are fine, but keep them short — a single line describing intent. Code should read for itself.
 - Don't narrate the obvious (`// loop over items`). If a comment restates the next line, delete it.
+- Keep every comment you do write as short as possible — the fewest words that convey the non-obvious bit. Prefer one line; never write a paragraph where a clause will do.
 
 ### Style
 - rustfmt is the source of truth — never hand-format against it.
@@ -50,6 +51,11 @@ Before every commit, the same checks CI runs must pass: `cargo fmt --check`, `ca
 ### gpui gotchas
 - Win32 window calls (`ShowWindow`, hide/show/foreground) must run OUTSIDE any live gpui borrow — schedule them via `App::defer`/`App::spawn`, or they re-enter and panic with "RefCell already borrowed" (see `app/window.rs`, `app/actions.rs`).
 - The top-level view must render gpui-component's `Root` overlay layers, or toasts/modals never appear (see `ui/root.rs`).
+
+### Linux platform
+- Tray: Linux uses a pure D-Bus StatusNotifierItem via `ksni` (no gtk / appindicator). `tray-icon` is cfg-gated to non-Linux, and the two backends diverge inside `app/tray.rs` — keep new tray logic behind the right `cfg`.
+- System proxy (`backend/sysproxy.rs`): on Linux we set both GSettings and the proxy env vars (systemd user manager + D-Bus activation env). Only GNOME-like desktops reliably honor the GSettings proxy — `session_honors_proxy()` gates the "partial coverage" note; TUN is the full-device path.
+- NixOS: detected via `/etc/NIXOS` (`elevation::is_nixos()`). TUN caps come from `programs.nyx.tunMode` (declarative capability wrapper), not a runtime `setcap`, so the Settings grant button is swapped for instructions there. The flake exposes `packages.nyx` / the `nyx` app in addition to the dev shell.
 
 ## Bash Guidelines
 - Don't pipe output through `head`/`tail`/`less` to truncate — use tool-native flags (`git log -n 10`, `cargo clippy --message-format=short`). Read the full output.

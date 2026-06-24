@@ -360,48 +360,50 @@ impl NyxApp {
                     }))
             }));
 
-        let body = settings_body().child(group(vec![
-            toggle_row(
-                t!("pages.settings.systemProxy"),
-                None,
-                Switch::new("sp-enable")
-                    .checked(enable)
-                    .on_click(cx.listener(|_this, checked: &bool, _, cx| {
-                        crate::app::actions::set_sysproxy(*checked, cx)
-                    })),
-                false,
-            ),
-            toggle_row(
-                t!("pages.settings.spAffectVpn"),
-                None,
-                Switch::new("sp-vpn")
-                    .checked(affect_vpn)
-                    .on_click(cx.listener(|this, checked: &bool, _, cx| {
-                        this.set_app_flag(
-                            serde_json::json!({ "affectVPNConnections": *checked }),
-                            cx,
-                        )
-                    })),
-                false,
-            ),
-            control_row(
-                t!("pages.settings.spMode"),
-                mode_seg.into_any_element(),
-                false,
-            ),
-            input_row(
-                t!("pages.settings.spHost"),
-                self.sub_inputs.host.as_ref(),
-                true,
-                false,
-            ),
-            input_row(
-                t!("pages.settings.spBypass"),
-                self.sub_inputs.bypass.as_ref(),
-                true,
-                true,
-            ),
-        ]));
+        let body = settings_body()
+            .when(sysproxy_partial(), |b| b.child(sysproxy_partial_note()))
+            .child(group(vec![
+                toggle_row(
+                    t!("pages.settings.systemProxy"),
+                    None,
+                    Switch::new("sp-enable")
+                        .checked(enable)
+                        .on_click(cx.listener(|_this, checked: &bool, _, cx| {
+                            crate::app::actions::set_sysproxy(*checked, cx)
+                        })),
+                    false,
+                ),
+                toggle_row(
+                    t!("pages.settings.spAffectVpn"),
+                    None,
+                    Switch::new("sp-vpn")
+                        .checked(affect_vpn)
+                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                            this.set_app_flag(
+                                serde_json::json!({ "affectVPNConnections": *checked }),
+                                cx,
+                            )
+                        })),
+                    false,
+                ),
+                control_row(
+                    t!("pages.settings.spMode"),
+                    mode_seg.into_any_element(),
+                    false,
+                ),
+                input_row(
+                    t!("pages.settings.spHost"),
+                    self.sub_inputs.host.as_ref(),
+                    true,
+                    false,
+                ),
+                input_row(
+                    t!("pages.settings.spBypass"),
+                    self.sub_inputs.bypass.as_ref(),
+                    true,
+                    true,
+                ),
+            ]));
 
         self.sub_scroll(
             t!("pages.settings.systemProxy").to_string(),
@@ -961,6 +963,7 @@ impl NyxApp {
     /// Non-Windows service-card replacement: TUN capability status + (Linux) a grant button.
     fn tun_permission_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let granted = tun_granted();
+        let nixos = tun_is_nixos();
         let (label, color) = if granted {
             (t!("pages.settings.tunGranted"), GREEN_HI)
         } else {
@@ -968,6 +971,8 @@ impl NyxApp {
         };
         let hint = if cfg!(target_os = "macos") {
             t!("pages.settings.tunHintMac")
+        } else if nixos {
+            t!("pages.settings.tunHintNixos")
         } else {
             t!("pages.settings.tunHint")
         };
@@ -1005,7 +1010,7 @@ impl NyxApp {
             );
 
         #[cfg(target_os = "linux")]
-        let card = card.when(!granted, |c| {
+        let card = card.when(!granted && !nixos, |c| {
             c.child(
                 h_flex().child(
                     Button::new("tun-grant")
@@ -1959,6 +1964,46 @@ fn tun_granted() -> bool {
     {
         crate::backend::elevation::is_elevated()
     }
+}
+
+/// On NixOS, TUN caps come from `programs.nyx.tunMode` (declarative wrapper),
+/// not a runtime `setcap` — so we swap the grant button for instructions.
+fn tun_is_nixos() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        crate::backend::elevation::is_nixos()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+/// True on Linux desktops where the system proxy only reaches some apps (not
+/// GNOME-like); used to warn that TUN is the reliable full-coverage option.
+fn sysproxy_partial() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        !crate::backend::sysproxy::session_honors_proxy()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
+fn sysproxy_partial_note() -> AnyElement {
+    div()
+        .mb(px(10.))
+        .px(px(12.))
+        .py(px(9.))
+        .rounded(px(9.))
+        .border_1()
+        .border_color(rgb(AMBER))
+        .text_xs()
+        .text_color(rgb(AMBER))
+        .child(t!("pages.settings.sysProxyPartial").to_string())
+        .into_any_element()
 }
 
 fn settings_card(title: impl Into<SharedString>) -> gpui::Div {

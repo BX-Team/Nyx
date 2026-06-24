@@ -61,12 +61,70 @@ pub fn register_scheme() {
         log::warn!("[deep-link] write .desktop failed: {e}");
         return;
     }
-    let _ = std::process::Command::new("xdg-mime")
-        .args(["default", "nyx-url.desktop", "x-scheme-handler/nyx"])
-        .status();
+    set_default_handler();
     let _ = std::process::Command::new("update-desktop-database")
         .arg(&apps_dir)
         .status();
+}
+
+/// Sets `nyx-url.desktop` as the `x-scheme-handler/nyx` handler by editing
+/// `~/.config/mimeapps.list` ourselves. The system `xdg-mime` helper writes
+/// its temp file next to the first `mimeapps.list` it finds, which on NixOS is
+/// a read-only `/nix/store` path, so it fails there.
+#[cfg(target_os = "linux")]
+fn set_default_handler() {
+    let Some(path) = dirs::config_dir().map(|d| d.join("mimeapps.list")) else {
+        return;
+    };
+    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    let updated = upsert_default_application(&current, "x-scheme-handler/nyx", "nyx-url.desktop");
+    if let Err(e) = std::fs::write(&path, updated) {
+        if e.kind() == std::io::ErrorKind::ReadOnlyFilesystem
+            || e.kind() == std::io::ErrorKind::PermissionDenied
+        {
+            log::info!(
+                "[deep-link] {} is read-only (NixOS/home-manager); declare the handler with \
+                 xdg.mimeApps.defaultApplications.\"x-scheme-handler/nyx\" = \"nyx-url.desktop\";",
+                path.display()
+            );
+        } else {
+            log::warn!("[deep-link] write mimeapps.list failed: {e}");
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn upsert_default_application(contents: &str, key: &str, value: &str) -> String {
+    const HEADER: &str = "[Default Applications]";
+    let entry = format!("{key}={value}");
+    let key_prefix = format!("{key}=");
+    let mut lines: Vec<String> = contents.lines().map(str::to_string).collect();
+
+    if let Some(start) = lines.iter().position(|l| l.trim() == HEADER) {
+        let end = lines
+            .iter()
+            .enumerate()
+            .skip(start + 1)
+            .find(|(_, l)| l.trim_start().starts_with('['))
+            .map_or(lines.len(), |(i, _)| i);
+        match lines[start + 1..end]
+            .iter()
+            .position(|l| l.trim_start().starts_with(&key_prefix))
+        {
+            Some(pos) => lines[start + 1 + pos] = entry,
+            None => lines.insert(end, entry),
+        }
+    } else {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push(HEADER.to_string());
+        lines.push(entry);
+    }
+
+    let mut out = lines.join("\n");
+    out.push('\n');
+    out
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]

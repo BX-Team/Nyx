@@ -34,11 +34,11 @@ pub fn acquire_or_forward() -> Option<TcpListener> {
     }
 }
 
-/// Sends our `nyx://` argument (if any) to the primary instance.
+/// Sends our `nyx://` argument to the primary instance. With no deep link
+/// (a plain relaunch from the launcher), asks it to show its window — which on
+/// Linux was closed to the tray and needs recreating.
 fn forward_deep_link() {
-    let Some(url) = deep_link_arg() else {
-        return;
-    };
+    let url = deep_link_arg().unwrap_or_else(|| "nyx://show".to_string());
     if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", PORT)) {
         let _ = stream.write_all(url.as_bytes());
     }

@@ -143,6 +143,7 @@ pages:
     title: 应用设置
     tunMode: TUN 模式
     systemProxy: 系统代理
+    sysProxyPartial: "在此桌面环境中，系统代理仅影响读取桌面代理或代理环境变量的应用——无法捕获所有应用。如需全设备覆盖，请使用 TUN 模式。"
     autostart: 开机自启
     silentStart: 静默启动
     autoCheckUpdate: 自动检查更新
@@ -190,8 +191,9 @@ pages:
     tunGranted: 已授予
     tunNotGranted: 未授予
     tunGrant: 授予…
-    tunHint: "TUN 需要 CAP_NET_ADMIN。在 NixOS 上设置 programs.nyx.tunMode = true；否则点击“授予”（通过 pkexec 执行 setcap）或手动运行：sudo setcap cap_net_admin,cap_net_bind_service,cap_net_raw=+ep $(which nyx)。重启 Nyx 生效。"
+    tunHint: "TUN 模式需要网络权限。点击“授予”通过 pkexec 应用，或手动运行：sudo setcap cap_net_admin,cap_net_bind_service,cap_net_raw=+ep $(which nyx)。重启 Nyx 生效。"
     tunHintMac: macOS 上的 TUN 需要以 root 身份启动 Nyx。
+    tunHintNixos: "在 NixOS 上请以声明方式授予 TUN：设置 programs.nyx.tunMode = true，重建系统，然后重启 Nyx——nyx 命令会解析到带 capability 的包装器。此处运行时 setcap 不会持久化。"
     tunGrantedToast: 已授予 TUN 权限 —— 重启 Nyx 生效。
     tunGrantFailed: 授予 TUN 权限失败
     svcStatus: 状态
@@ -308,9 +310,9 @@ onboarding:
   serviceTitle: 安装服务
   serviceBody: 后台服务让 Nyx 无需管理员提示即可管理内核和 TUN 模式。
   serviceHint: 打开 Mihomo 设置并安装服务。
-  tunTitle: 授予 TUN 访问权限
-  tunBody: 对于 TUN/VPN 模式，内核需要网络权限。在 Mihomo 设置中授予它们。如果您使用的是 NixOS，请启用 programs.nyx.tunMode。
-  tunHint: 打开 Mihomo 设置并授予 TUN 访问权限。
+  tunTitle: 选择流量路由方式
+  tunBody: "有两种路由方式。系统代理无需权限，但仅覆盖读取桌面/代理设置的应用。TUN/VPN 模式覆盖整个设备，但内核需要网络权限。"
+  tunHint: "在 GNOME 或 Windows 上系统代理通常已足够；在其他 Linux 桌面环境请使用 TUN 以获得全面覆盖。"
   proxyTitle: 开启代理
   proxyBody: 在主页切换主开关以转发您的流量。
   proxyHint: 使用主页的主开关。

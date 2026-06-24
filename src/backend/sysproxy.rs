@@ -100,8 +100,29 @@ fn set_windows_connections(hkcu: &winreg::RegKey, path: &str, enable: bool, prox
     }
 }
 
+/// Whether the current desktop reliably honors the GSettings system proxy
+/// (GNOME and relatives). Elsewhere only apps that read the proxy env vars are
+/// affected, so the system-proxy toggle is partial — surface that in the UI.
+#[cfg(target_os = "linux")]
+pub fn session_honors_proxy() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP")
+        .map(|d| {
+            let d = d.to_ascii_lowercase();
+            ["gnome", "unity", "cinnamon", "mate", "budgie", "pop"]
+                .iter()
+                .any(|k| d.contains(k))
+        })
+        .unwrap_or(false)
+}
+
 #[cfg(target_os = "linux")]
 fn set_proxy(enable: bool, proxy_addr: &str, _affect_vpn: bool) {
+    set_gsettings_proxy(enable, proxy_addr);
+    set_env_proxy(enable, proxy_addr);
+}
+
+#[cfg(target_os = "linux")]
+fn set_gsettings_proxy(enable: bool, proxy_addr: &str) {
     let run = |args: &[&str]| {
         let _ = std::process::Command::new("gsettings").args(args).status();
     };
@@ -124,6 +145,46 @@ fn set_proxy(enable: bool, proxy_addr: &str, _affect_vpn: bool) {
         }
     } else {
         run(&["set", "org.gnome.system.proxy", "mode", "none"]);
+    }
+}
+
+/// Best-effort: push proxy env into the systemd user manager and the D-Bus
+/// activation environment so newly launched / dbus-activated apps inherit it.
+/// Does NOT reach already-running apps or ones the compositor execs directly.
+#[cfg(target_os = "linux")]
+fn set_env_proxy(enable: bool, proxy_addr: &str) {
+    const NAMES: [&str; 6] = [
+        "http_proxy",
+        "https_proxy",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "no_proxy",
+        "NO_PROXY",
+    ];
+    if enable {
+        let url = format!("http://{proxy_addr}");
+        let no = "localhost,127.0.0.1,::1";
+        let assignments = [
+            format!("http_proxy={url}"),
+            format!("https_proxy={url}"),
+            format!("HTTP_PROXY={url}"),
+            format!("HTTPS_PROXY={url}"),
+            format!("no_proxy={no}"),
+            format!("NO_PROXY={no}"),
+        ];
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "set-environment"])
+            .args(&assignments)
+            .status();
+        let _ = std::process::Command::new("dbus-update-activation-environment")
+            .arg("--systemd")
+            .args(&assignments)
+            .status();
+    } else {
+        let _ = std::process::Command::new("systemctl")
+            .args(["--user", "unset-environment"])
+            .args(NAMES)
+            .status();
     }
 }
 

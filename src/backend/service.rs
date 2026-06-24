@@ -220,12 +220,36 @@ async fn wait_for_service_state(expected_running: bool) -> Result<(), String> {
 
 #[cfg(windows)]
 async fn send_ipc_request(req: &crate::backend::service_host::IpcRequest) -> Result<(), String> {
+    send_ipc_request_within(req, std::time::Duration::ZERO).await
+}
+
+/// Like [`send_ipc_request`] but keeps retrying to open the pipe until
+/// `connect_timeout` elapses. Rides out the window where the service host is
+/// still starting (fast-boot autostart leaves the service StartPending with its
+/// pipe not yet listening), so the core start doesn't spuriously fail.
+#[cfg(windows)]
+async fn send_ipc_request_within(
+    req: &crate::backend::service_host::IpcRequest,
+    connect_timeout: std::time::Duration,
+) -> Result<(), String> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::windows::named_pipe::ClientOptions;
 
-    let mut client = ClientOptions::new()
-        .open(crate::backend::service_host::IPC_PIPE_NAME)
-        .map_err(|e| e.to_string())?;
+    let deadline = std::time::Instant::now() + connect_timeout;
+    let mut client = loop {
+        match ClientOptions::new().open(crate::backend::service_host::IPC_PIPE_NAME) {
+            Ok(c) => break c,
+            // ERROR_FILE_NOT_FOUND (pipe not up yet) / ERROR_PIPE_BUSY: the host
+            // is still coming up. Retry until the deadline, then surface the error.
+            Err(e)
+                if std::time::Instant::now() < deadline
+                    && matches!(e.raw_os_error(), Some(2) | Some(231)) =>
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    };
 
     let req_str =
         serde_json::to_string(req).map_err(|_e| "failed to serialize IPC request".to_string())?;
@@ -347,7 +371,7 @@ async fn start_windows_service() -> Result<(), String> {
         config: config.to_string_lossy().into_owned(),
         max_log_days: read_max_log_days(),
     };
-    send_ipc_request(&req).await?;
+    send_ipc_request_within(&req, std::time::Duration::from_secs(8)).await?;
     sync_controller(&url, &config)?;
     Ok(())
 }

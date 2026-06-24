@@ -121,7 +121,7 @@ On **Linux** you also need the gpui/tray system libraries. On Debian/Ubuntu:
 
 ```bash
 sudo apt-get install -y \
-  libgtk-3-dev libxdo-dev libayatana-appindicator3-dev \
+  libgtk-3-dev libxdo-dev \
   libxkbcommon-dev libwayland-dev \
   libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
   libfontconfig1-dev libfreetype6-dev \

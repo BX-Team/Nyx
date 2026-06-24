@@ -143,6 +143,7 @@ pages:
     title: Настройки приложения
     tunMode: Режим TUN
     systemProxy: Системный прокси
+    sysProxyPartial: "В этом окружении системный прокси влияет только на приложения, читающие прокси рабочего стола или переменные окружения — он перехватит не весь трафик. Для полного охвата используйте режим TUN."
     autostart: Автозапуск
     silentStart: Тихий запуск
     autoCheckUpdate: Автоматическая проверка обновлений
@@ -190,8 +191,9 @@ pages:
     tunGranted: Выданы
     tunNotGranted: Не выданы
     tunGrant: Выдать…
-    tunHint: "Для TUN нужен CAP_NET_ADMIN. На NixOS укажите programs.nyx.tunMode = true; иначе нажмите «Выдать» (setcap через pkexec) или вручную: sudo setcap cap_net_admin,cap_net_bind_service,cap_net_raw=+ep $(which nyx). Перезапустите Nyx, чтобы применить."
+    tunHint: "Для режима TUN нужны сетевые привилегии. Нажмите «Выдать», чтобы применить их через pkexec, или вручную: sudo setcap cap_net_admin,cap_net_bind_service,cap_net_raw=+ep $(which nyx). Перезапустите Nyx, чтобы применить."
     tunHintMac: TUN на macOS требует запуска Nyx от root.
+    tunHintNixos: "На NixOS выдайте доступ к TUN декларативно: programs.nyx.tunMode = true, пересоберите систему и перезапустите Nyx — команда nyx резолвится в обёртку с capability. Здесь setcap в рантайме не сохраняется."
     tunGrantedToast: Права TUN выданы — перезапустите Nyx, чтобы применить.
     tunGrantFailed: Не удалось выдать права TUN
     svcStatus: Статус
@@ -308,9 +310,9 @@ onboarding:
   serviceTitle: Установите сервис
   serviceBody: Фоновый сервис позволяет Nyx управлять ядром и режимом TUN без запросов прав администратора.
   serviceHint: Откройте настройки Mihomo и установите сервис.
-  tunTitle: Предоставьте доступ к TUN
-  tunBody: Для режима TUN/VPN ядро требует привилегий сети. Предоставьте их в настройках Mihomo. Если вы на NixOS, включите programs.nyx.tunMode.
-  tunHint: Откройте настройки Mihomo и предоставьте доступ к TUN.
+  tunTitle: Выберите способ маршрутизации
+  tunBody: "Два способа направить трафик. Системный прокси не требует привилегий, но охватывает только приложения, читающие настройки прокси рабочего стола. Режим TUN/VPN покрывает всё устройство, но требует сетевых привилегий для ядра."
+  tunHint: "На GNOME или Windows обычно достаточно системного прокси; на других окружениях Linux используйте TUN для полного охвата."
   proxyTitle: Включите прокси
   proxyBody: Переключите главный тумблер на главном экране, чтобы направить трафик.
   proxyHint: Используйте главный переключатель на «Главной».

@@ -35,6 +35,11 @@ pub fn run() {
         gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
         ui::theme::apply(cx);
         app::state::AppState::init(cx);
+        // Closing the window hides Nyx to the tray instead of quitting; the tray
+        // keeps the process alive, so don't auto-quit when no window is open.
+        // (Windows hides the native window in place and keeps its own logic.)
+        #[cfg(not(windows))]
+        cx.set_quit_mode(gpui::QuitMode::Explicit);
         if !silent {
             cx.activate(true);
         }

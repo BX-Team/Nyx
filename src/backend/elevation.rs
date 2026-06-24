@@ -76,6 +76,11 @@ pub fn raise_net_ambient_caps() {
     }
 }
 
+#[cfg(target_os = "linux")]
+pub fn is_nixos() -> bool {
+    std::path::Path::new("/etc/NIXOS").exists()
+}
+
 /// Whether this process already holds `CAP_NET_ADMIN` (so the core can TUN).
 #[cfg(target_os = "linux")]
 pub fn has_net_admin() -> bool {

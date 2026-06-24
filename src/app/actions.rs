@@ -42,14 +42,19 @@ pub fn show_window(cx: &mut App) {
     }
     #[cfg(not(windows))]
     {
-        if let Some(handle) = cx.try_global::<MainWindow>().map(|m| m.0) {
-            let _ = handle.update(cx, |_root, window, _cx| window.activate_window());
+        // The window may have been removed when closed to the tray; recreate it.
+        let shown = cx.try_global::<MainWindow>().map(|m| m.0).is_some_and(|h| {
+            h.update(cx, |_root, window, _cx| window.activate_window())
+                .is_ok()
+        });
+        if !shown {
+            crate::ui::open_main_window(cx, false);
         }
     }
 }
 
-/// Toggles the main window: hides it if it's already in the foreground,
-/// otherwise shows + foregrounds it. Backs the "toggle window" hotkey.
+/// Toggles the main window: closes it to the tray if open, otherwise recreates
+/// and shows it. Backs the "toggle window" hotkey.
 pub fn toggle_window(cx: &mut App) {
     #[cfg(windows)]
     {
@@ -59,9 +64,16 @@ pub fn toggle_window(cx: &mut App) {
     }
     #[cfg(not(windows))]
     {
-        cx.activate(true);
-        if let Some(handle) = cx.try_global::<MainWindow>().map(|m| m.0) {
-            let _ = handle.update(cx, |_root, window, _cx| window.activate_window());
+        let closed = cx.try_global::<MainWindow>().map(|m| m.0).is_some_and(|h| {
+            h.update(cx, |_root, window, _cx| {
+                crate::ui::save_main_window_bounds(window);
+                window.remove_window();
+            })
+            .is_ok()
+        });
+        if !closed {
+            cx.activate(true);
+            crate::ui::open_main_window(cx, false);
         }
     }
 }

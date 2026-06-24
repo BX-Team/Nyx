@@ -17,6 +17,7 @@ pub fn spawn_backend_startup(cx: &mut App) {
         prefetch_core_binary();
 
         refresh_profiles(cx).await;
+        import_declared_profiles(cx).await;
 
         if can_autostart_core().await {
             // Restore the proxy connection if it was on when we last exited,
@@ -47,6 +48,69 @@ async fn can_autostart_core() -> bool {
         runtime::spawn(backend::service::service_status()).await,
         Ok(Ok(s)) if s != "not-installed"
     )
+}
+
+/// Imports remote profiles declared in the `NYX_PROFILES` env var (whitespace-
+/// or newline-separated subscription URLs) that aren't already added. Lets a
+/// packaged/declarative install (e.g. the NixOS module) seed profiles on first
+/// launch. Idempotent: existing URLs are skipped; a failed fetch is retried on
+/// the next launch. Activates the first newly-added profile if none is selected.
+async fn import_declared_profiles(cx: &mut AsyncApp) {
+    let mut urls: Vec<String> = Vec::new();
+    if let Ok(spec) = std::env::var("NYX_PROFILES") {
+        urls.extend(spec.split_whitespace().map(str::to_string));
+    }
+    // A file lets a packaged install pass secret subscription URLs without
+    // putting them in the process environment (e.g. a sops-rendered file).
+    if let Ok(path) = std::env::var("NYX_PROFILES_FILE") {
+        match std::fs::read_to_string(&path) {
+            Ok(contents) => urls.extend(contents.split_whitespace().map(str::to_string)),
+            Err(e) => log::warn!("[profiles] cannot read NYX_PROFILES_FILE '{path}': {e}"),
+        }
+    }
+    if urls.is_empty() {
+        return;
+    }
+
+    let mut existing_urls = std::collections::HashSet::new();
+    let mut has_current = false;
+    if let Ok(Ok(cfg)) = runtime::spawn(backend::config::get_profile_config()).await {
+        if let Some(items) = cfg.get("items").and_then(|v| v.as_array()) {
+            for it in items {
+                if let Some(url) = it.get("url").and_then(|v| v.as_str()) {
+                    existing_urls.insert(url.to_string());
+                }
+            }
+        }
+        has_current = cfg
+            .get("current")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty());
+    }
+
+    let mut first_added: Option<String> = None;
+    for url in urls {
+        if !existing_urls.insert(url.clone()) {
+            continue;
+        }
+        let item = serde_json::json!({ "type": "remote", "url": url });
+        match runtime::spawn(backend::config::add_profile_item(item)).await {
+            Ok(Ok(id)) => {
+                log::info!("[profiles] imported declared profile {url}");
+                first_added.get_or_insert(id);
+            }
+            Ok(Err(e)) => log::warn!("[profiles] failed to import {url}: {e}"),
+            Err(_) => {}
+        }
+    }
+
+    if !has_current {
+        if let Some(id) = first_added {
+            let _ = runtime::spawn(backend::config::change_current_profile(id)).await;
+        }
+    }
+
+    refresh_profiles(cx).await;
 }
 
 async fn has_any_profile() -> bool {

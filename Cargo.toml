@@ -66,7 +66,6 @@ md-5 = "0.11"
 emojis = "0.9"
 
 # --- system integration ---
-tray-icon = "0.24"
 global-hotkey = "0.8"
 auto-launch = "0.6"
 png = "0.18"
@@ -95,12 +94,15 @@ windows = { version = "0.62", features = [
     "Win32_Graphics_Gdi",
 ] }
 
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+tray-icon = "0.24"
+
 [target.'cfg(not(windows))'.dependencies]
 libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = "0.5"
-gtk = "0.18"
+ksni = "0.3"
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
@@ -116,7 +118,7 @@ license-file = ["LICENSE", "0"]
 extended-description = "A modern, lightweight desktop GUI for the Mihomo proxy core."
 section = "net"
 priority = "optional"
-depends = "$auto, libgtk-3-0, libayatana-appindicator3-1, libcap2-bin"
+depends = "$auto, libgtk-3-0, libcap2-bin"
 assets = [
     ["target/release/nyx", "usr/bin/", "755"],
     ["installer/linux/nyx.desktop", "usr/share/applications/", "644"],
@@ -132,7 +134,6 @@ assets = [
 
 [package.metadata.generate-rpm.requires]
 gtk3 = "*"
-"libayatana-appindicator-gtk3" = "*"
 fontconfig = "*"
 freetype = "*"
 libcap = "*"
