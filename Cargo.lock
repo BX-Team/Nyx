@@ -5113,7 +5113,7 @@ dependencies = [
 
 [[package]]
 name = "nyx"
-version = "2.0.4"
+version = "2.0.5"
 dependencies = [
  "anyhow",
  "auto-launch",
