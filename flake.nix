@@ -11,11 +11,11 @@
   };
 
   outputs =
-    { self
-    , nixpkgs
-    , flake-utils
-    , rust-overlay
-    ,
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      rust-overlay,
     }:
     let
       supportedSystems = [
@@ -23,132 +23,132 @@
         "aarch64-linux"
       ];
     in
-    flake-utils.lib.eachSystem supportedSystems
-      (
-        system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ (import rust-overlay) ];
-          };
+    flake-utils.lib.eachSystem supportedSystems (
+      system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ (import rust-overlay) ];
+        };
 
-          rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-            extensions = [
-              "rust-src"
-              "rust-analyzer"
-              "clippy"
-              "rustfmt"
-            ];
-          };
-          rustPlatform = pkgs.makeRustPlatform {
-            cargo = rustToolchain;
-            rustc = rustToolchain;
-          };
-
-          runtimeLibs = with pkgs; [
-            wayland
-            libxkbcommon
-            libx11
-            libxcb
-            libxcursor
-            libxi
-            libxrandr
-            vulkan-loader
-            libGL
-            fontconfig
-            freetype
-            gtk3
-            glib
-            xdotool
-            openssl
+        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+          extensions = [
+            "rust-src"
+            "rust-analyzer"
+            "clippy"
+            "rustfmt"
           ];
+        };
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = rustToolchain;
+          rustc = rustToolchain;
+        };
 
-          nativeBuildInputs = with pkgs; [
-            pkg-config
-            rustPlatform.bindgenHook # gpui builds bindgen-based crates
-            autoPatchelfHook
-            makeWrapper
-            wrapGAppsHook3
-          ];
+        runtimeLibs = with pkgs; [
+          wayland
+          libxkbcommon
+          libx11
+          libxcb
+          libxcursor
+          libxi
+          libxrandr
+          vulkan-loader
+          libGL
+          fontconfig
+          freetype
+          gtk3
+          glib
+          xdotool
+          openssl
+        ];
 
-          nyx = rustPlatform.buildRustPackage {
-            pname = "nyx";
-            version = "2.0.4";
+        nativeBuildInputs = with pkgs; [
+          pkg-config
+          rustPlatform.bindgenHook # gpui builds bindgen-based crates
+          autoPatchelfHook
+          makeWrapper
+          wrapGAppsHook3
+        ];
 
-            src = pkgs.lib.cleanSource ./.;
+        nyx = rustPlatform.buildRustPackage {
+          pname = "nyx";
+          version = "2.0.4";
 
-            cargoLock = {
-              lockFile = ./Cargo.lock;
-              allowBuiltinFetchGit = true;
-            };
+          src = pkgs.lib.cleanSource ./.;
 
-            inherit nativeBuildInputs;
-            buildInputs = runtimeLibs;
-
-            # gpui dlopens Vulkan/Wayland/GL at runtime; bake them into the rpath.
-            runtimeDependencies = runtimeLibs;
-
-            # Heavy GPU/UI crate graph: skip the (nonexistent) test suite.
-            doCheck = false;
-
-            postInstall = ''
-              install -Dm644 installer/linux/nyx.desktop \
-                $out/share/applications/nyx.desktop
-              install -Dm644 assets/brand/logo.png \
-                $out/share/icons/hicolor/512x512/apps/nyx.png
-            '';
-
-            meta = with pkgs.lib; {
-              description = "Mihomo/Clash GUI (pure-Rust gpui app)";
-              homepage = "https://github.com/BX-Team/Nyx";
-              license = licenses.gpl3Plus;
-              platforms = supportedSystems;
-              mainProgram = "nyx";
-            };
-          };
-        in
-        {
-          packages = {
-            default = nyx;
-            inherit nyx;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            allowBuiltinFetchGit = true;
           };
 
-          apps.default = {
-            type = "app";
-            program = "${nyx}/bin/nyx";
+          inherit nativeBuildInputs;
+          buildInputs = runtimeLibs;
+
+          # gpui dlopens Vulkan/Wayland/GL at runtime; bake them into the rpath.
+          runtimeDependencies = runtimeLibs;
+
+          # Heavy GPU/UI crate graph: skip the (nonexistent) test suite.
+          doCheck = false;
+
+          postInstall = ''
+            install -Dm644 installer/linux/nyx.desktop \
+              $out/share/applications/nyx.desktop
+            install -Dm644 assets/brand/logo.png \
+              $out/share/icons/hicolor/512x512/apps/nyx.png
+          '';
+
+          meta = with pkgs.lib; {
+            description = "Mihomo/Clash GUI (pure-Rust gpui app)";
+            homepage = "https://github.com/BX-Team/Nyx";
+            license = licenses.gpl3Plus;
+            platforms = supportedSystems;
+            mainProgram = "nyx";
           };
+        };
+      in
+      {
+        packages = {
+          default = nyx;
+          inherit nyx;
+        };
 
-          devShells.default = pkgs.mkShell {
-            buildInputs = runtimeLibs;
-            nativeBuildInputs =
-              nativeBuildInputs
-              ++ (with pkgs; [
-                rustToolchain
-                git
-                cargo-deb
-              ]);
+        apps.default = {
+          type = "app";
+          program = "${nyx}/bin/nyx";
+        };
 
-            shellHook = ''
-              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
-              export PKG_CONFIG_PATH="${
-                pkgs.lib.makeSearchPathOutput "dev" "lib/pkgconfig" runtimeLibs
-              }:$PKG_CONFIG_PATH"
-              echo "Nyx dev shell ready."
-              echo "  cargo run             # run the app"
-              echo "  cargo build --release # optimized binary"
-            '';
-          };
+        devShells.default = pkgs.mkShell {
+          buildInputs = runtimeLibs;
+          nativeBuildInputs =
+            nativeBuildInputs
+            ++ (with pkgs; [
+              rustToolchain
+              git
+              cargo-deb
+            ]);
 
-          formatter = pkgs.nixfmt-rfc-style;
-        }
-      )
+          shellHook = ''
+            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
+            export PKG_CONFIG_PATH="${
+              pkgs.lib.makeSearchPathOutput "dev" "lib/pkgconfig" runtimeLibs
+            }:$PKG_CONFIG_PATH"
+            echo "Nyx dev shell ready."
+            echo "  cargo run             # run the app"
+            echo "  cargo build --release # optimized binary"
+          '';
+        };
+
+        formatter = pkgs.nixfmt-rfc-style;
+      }
+    )
     // {
       # NixOS module: `imports = [ inputs.nyx.nixosModules.default ];`
       nixosModules.default =
-        { config
-        , lib
-        , pkgs
-        , ...
+        {
+          config,
+          lib,
+          pkgs,
+          ...
         }:
         let
           cfg = config.programs.nyx;
@@ -188,31 +188,46 @@
             };
           };
 
-          config = lib.mkIf cfg.enable {
-            environment.systemPackages = [ cfg.package ];
-            programs.dconf.enable = lib.mkDefault true;
-            services.gnome.gnome-keyring.enable = lib.mkDefault true;
+          config =
+            let
+              needsWrap = cfg.profiles != [ ] || cfg.profilesFile != null;
+              # Bake the declared profile env vars into the binary. sessionVariables
+              # aren't reliably inherited by GUI-launched apps, so wrap instead —
+              # this reaches Nyx no matter how the desktop starts it.
+              wrapped = pkgs.symlinkJoin {
+                name = "nyx-with-profiles";
+                paths = [ cfg.package ];
+                nativeBuildInputs = [ pkgs.makeWrapper ];
+                postBuild = ''
+                  wrapProgram $out/bin/nyx \
+                    ${
+                      lib.optionalString (
+                        cfg.profiles != [ ]
+                      ) "--set NYX_PROFILES ${lib.escapeShellArg (lib.concatStringsSep " " cfg.profiles)}"
+                    } \
+                    ${lib.optionalString (
+                      cfg.profilesFile != null
+                    ) "--set NYX_PROFILES_FILE ${lib.escapeShellArg cfg.profilesFile}"}
+                '';
+              };
+              runPackage = if needsWrap then wrapped else cfg.package;
+            in
+            lib.mkIf cfg.enable {
+              environment.systemPackages = [ runPackage ];
+              programs.dconf.enable = lib.mkDefault true;
+              services.gnome.gnome-keyring.enable = lib.mkDefault true;
 
-            environment.sessionVariables = lib.mkMerge [
-              (lib.mkIf (cfg.profiles != [ ]) {
-                NYX_PROFILES = lib.concatStringsSep " " cfg.profiles;
-              })
-              (lib.mkIf (cfg.profilesFile != null) {
-                NYX_PROFILES_FILE = cfg.profilesFile;
-              })
-            ];
-
-            # Give the Nyx binary the net capabilities; Nyx raises them into the
-            # ambient set before spawning the core, which then inherits them.
-            security.wrappers = lib.mkIf cfg.tunMode {
-              nyx = {
-                owner = "root";
-                group = "root";
-                capabilities = "cap_net_bind_service,cap_net_raw,cap_net_admin=+ep";
-                source = lib.getExe cfg.package;
+              # Caps live on the security wrapper; it raises them into the ambient
+              # set and execs runPackage, so the core Nyx spawns inherits them.
+              security.wrappers = lib.mkIf cfg.tunMode {
+                nyx = {
+                  owner = "root";
+                  group = "root";
+                  capabilities = "cap_net_bind_service,cap_net_raw,cap_net_admin=+ep";
+                  source = "${runPackage}/bin/nyx";
+                };
               };
             };
-          };
         };
     };
 }

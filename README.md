@@ -104,7 +104,48 @@ nix = {
 };
 ```
 
-There is also a NixOS module: `imports = [ inputs.nyx.nixosModules.default ];` then `programs.nyx.enable = true;`.
+### NixOS module
+
+The flake also exposes a NixOS module. Import it and enable Nyx declaratively:
+
+```nix
+{
+  imports = [ inputs.nyx.nixosModules.default ];
+
+  programs.nyx = {
+    enable = true;
+
+    # TUN/VPN mode. Wraps the binary with cap_net_admin/cap_net_raw/
+    # cap_net_bind_service so the mihomo core can create a TUN device
+    # without running as root. Leave off to use only the system proxy.
+    tunMode = true;
+
+    # Subscription URLs seeded into Nyx on launch, so you never add them by
+    # hand. Idempotent — already-added URLs are skipped and a failed fetch
+    # is retried next launch. Profile names come from the subscription.
+    profiles = [
+      "https://example.com/subscription"
+    ];
+
+    # Same as `profiles`, but read from a file (whitespace/newline
+    # separated). Use this for secret URLs rendered by sops/agenix so they
+    # never land in the world-readable Nix store.
+    profilesFile = "/run/secrets/nyx-profiles";
+  };
+}
+```
+
+Options:
+
+| Option         | Type            | Default        | Effect                                                                                      |
+| -------------- | --------------- | -------------- | ------------------------------------------------------------------------------------------- |
+| `enable`       | bool            | `false`        | Installs Nyx and enables dconf + gnome-keyring (needed for the GSettings proxy and secrets). |
+| `package`      | package         | flake's `nyx`  | The Nyx package to use.                                                                      |
+| `tunMode`      | bool            | `false`        | Grants the net capabilities for TUN mode via a `security.wrappers` entry (no runtime setcap). |
+| `profiles`     | list of str     | `[]`           | Subscription URLs auto-imported on launch.                                                   |
+| `profilesFile` | null or path    | `null`         | Path to a file of subscription URLs, imported like `profiles` — for secrets kept out of the store. |
+
+`profiles`/`profilesFile` are passed to Nyx by wrapping the binary with the `NYX_PROFILES` / `NYX_PROFILES_FILE` environment variables, so they reach the app however the desktop launches it. After changing them, rebuild and relaunch Nyx; the import runs on the next start.
 
 ## Build from source
 
