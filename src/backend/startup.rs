@@ -85,7 +85,7 @@ pub async fn start_core_flow() -> Result<(), String> {
         }
     } else {
         let selected_core = app_cfg["core"].as_str().unwrap_or("mihomo");
-        manager::install_core_for_core_type(selected_core)
+        manager::ensure_core_installed(selected_core)
             .await
             .map_err(|e| e.to_string())?;
         manager::start_core().await.map_err(|e| e.to_string())?;

@@ -22,10 +22,14 @@ pub fn spawn_backend_startup(cx: &mut App) {
         if can_autostart_core().await {
             // Restore the proxy connection if it was on when we last exited,
             // otherwise start the core idle.
-            if backend::config::app_config_bool("lastConnected") {
-                start_core_connected(cx).await;
+            let connected = backend::config::app_config_bool("lastConnected");
+            let started = if connected {
+                start_core_connected(cx).await
             } else {
-                start_core_disconnected(cx).await;
+                start_core_disconnected(cx).await
+            };
+            if !started {
+                retry_core_autostart(cx, connected).await;
             }
             return;
         }
@@ -36,6 +40,34 @@ pub fn spawn_backend_startup(cx: &mut App) {
         refresh_runtime_data(cx).await;
     })
     .detach();
+}
+
+async fn retry_core_autostart(cx: &mut AsyncApp, connected: bool) {
+    for delay in [5u64, 10, 20, 30] {
+        let _ = runtime::spawn(tokio::time::sleep(std::time::Duration::from_secs(delay))).await;
+
+        let mut still_failed = false;
+        cx.update(|cx| {
+            still_failed = matches!(
+                AppState::global(cx).read(cx).core_status,
+                CoreStatus::Failed(_)
+            );
+        });
+        if !still_failed {
+            return;
+        }
+
+        log::info!("[bootstrap] retrying core autostart (waited {delay}s)");
+        let started = if connected {
+            start_core_connected(cx).await
+        } else {
+            start_core_disconnected(cx).await
+        };
+        if started {
+            return;
+        }
+    }
+    log::error!("[bootstrap] core autostart gave up after retries");
 }
 
 /// Core may be started unattended only once a profile exists and the runtime is

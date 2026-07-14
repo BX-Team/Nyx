@@ -63,6 +63,19 @@ pub async fn download_and_install() -> Result<bool, String> {
 
     #[cfg(not(windows))]
     {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        if exe.starts_with("/nix/store") || std::path::Path::new("/etc/NIXOS").exists() {
+            return Err(
+                "self-update is not available on NixOS — update the Nyx flake input / package instead"
+                    .to_string(),
+            );
+        }
+        if !path_writable(&exe) {
+            return Err(format!(
+                "no write access to {} — update Nyx via your package manager",
+                exe.display()
+            ));
+        }
         tokio::task::spawn_blocking(|| {
             self_update::backends::github::Update::configure()
                 .repo_owner(REPO_OWNER)
@@ -84,6 +97,14 @@ pub async fn download_and_install() -> Result<bool, String> {
     }
 }
 
+#[cfg(not(windows))]
+fn path_writable(path: &std::path::Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    std::ffi::CString::new(path.as_os_str().as_bytes())
+        .map(|c| unsafe { libc::access(c.as_ptr(), libc::W_OK) } == 0)
+        .unwrap_or(false)
+}
+
 #[cfg(windows)]
 async fn windows_update() -> Result<bool, String> {
     let url = tokio::task::spawn_blocking(windows_asset_url)
@@ -96,6 +117,7 @@ async fn windows_update() -> Result<bool, String> {
         .map_err(|e| e.to_string())?;
     let bytes = client
         .get(&url)
+        .header(reqwest::header::ACCEPT, "application/octet-stream")
         .send()
         .await
         .map_err(|e| e.to_string())?
@@ -104,6 +126,12 @@ async fn windows_update() -> Result<bool, String> {
         .bytes()
         .await
         .map_err(|e| e.to_string())?;
+    if !bytes.starts_with(b"PK") {
+        return Err(format!(
+            "update download is not a zip archive ({} bytes)",
+            bytes.len()
+        ));
+    }
 
     tokio::task::spawn_blocking(move || finalize_windows_update(&bytes))
         .await

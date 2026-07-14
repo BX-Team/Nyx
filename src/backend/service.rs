@@ -80,7 +80,7 @@ async fn ensure_core_binary() -> Result<std::path::PathBuf, String> {
         }
     }
 
-    manager::install_core_for_core_type(&selected_core)
+    manager::ensure_core_installed(&selected_core)
         .await
         .map_err(|e| e.to_string())?;
 

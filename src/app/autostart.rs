@@ -2,9 +2,17 @@ use auto_launch::AutoLaunchBuilder;
 
 fn builder() -> Option<auto_launch::AutoLaunch> {
     let exe = std::env::current_exe().ok()?;
+    #[cfg(target_os = "linux")]
+    let path = if crate::backend::elevation::is_nixos() && exe.starts_with("/nix/store") {
+        "nyx".to_string()
+    } else {
+        exe.to_string_lossy().into_owned()
+    };
+    #[cfg(not(target_os = "linux"))]
+    let path = exe.to_string_lossy().into_owned();
     AutoLaunchBuilder::new()
         .set_app_name("Nyx")
-        .set_app_path(&exe.to_string_lossy())
+        .set_app_path(&path)
         .build()
         .map_err(|e| log::warn!("[autostart] builder failed: {e}"))
         .ok()

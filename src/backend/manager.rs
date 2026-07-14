@@ -106,13 +106,37 @@ async fn stop_mihomo() -> Result<()> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = std::process::Command::new("kill")
-            .args(["-TERM", &pid.to_string()])
-            .output();
+        #[cfg(target_os = "linux")]
+        let is_core = match std::fs::read_to_string(format!("/proc/{pid}/comm")) {
+            Ok(comm) => {
+                let comm = comm.trim();
+                comm.contains("mihomo") || comm == system_core_name().await.unwrap_or_default()
+            }
+            Err(_) => false,
+        };
+        #[cfg(not(target_os = "linux"))]
+        let is_core = true;
+        if is_core {
+            let _ = std::process::Command::new("kill")
+                .args(["-TERM", &pid.to_string()])
+                .output();
+        }
     }
 
     let _ = tokio::fs::remove_file(&pf).await;
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+async fn system_core_name() -> Option<String> {
+    let cfg = tokio::fs::read_to_string(crate::backend::dirs::app_config_path())
+        .await
+        .ok()?;
+    let val: serde_yaml::Value = serde_yaml::from_str(&cfg).ok()?;
+    let path = val.get("systemCorePath")?.as_str()?;
+    std::path::Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
 }
 
 async fn read_current_profile_id() -> Option<String> {
@@ -451,6 +475,37 @@ pub async fn install_core() -> Result<()> {
     install_core_for_core_type("mihomo").await
 }
 
+fn core_binary_name() -> &'static str {
+    if cfg!(windows) {
+        "mihomo.exe"
+    } else {
+        "mihomo"
+    }
+}
+
+pub async fn ensure_core_installed(core: &str) -> Result<()> {
+    if core == "system" {
+        return Ok(());
+    }
+    let want_alpha = core == "mihomo-alpha";
+    let vm = vm()?;
+    let installed = vm.list_installed().await.unwrap_or_default();
+    for v in installed
+        .into_iter()
+        .filter(|v| version_matches_channel(&v.version, want_alpha))
+    {
+        if v.path.join(core_binary_name()).exists() {
+            vm.set_default(&v.version)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            return Ok(());
+        }
+        log::warn!("[core] removing broken install {}", v.version);
+        let _ = tokio::fs::remove_dir_all(&v.path).await;
+    }
+    install_core_for_core_type(core).await
+}
+
 pub async fn install_core_for_core_type(core: &str) -> Result<()> {
     if core == "system" {
         return Ok(());
@@ -472,9 +527,10 @@ pub async fn install_core_for_core_type(core: &str) -> Result<()> {
                     .list_installed()
                     .await
                     .map_err(|e2| anyhow::anyhow!("{e2}"))?;
-                let selected = versions
-                    .into_iter()
-                    .find(|v| version_matches_channel(&v.version, want_alpha));
+                let selected = versions.into_iter().find(|v| {
+                    version_matches_channel(&v.version, want_alpha)
+                        && v.path.join(core_binary_name()).exists()
+                });
                 selected.map(|v| v.version).ok_or_else(|| {
                     anyhow::anyhow!("no installed versions found for selected core channel")
                 })?
@@ -518,7 +574,7 @@ pub async fn start_core() -> Result<String> {
         }
         p
     } else {
-        install_core_for_core_type(core_type).await?;
+        ensure_core_installed(core_type).await?;
         let vm = vm()?;
         vm.get_binary_path(None)
             .await
@@ -550,7 +606,11 @@ pub async fn start_core() -> Result<String> {
     crate::backend::api::init_client(&url, secret)?;
     log::info!("[start_core] API client initialised");
 
-    wait_for_core_ready(&url).await;
+    if !wait_for_core_ready(&url).await {
+        return Err(anyhow::anyhow!(
+            "mihomo was spawned but its API never came up — the binary or profile config is likely broken"
+        ));
+    }
 
     log::info!("[start_core] mihomo ready at {url}");
     Ok(url)
@@ -644,17 +704,18 @@ pub async fn get_installed_version() -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("no installed versions"))
 }
 
-async fn wait_for_core_ready(url: &str) {
+async fn wait_for_core_ready(url: &str) -> bool {
     let version_url = format!("{url}/version");
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(2))
         .build()
         .unwrap_or_default();
-    for _ in 0..15 {
+    for _ in 0..50 {
         if client.get(&version_url).send().await.is_ok() {
-            return;
+            return true;
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
-    log::warn!("mihomo did not become ready within 3 seconds");
+    log::warn!("mihomo did not become ready within 10 seconds");
+    false
 }
