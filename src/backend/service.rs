@@ -407,6 +407,7 @@ pub async fn is_mihomo_running() -> bool {
     }
     let version_url = format!("{url}/version");
     reqwest::Client::builder()
+        .no_proxy()
         .timeout(std::time::Duration::from_secs(2))
         .build()
         .unwrap_or_default()

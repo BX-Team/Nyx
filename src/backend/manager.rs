@@ -9,6 +9,8 @@ static CONTROLLER_URL: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new
 
 static REBUILD_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(|| AsyncMutex::new(()));
 
+static CORE_CHILD: Lazy<Mutex<Option<std::process::Child>>> = Lazy::new(|| Mutex::new(None));
+
 fn vm() -> Result<VersionManager> {
     VersionManager::with_home(crate::backend::dirs::data_dir()).map_err(|e| anyhow::anyhow!("{e}"))
 }
@@ -62,7 +64,7 @@ async fn spawn_mihomo(binary: &std::path::Path, config: &std::path::Path) -> Res
         .spawn()
         .map_err(|e| anyhow::anyhow!("failed to spawn mihomo: {e}"))?;
     let pid = child.id();
-    std::mem::forget(child);
+    *CORE_CHILD.lock() = Some(child);
 
     let pf = pid_file();
     if let Some(p) = pf.parent() {
@@ -75,9 +77,34 @@ async fn spawn_mihomo(binary: &std::path::Path, config: &std::path::Path) -> Res
     Ok(pid)
 }
 
+/// `Some` once the core we spawned has exited — a config or binary problem
+/// usually kills it within a second, long before the readiness timeout.
+fn core_exit_status() -> Option<std::process::ExitStatus> {
+    CORE_CHILD
+        .lock()
+        .as_mut()
+        .and_then(|child| child.try_wait().ok().flatten())
+}
+
+/// Waits briefly for the killed core to be reaped, then drops the handle.
+async fn reap_core_child() {
+    for _ in 0..20 {
+        let exited = match CORE_CHILD.lock().as_mut() {
+            Some(child) => !matches!(child.try_wait(), Ok(None)),
+            None => true,
+        };
+        if exited {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    CORE_CHILD.lock().take();
+}
+
 async fn stop_mihomo() -> Result<()> {
     let pf = pid_file();
     if !pf.exists() {
+        reap_core_child().await;
         return Ok(());
     }
     let content = match tokio::fs::read_to_string(&pf).await {
@@ -123,6 +150,7 @@ async fn stop_mihomo() -> Result<()> {
         }
     }
 
+    reap_core_child().await;
     let _ = tokio::fs::remove_file(&pf).await;
     Ok(())
 }
@@ -707,12 +735,17 @@ pub async fn get_installed_version() -> Result<String> {
 async fn wait_for_core_ready(url: &str) -> bool {
     let version_url = format!("{url}/version");
     let client = reqwest::Client::builder()
+        .no_proxy()
         .timeout(std::time::Duration::from_secs(2))
         .build()
         .unwrap_or_default();
     for _ in 0..50 {
         if client.get(&version_url).send().await.is_ok() {
             return true;
+        }
+        if let Some(status) = core_exit_status() {
+            log::warn!("mihomo exited right after start ({status})");
+            return false;
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }

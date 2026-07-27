@@ -307,7 +307,13 @@ pub async fn add_profile_item(item: Value) -> Result<String, String> {
                 .build()
                 .map_err(|e| e.to_string())?;
 
-            let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
+            let resp = client
+                .get(url)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?
+                .error_for_status()
+                .map_err(|e| e.to_string())?;
             let headers = resp.headers().clone();
 
             if let Some(v) = headers.get("subscription-userinfo") {
@@ -355,6 +361,12 @@ pub async fn add_profile_item(item: Value) -> Result<String, String> {
 
             let raw_body = resp.text().await.map_err(|e| e.to_string())?;
             let body = crate::backend::proxy_convert::detect_and_convert_subscription(&raw_body);
+            if !crate::backend::proxy_convert::looks_like_mihomo_config(&body) {
+                return Err(format!(
+                    "subscription did not return a usable config: {}",
+                    body.trim().chars().take(120).collect::<String>()
+                ));
+            }
             let profile_path = dirs::profile_path(&id);
             if let Some(parent) = profile_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;

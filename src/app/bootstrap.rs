@@ -42,9 +42,13 @@ pub fn spawn_backend_startup(cx: &mut App) {
     .detach();
 }
 
+const AUTOSTART_RETRY_DELAYS: [u64; 8] = [5, 10, 20, 30, 60, 60, 120, 120];
+
 async fn retry_core_autostart(cx: &mut AsyncApp, connected: bool) {
-    for delay in [5u64, 10, 20, 30] {
-        let _ = runtime::spawn(tokio::time::sleep(std::time::Duration::from_secs(delay))).await;
+    for delay in AUTOSTART_RETRY_DELAYS {
+        cx.background_executor()
+            .timer(std::time::Duration::from_secs(delay))
+            .await;
 
         let mut still_failed = false;
         cx.update(|cx| {
@@ -82,18 +86,14 @@ async fn can_autostart_core() -> bool {
     )
 }
 
-/// Imports remote profiles declared in the `NYX_PROFILES` env var (whitespace-
-/// or newline-separated subscription URLs) that aren't already added. Lets a
-/// packaged/declarative install (e.g. the NixOS module) seed profiles on first
-/// launch. Idempotent: existing URLs are skipped; a failed fetch is retried on
-/// the next launch. Activates the first newly-added profile if none is selected.
+/// Imports remote profiles declared in the `NYX_PROFILES` env var
 async fn import_declared_profiles(cx: &mut AsyncApp) {
     let mut urls: Vec<String> = Vec::new();
+
     if let Ok(spec) = std::env::var("NYX_PROFILES") {
         urls.extend(spec.split_whitespace().map(str::to_string));
     }
-    // A file lets a packaged install pass secret subscription URLs without
-    // putting them in the process environment (e.g. a sops-rendered file).
+
     if let Ok(path) = std::env::var("NYX_PROFILES_FILE") {
         match std::fs::read_to_string(&path) {
             Ok(contents) => urls.extend(contents.split_whitespace().map(str::to_string)),

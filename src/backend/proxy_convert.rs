@@ -33,10 +33,11 @@ pub fn detect_and_convert_subscription(body: &str) -> String {
     body.to_string()
 }
 
-fn looks_like_mihomo_config(text: &str) -> bool {
+pub fn looks_like_mihomo_config(text: &str) -> bool {
     if let Ok(serde_yaml::Value::Mapping(map)) = serde_yaml::from_str::<serde_yaml::Value>(text) {
         let keys = [
             "proxies",
+            "proxy-providers",
             "proxy-groups",
             "rules",
             "mixed-port",

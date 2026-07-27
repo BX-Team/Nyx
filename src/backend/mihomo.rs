@@ -48,10 +48,17 @@ pub async fn groups() -> anyhow::Result<Value> {
     Ok(Value::Array(groups))
 }
 
+fn local_http() -> reqwest::Client {
+    reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .unwrap_or_default()
+}
+
 pub async fn change_proxy(group: &str, proxy: &str) -> anyhow::Result<()> {
     let encoded_group = group.replace(' ', "%20");
     let url = format!("{}/proxies/{}", manager::controller_url(), encoded_group);
-    reqwest::Client::new()
+    local_http()
         .put(&url)
         .json(&serde_json::json!({ "name": proxy }))
         .send()
@@ -102,7 +109,7 @@ pub async fn restore_proxy_selections() {
         }
     };
 
-    let client = reqwest::Client::new();
+    let client = local_http();
     for (k, v) in map.iter() {
         let (Some(group), Some(proxy)) = (k.as_str(), v.as_str()) else {
             continue;
