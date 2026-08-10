@@ -1,18 +1,18 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, img, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled,
+    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, div, img, px, rgb, rgba,
 };
 use gpui_component::{
-    h_flex, input::Input, notification::Notification, tooltip::Tooltip, v_flex, Icon, IconName,
-    StyledExt, WindowExt,
+    Icon, IconName, StyledExt, WindowExt, h_flex, input::Input, notification::Notification,
+    tooltip::Tooltip, v_flex,
 };
 use rust_i18n::t;
 
 use crate::app::state::{ConnItem, ConnProcess};
 use crate::ui::root::{
-    fmt_bytes, NyxApp, BLUE, CARD_BG, CARD_BORDER, GREEN, GREEN_HI, MUTED2, MUTED3, PANEL_BG, RED,
-    RED_HI, SUBTLE, TEXT,
+    BLUE, CARD_BG, CARD_BORDER, GREEN, GREEN_HI, MUTED2, MUTED3, NyxApp, PANEL_BG, RED, RED_HI,
+    SUBTLE, TEXT, fmt_bytes,
 };
 
 /// A small fixed palette for process avatars, picked by name hash.
@@ -28,7 +28,7 @@ fn avatar_color(name: &str) -> u32 {
 }
 
 impl NyxApp {
-    pub(crate) fn render_connections(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_connections(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let content = match self.conns_detail.clone() {
             Some(name) => {
                 let st = self.state.read(cx);
@@ -49,8 +49,7 @@ impl NyxApp {
         )
     }
 
-    /// The process list (with header totals + filter box).
-    fn render_conn_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_conn_list(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let total_up = st.total_up;
         let total_down = st.total_down;
@@ -233,8 +232,7 @@ impl NyxApp {
             .child(body)
     }
 
-    /// One clickable process card.
-    fn conn_card(&self, p: ConnProcess, cx: &mut Context<Self>) -> impl IntoElement {
+    fn conn_card(&self, p: ConnProcess, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let letter = p
             .name
             .chars()
@@ -339,13 +337,12 @@ impl NyxApp {
             }))
     }
 
-    /// Detail view: the connections belonging to a single process.
     fn render_conn_detail(
         &self,
         name: SharedString,
         proc: Option<ConnProcess>,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> impl IntoElement + use<> {
         let conns = proc.as_ref().map(|p| p.conns.clone()).unwrap_or_default();
         let (up, down) = proc.as_ref().map(|p| (p.up, p.down)).unwrap_or((0, 0));
         let count = conns.len();
@@ -459,8 +456,12 @@ impl NyxApp {
         v_flex().size_full().child(header).child(body)
     }
 
-    /// A connection row in the detail view, clickable to open the metadata popup.
-    fn conn_detail_row(&self, idx: usize, c: ConnItem, cx: &mut Context<Self>) -> impl IntoElement {
+    fn conn_detail_row(
+        &self,
+        idx: usize,
+        c: ConnItem,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let item = c.clone();
         conn_detail_row_inner(c)
             .id(SharedString::from(format!("conn-row-{idx}")))
@@ -472,9 +473,8 @@ impl NyxApp {
             }))
     }
 
-    /// The per-connection metadata popup. Each value is click-to-copy, with a
-    /// chip that copies the matching rule fragment (`IP-CIDR,…` etc.).
-    fn render_conn_popup(&self, c: ConnItem, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Per-connection metadata popup; every value is click-to-copy.
+    fn render_conn_popup(&self, c: ConnItem, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let host_only = strip_port(c.host.as_ref());
         let host_frag = if host_only.chars().any(|ch| ch.is_ascii_alphabetic()) {
             Some(format!("DOMAIN-SUFFIX,{host_only}"))
@@ -665,7 +665,6 @@ impl NyxApp {
             )
     }
 
-    /// A titled card of detail rows; empty-value rows (and all-empty sections) are dropped.
     fn detail_section(
         &self,
         key: &'static str,
@@ -705,14 +704,13 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// One `label : value` row; click-to-copy with an optional rule-fragment chip.
     fn kv_row(
         &self,
         key: &'static str,
         idx: usize,
         row: Kv,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> impl IntoElement + use<> {
         let Kv { label, value, frag } = row;
         let copy_value = value.clone();
         let value_id = SharedString::from(format!("kv-{key}-{idx}"));
@@ -794,7 +792,6 @@ impl NyxApp {
     }
 }
 
-/// The visual body of a connection row (no interactivity).
 fn conn_detail_row_inner(c: ConnItem) -> gpui::Div {
     v_flex()
         .gap_1p5()
@@ -865,7 +862,6 @@ fn conn_detail_row_inner(c: ConnItem) -> gpui::Div {
         )
 }
 
-/// A green pill showing a connection count.
 fn count_badge(n: usize) -> impl IntoElement {
     div()
         .px(px(6.))
@@ -877,14 +873,12 @@ fn count_badge(n: usize) -> impl IntoElement {
         .child(n.to_string())
 }
 
-/// An up/down arrow + value pair (mono-ish, colored).
-fn updown(color: u32, arrow: &str, value: &str) -> impl IntoElement {
+fn updown(color: u32, arrow: &str, value: &str) -> impl IntoElement + use<> {
     let s: SharedString = format!("{arrow} {value}").into();
     div().text_xs().text_color(rgb(color)).child(s)
 }
 
-/// A row spec for the detail popup: label, value, and an optional rule fragment
-/// (the chip that copies e.g. `IP-CIDR,1.2.3.4/32`).
+/// A detail-popup row: label, value, and the rule fragment its chip copies.
 struct Kv {
     label: String,
     value: String,
@@ -899,7 +893,6 @@ fn kv(label: impl Into<String>, value: String, frag: Option<String>) -> Kv {
     }
 }
 
-/// Strips a trailing `:port` from a host (leaves bare IPv6 addresses untouched).
 fn strip_port(host: &str) -> &str {
     if let Some(idx) = host.rfind(':') {
         let after_digits = host[idx + 1..].chars().all(|c| c.is_ascii_digit());

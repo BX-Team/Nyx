@@ -2,8 +2,10 @@ use auto_launch::AutoLaunchBuilder;
 
 fn builder() -> Option<auto_launch::AutoLaunch> {
     let exe = std::env::current_exe().ok()?;
+    // A /nix/store path changes on every rebuild, so the autostart entry would
+    // point at a garbage-collected binary; the bare name resolves via PATH.
     #[cfg(target_os = "linux")]
-    let path = if crate::backend::elevation::is_nixos() && exe.starts_with("/nix/store") {
+    let path = if exe.starts_with("/nix/store") {
         "nyx".to_string()
     } else {
         exe.to_string_lossy().into_owned()
@@ -18,7 +20,6 @@ fn builder() -> Option<auto_launch::AutoLaunch> {
         .ok()
 }
 
-/// Enables or disables launch-on-login to match `enabled`.
 pub fn set(enabled: bool) {
     let Some(auto) = builder() else {
         return;
@@ -33,7 +34,6 @@ pub fn set(enabled: bool) {
     }
 }
 
-/// Reconciles the OS autostart entry with the desired flag (called on startup).
 pub fn sync(enabled: bool) {
     let Some(auto) = builder() else {
         return;

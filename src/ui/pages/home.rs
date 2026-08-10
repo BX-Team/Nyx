@@ -1,21 +1,43 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window,
+    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
 };
 use gpui_component::{
+    Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    h_flex, v_flex, Icon, IconName, Sizable, StyledExt,
+    h_flex, v_flex,
 };
 use rust_i18n::t;
 use serde_json::Value;
 
 use crate::ui::root::{
-    fmt_bytes, power_on_bg, NyxApp, CARD_BG, CARD_BORDER, GOOD, GREEN, MUTED, PANEL_BG, STROKE,
-    TEXT,
+    CARD_BG, CARD_BORDER, GOOD, GREEN, MUTED, NyxApp, PANEL_BG, RED, RED_HI, STROKE, TEXT,
+    fmt_bytes, power_on_bg,
 };
 
-/// Parsed subscription stats from a profile's `extra` + `announce`.
+/// Names the cause when the core refused to start, instead of leaving the
+/// power button silently dead.
+fn render_core_failure(key: &'static str, detail: SharedString) -> impl IntoElement {
+    v_flex()
+        .mx_1()
+        .mb_2()
+        .p_3()
+        .gap_1()
+        .rounded(px(8.))
+        .bg(rgba((RED << 8) | 0x1A))
+        .border_1()
+        .border_color(rgb(RED))
+        .child(
+            div()
+                .text_sm()
+                .font_semibold()
+                .text_color(rgb(RED_HI))
+                .child(t!(key).to_string()),
+        )
+        .child(div().text_xs().text_color(rgb(MUTED)).child(detail))
+}
+
 struct SubStats {
     has_traffic: bool,
     used: u64,
@@ -81,8 +103,7 @@ fn sub_stats(item: &Option<Value>) -> SubStats {
     }
 }
 
-/// The profile's `supportUrl`, if any, plus whether it points at Telegram
-/// (`tg:` scheme or a `t.me` / `telegram` host) — used to pick the button icon.
+/// The profile's `supportUrl` plus whether it is a Telegram link, for the icon.
 fn support_link(item: &Option<Value>) -> Option<(String, bool)> {
     let url = item
         .as_ref()
@@ -140,12 +161,17 @@ impl NyxApp {
         };
 
         let support = support_link(&st.current_profile_item);
+        let failure = st
+            .core_status
+            .failed()
+            .map(|(kind, detail)| (crate::app::state::failure_key(kind), detail.clone()));
 
         let main = v_flex()
             .flex_1()
             .min_w_0()
             .h_full()
             .child(self.render_topbar(&profile_name, tun, &status, support, cx))
+            .children(failure.map(|(key, detail)| render_core_failure(key, detail)))
             .child(
                 v_flex()
                     .flex_1()
@@ -186,8 +212,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// Fresh-install home
-    fn render_home_empty(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_home_empty(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         v_flex()
             .size_full()
             .items_center()
@@ -237,7 +262,7 @@ impl NyxApp {
         status: &str,
         support: Option<(String, bool)>,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> impl IntoElement + use<> {
         let dot = if tun { GOOD } else { MUTED };
         let support_btn = support.map(|(url, is_telegram)| {
             let icon = if is_telegram {
@@ -303,7 +328,7 @@ impl NyxApp {
             )
     }
 
-    fn render_power_button(&self, tun: bool, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_power_button(&self, tun: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let icon_color = if tun { 0x06140C } else { MUTED };
         let inner = if tun {
             div().size(px(116.)).rounded_full().bg(power_on_bg())
@@ -365,7 +390,7 @@ fn render_speeds(up: u64, down: u64) -> impl IntoElement {
 fn render_proxy_card(
     current: Option<(String, String)>,
     cx: &mut Context<NyxApp>,
-) -> impl IntoElement {
+) -> impl IntoElement + use<> {
     let (name, kind) = current.unwrap_or_else(|| ("—".to_string(), String::new()));
     div().flex().justify_center().child(
         div()
@@ -413,7 +438,7 @@ fn render_proxy_card(
     )
 }
 
-fn section_header(text: &str) -> impl IntoElement {
+fn section_header(text: &str) -> impl IntoElement + use<> {
     div()
         .text_xs()
         .font_semibold()
@@ -431,7 +456,7 @@ fn stat_tile() -> gpui::Div {
         .p_3()
 }
 
-fn render_stats(stats: &SubStats) -> impl IntoElement {
+fn render_stats(stats: &SubStats) -> impl IntoElement + use<> {
     let mut col = v_flex().gap_3();
 
     if stats.has_traffic {

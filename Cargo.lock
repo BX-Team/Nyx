@@ -1061,15 +1061,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "caps"
-version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd1ddba47aba30b6a889298ad0109c3b8dcb0e8fc993b459daa7067d46f865e0"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "cbc"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5167,12 +5158,11 @@ dependencies = [
 
 [[package]]
 name = "nyx"
-version = "2.0.6"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "auto-launch",
  "base64 0.23.1",
- "caps",
  "chrono",
  "dirs",
  "emojis",
@@ -5189,6 +5179,8 @@ dependencies = [
  "log",
  "md-5 0.11.0",
  "mihomo-rs",
+ "nyx-service",
+ "nyx-sysproxy",
  "once_cell",
  "parking_lot",
  "png 0.18.1",
@@ -5204,9 +5196,33 @@ dependencies = [
  "tray-icon",
  "url",
  "windows 0.62.2",
- "windows-service",
- "winreg 0.56.0",
  "winresource",
+]
+
+[[package]]
+name = "nyx-service"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "libc",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+ "windows 0.62.2",
+ "windows-service",
+]
+
+[[package]]
+name = "nyx-sysproxy"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "log",
+ "thiserror 2.0.18",
+ "url",
+ "windows 0.62.2",
+ "winreg 0.56.0",
 ]
 
 [[package]]

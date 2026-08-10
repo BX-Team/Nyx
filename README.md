@@ -11,20 +11,20 @@ A modern, lightweight desktop GUI for the [Mihomo](https://github.com/MetaCubeX/
 
 </div>
 
-# Preview
+## 🖼️ Preview
 
 ![preview](.github/branding/preview.png)
 
-# Installation
+## 📦 Installation
 
 Grab the latest build from the [Releases page](https://github.com/BX-Team/Nyx/releases/latest).
 
-## Windows (x86_64)
+### Windows (x86_64)
 
 - **Installer:** `Nyx_<version>_x64-setup.exe` — run it and follow the prompts. On first launch Nyx asks for elevation to install the helper service required for TUN mode; accept it once and you are set.
 - **Portable:** `Nyx-x86_64-windows.zip` — unzip anywhere and run `nyx.exe`. No install, settings live in your user data dir.
 
-## Linux (x86_64)
+### Linux (x86_64)
 
 Pick the package for your distro, or the portable tarball:
 
@@ -33,7 +33,7 @@ Pick the package for your distro, or the portable tarball:
 - **Arch:** `Nyx-<version>-x86_64.pkg.tar.xz` — `sudo pacman -U ./Nyx-<version>-x86_64.pkg.tar.xz`
 - **Portable:** `Nyx-x86_64-linux.tar.gz` — extract and run `./nyx`
 
-### Nix
+## ❄️ Nix
 
 Nyx ships a flake. Run it directly without installing:
 
@@ -104,52 +104,9 @@ nix = {
 };
 ```
 
-### NixOS module
+## 🔨 Build from source
 
-The flake also exposes a NixOS module. Import it and enable Nyx declaratively:
-
-```nix
-{
-  imports = [ inputs.nyx.nixosModules.default ];
-
-  programs.nyx = {
-    enable = true;
-
-    # TUN/VPN mode. Wraps the binary with cap_net_admin/cap_net_raw/
-    # cap_net_bind_service so the mihomo core can create a TUN device
-    # without running as root. Leave off to use only the system proxy.
-    tunMode = true;
-
-    # Subscription URLs seeded into Nyx on launch, so you never add them by
-    # hand. Idempotent — already-added URLs are skipped and a failed fetch
-    # is retried next launch. Profile names come from the subscription.
-    profiles = [
-      "https://example.com/subscription"
-    ];
-
-    # Same as `profiles`, but read from a file (whitespace/newline
-    # separated). Use this for secret URLs rendered by sops/agenix so they
-    # never land in the world-readable Nix store.
-    profilesFile = "/run/secrets/nyx-profiles";
-  };
-}
-```
-
-Options:
-
-| Option         | Type            | Default        | Effect                                                                                      |
-| -------------- | --------------- | -------------- | ------------------------------------------------------------------------------------------- |
-| `enable`       | bool            | `false`        | Installs Nyx and enables dconf + gnome-keyring (needed for the GSettings proxy and secrets). |
-| `package`      | package         | flake's `nyx`  | The Nyx package to use.                                                                      |
-| `tunMode`      | bool            | `false`        | Grants the net capabilities for TUN mode via a `security.wrappers` entry (no runtime setcap). |
-| `profiles`     | list of str     | `[]`           | Subscription URLs auto-imported on launch.                                                   |
-| `profilesFile` | null or path    | `null`         | Path to a file of subscription URLs, imported like `profiles` — for secrets kept out of the store. |
-
-`profiles`/`profilesFile` are passed to Nyx by wrapping the binary with the `NYX_PROFILES` / `NYX_PROFILES_FILE` environment variables, so they reach the app however the desktop launches it. After changing them, rebuild and relaunch Nyx; the import runs on the next start.
-
-## Build from source
-
-Nyx is now a single pure-Rust [gpui](https://github.com/zed-industries/zed) application. The only hard requirement is a stable [Rust](https://www.rust-lang.org/tools/install) toolchain.
+Nyx is a single pure-Rust [gpui](https://github.com/zed-industries/zed) application. The only hard requirement is a stable [Rust](https://www.rust-lang.org/tools/install) toolchain.
 
 ```bash
 git clone https://github.com/BX-Team/Nyx.git
@@ -171,16 +128,15 @@ sudo apt-get install -y \
 
 Or just use the flake: `nix develop` drops you into a shell with everything wired up.
 
-
-# License
-
-This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
-
-# Contributing
+## 🤝 Contributing
 
 We welcome contributions to Nyx! If you have an idea for a new feature or found a bug, please feel free to submit a pull request. Before you start, please read our [contributing guidelines](CONTRIBUTING.md) to understand our contribution process.
 
-# Credits
+## ⚖️ License
+
+This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
+
+## 💛 Credits
 
 Nyx was based on or inspired by these projects:
 
@@ -188,3 +144,4 @@ Nyx was based on or inspired by these projects:
 - [DINGDANGMAOUP/mihomo-rs](https://github.com/DINGDANGMAOUP/mihomo-rs): A Rust SDK for Mihomo, manages versions, configs and other things.
 - [zed-industries/zed](https://github.com/zed-industries/zed): Home of the [gpui](https://www.gpui.rs/) GPU-accelerated UI framework that Nyx is built on.
 - [longbridge/gpui-component](https://github.com/longbridge/gpui-component): The gpui component library powering Nyx's widgets.
+- [zzzgydi/sysproxy-rs](https://github.com/zzzgydi/sysproxy-rs): Vendored and trimmed as `crates/nyx-sysproxy` — reads and writes the OS system proxy on Windows and Linux.

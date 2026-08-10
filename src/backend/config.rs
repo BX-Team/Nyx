@@ -70,8 +70,7 @@ pub async fn patch_app_config(config: Value) -> Result<()> {
     write_json_as_yaml(&path, &base)
 }
 
-/// Reads a top-level boolean flag from the app config synchronously (used at
-/// startup before the async config load lands in state).
+/// Sync app-config bool read, for startup before the async load lands in state.
 pub fn app_config_bool(key: &str) -> bool {
     let path = dirs::app_config_path();
     std::fs::read_to_string(&path)
@@ -81,7 +80,6 @@ pub fn app_config_bool(key: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Reads a string key from the app config, falling back to `default`.
 pub fn app_config_str(key: &str, default: &str) -> String {
     let path = dirs::app_config_path();
     std::fs::read_to_string(&path)
@@ -91,8 +89,7 @@ pub fn app_config_str(key: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
-/// Reads the persisted main-window geometry `(x, y, width, height)` from the app
-/// config, if present. Sync — called while opening the window.
+/// Persisted main-window geometry `(x, y, w, h)`. Sync — used while opening the window.
 pub fn load_window_state() -> Option<(f64, f64, f64, f64)> {
     let path = dirs::app_config_path();
     let v: Value = std::fs::read_to_string(&path)
@@ -107,8 +104,7 @@ pub fn load_window_state() -> Option<(f64, f64, f64, f64)> {
     ))
 }
 
-/// Persists the main-window geometry into the app config under `window`. Sync —
-/// called from the window close/hide path (no gpui borrow held).
+/// Persists the main-window geometry. Sync — called from the close/hide path.
 pub fn save_window_state(x: f64, y: f64, width: f64, height: f64) {
     let path = dirs::app_config_path();
     let mut v: Value = std::fs::read_to_string(&path)
@@ -149,8 +145,7 @@ pub async fn get_controled_mihomo_config() -> Result<Value> {
     read_yaml_as_json(&path)
 }
 
-/// Persist a patch to the controlled overrides, mirror it into the live runtime
-/// config, and PATCH it to the running core.
+/// Persists a patch, mirrors it into the runtime config, and PATCHes the live core.
 pub async fn patch_controled_mihomo_config(config: Value) -> Result<()> {
     let overrides_path = dirs::controled_mihomo_config_path();
     let mut base = if overrides_path.exists() {
@@ -174,12 +169,11 @@ pub async fn patch_controled_mihomo_config(config: Value) -> Result<()> {
         write_json_as_yaml(&config_path, &running)?;
     }
 
-    let patch_url = format!("{}/configs", crate::backend::manager::controller_url());
+    let patch_url = format!("{}/configs", crate::backend::core::controller_url());
     let _ = local_http().patch(&patch_url).json(&config).send().await;
     Ok(())
 }
 
-/// Nyx user-agent for subscription fetches.
 fn nyx_user_agent() -> String {
     format!("clash-meta/mihomo/Nyx-v{}", env!("CARGO_PKG_VERSION"))
 }
@@ -254,12 +248,11 @@ pub async fn set_rule_str(id: String, str: String) -> Result<(), String> {
 }
 
 fn decode_header_value(value: &str) -> String {
-    if let Some(encoded) = value.strip_prefix("base64:") {
-        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
-            if let Ok(s) = String::from_utf8(bytes) {
-                return s;
-            }
-        }
+    if let Some(encoded) = value.strip_prefix("base64:")
+        && let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded.trim())
+        && let Ok(s) = String::from_utf8(bytes)
+    {
+        return s;
     }
     value.to_string()
 }
@@ -283,8 +276,7 @@ fn parse_subscription_userinfo(info: &str) -> Value {
     serde_json::json!({ "upload": upload, "download": download, "total": total, "expire": expire })
 }
 
-/// Imports or refreshes a profile item, updates `profile.yaml`, and hot-reloads
-/// the core if the active profile changed. Returns the profile id.
+/// Imports or refreshes a profile item and hot-reloads the core if it was active.
 pub async fn add_profile_item(item: Value) -> Result<String, String> {
     let id = match item["id"].as_str().filter(|s| !s.is_empty()) {
         Some(existing_id) => existing_id.to_string(),
@@ -316,17 +308,16 @@ pub async fn add_profile_item(item: Value) -> Result<String, String> {
                 .map_err(|e| e.to_string())?;
             let headers = resp.headers().clone();
 
-            if let Some(v) = headers.get("subscription-userinfo") {
-                if let Ok(s) = v.to_str() {
-                    meta["extra"] = parse_subscription_userinfo(s);
-                }
+            if let Some(v) = headers.get("subscription-userinfo")
+                && let Ok(s) = v.to_str()
+            {
+                meta["extra"] = parse_subscription_userinfo(s);
             }
-            if meta["name"].as_str().map(|s| s.is_empty()).unwrap_or(true) {
-                if let Some(v) = headers.get("profile-title") {
-                    if let Ok(s) = v.to_str() {
-                        meta["name"] = Value::String(decode_header_value(s));
-                    }
-                }
+            if meta["name"].as_str().map(|s| s.is_empty()).unwrap_or(true)
+                && let Some(v) = headers.get("profile-title")
+                && let Ok(s) = v.to_str()
+            {
+                meta["name"] = Value::String(decode_header_value(s));
             }
             // A manually-set interval on the item takes precedence over the subscription's.
             let has_manual_interval = meta
@@ -334,29 +325,27 @@ pub async fn add_profile_item(item: Value) -> Result<String, String> {
                 .and_then(Value::as_i64)
                 .map(|v| v > 0)
                 .unwrap_or(false);
-            if !has_manual_interval {
-                if let Some(v) = headers.get("profile-update-interval") {
-                    if let Ok(s) = v.to_str() {
-                        if let Ok(h) = s.trim().parse::<i64>() {
-                            meta["interval"] = Value::Number((h * 60).into());
-                        }
-                    }
-                }
+            if !has_manual_interval
+                && let Some(v) = headers.get("profile-update-interval")
+                && let Ok(s) = v.to_str()
+                && let Ok(h) = s.trim().parse::<i64>()
+            {
+                meta["interval"] = Value::Number((h * 60).into());
             }
-            if let Some(v) = headers.get("profile-web-page-url") {
-                if let Ok(s) = v.to_str() {
-                    meta["home"] = Value::String(s.to_string());
-                }
+            if let Some(v) = headers.get("profile-web-page-url")
+                && let Ok(s) = v.to_str()
+            {
+                meta["home"] = Value::String(s.to_string());
             }
-            if let Some(v) = headers.get("support-url") {
-                if let Ok(s) = v.to_str() {
-                    meta["supportUrl"] = Value::String(s.to_string());
-                }
+            if let Some(v) = headers.get("support-url")
+                && let Ok(s) = v.to_str()
+            {
+                meta["supportUrl"] = Value::String(s.to_string());
             }
-            if let Some(v) = headers.get("announce") {
-                if let Ok(s) = v.to_str() {
-                    meta["announce"] = Value::String(decode_header_value(s));
-                }
+            if let Some(v) = headers.get("announce")
+                && let Ok(s) = v.to_str()
+            {
+                meta["announce"] = Value::String(decode_header_value(s));
             }
 
             let raw_body = resp.text().await.map_err(|e| e.to_string())?;
@@ -436,8 +425,7 @@ pub async fn add_profile_item(item: Value) -> Result<String, String> {
     Ok(id)
 }
 
-/// Rebuilds the merged runtime config and asks the running core to hot-reload
-/// it. Best-effort: logs but does not fail on reload errors.
+/// Rebuilds the merged runtime config and hot-reloads it. Best-effort.
 async fn reload_core() {
     if let Err(e) = crate::backend::manager::rebuild_config().await {
         log::warn!("[reload_core] rebuild_config failed: {e}");
@@ -452,7 +440,7 @@ async fn reload_core() {
     let path_str = config_path.to_string_lossy().replace('\\', "/");
     let reload_url = format!(
         "{}/configs?force=false",
-        crate::backend::manager::controller_url()
+        crate::backend::core::controller_url()
     );
     if let Err(e) = local_http()
         .put(&reload_url)
@@ -487,8 +475,7 @@ pub async fn update_profile_item(item: Value) -> Result<(), String> {
     Err(format!("profile '{id}' not found"))
 }
 
-/// Re-downloads every remote profile whose `interval` has elapsed. Returns the
-/// names of the refreshed profiles.
+/// Re-downloads every remote profile whose `interval` elapsed; returns their names.
 pub async fn run_due_auto_updates() -> Vec<String> {
     let Ok(cfg) = profile_config().await else {
         return Vec::new();
@@ -578,17 +565,15 @@ async fn resolve_provider_path(path: &str) -> std::path::PathBuf {
     if Path::new(clean).is_absolute() {
         return PathBuf::from(clean);
     }
-    let config_dir = if let Ok(cm) = mihomo_config_manager() {
-        if let Ok(config_path) = cm.get_current_path().await {
-            config_path
+    let config_dir = match mihomo_config_manager() {
+        Ok(cm) => match cm.get_current_path().await {
+            Ok(config_path) => config_path
                 .parent()
                 .map(PathBuf::from)
-                .unwrap_or_else(dirs::data_dir)
-        } else {
-            dirs::data_dir()
-        }
-    } else {
-        dirs::data_dir()
+                .unwrap_or_else(dirs::data_dir),
+            _ => dirs::data_dir(),
+        },
+        _ => dirs::data_dir(),
     };
     config_dir.join(clean)
 }
@@ -603,9 +588,7 @@ pub async fn set_file_str(path: String, str: String) -> Result<(), String> {
     fs::write(&full, str).map_err(|e| e.to_string())
 }
 
-/// Reads a rule/proxy provider's content for the Resources viewer, resolving the
-/// on-disk path from the running config, decoding `.mrs` to text and surfacing
-/// inline payloads.
+/// Reads a provider's content for the viewer, decoding `.mrs` and inlining payloads.
 pub async fn read_provider_content(name: String, is_rule: bool) -> Result<String, String> {
     use md5::{Digest, Md5};
 
@@ -629,15 +612,15 @@ pub async fn read_provider_content(name: String, is_rule: bool) -> Result<String
         .to_ascii_lowercase();
 
     // Inline providers carry their payload directly in the config.
-    if vehicle == "inline" {
-        if let Some(payload) = provider.get("payload") {
-            let doc = if is_rule {
-                serde_json::json!({ "rules": payload })
-            } else {
-                serde_json::json!({ "proxies": payload })
-            };
-            return serde_yaml::to_string(&doc).map_err(|e| e.to_string());
-        }
+    if vehicle == "inline"
+        && let Some(payload) = provider.get("payload")
+    {
+        let doc = if is_rule {
+            serde_json::json!({ "rules": payload })
+        } else {
+            serde_json::json!({ "proxies": payload })
+        };
+        return serde_yaml::to_string(&doc).map_err(|e| e.to_string());
     }
 
     let behavior = provider
@@ -676,10 +659,9 @@ pub async fn read_provider_content(name: String, is_rule: bool) -> Result<String
     }
 }
 
-/// Wipes the entire app data directory after best-effort stopping the core; the
-/// caller is expected to relaunch.
+/// Wipes the app data directory after stopping the core; the caller relaunches.
 pub async fn reset_app_config() -> Result<(), String> {
-    let _ = crate::backend::manager::stop_core().await;
+    let _ = crate::backend::core::stop().await;
     let data_dir = dirs::data_dir();
     if data_dir.exists() {
         fs::remove_dir_all(&data_dir).map_err(|e| e.to_string())?;

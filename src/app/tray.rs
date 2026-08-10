@@ -7,18 +7,17 @@ use rust_i18n::t;
 
 #[cfg(not(target_os = "linux"))]
 use tray_icon::{
-    menu::{CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent,
+    menu::{CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
 };
 
 use crate::app::actions;
 use crate::app::state::{AppState, ProxyGroup};
 
-/// Separator embedded in proxy menu ids (`px<US>group<US>node`). U+001F won't
-/// occur in proxy names.
+/// Separator inside proxy menu ids (`px<US>group<US>node`); U+001F cannot
+/// occur in a proxy name.
 const SEP: char = '\u{1f}';
 
-/// Decodes the embedded app icon (PNG) into straight RGBA8 + dimensions.
 fn load_icon_rgba() -> Option<(Vec<u8>, u32, u32)> {
     static PNG: &[u8] = include_bytes!("../../assets/brand/logo.png");
     let mut reader = png::Decoder::new(std::io::Cursor::new(PNG))
@@ -111,12 +110,6 @@ fn build_menu(groups: &[ProxyGroup], connected: bool) -> Menu {
         true,
         None,
     ));
-    let _ = menu.append(&MenuItem::with_id(
-        "quit-no-core",
-        &t!("tray.quitNoCore"),
-        true,
-        None,
-    ));
     let _ = menu.append(&MenuItem::with_id("quit", &t!("tray.quit"), true, None));
     menu
 }
@@ -140,14 +133,12 @@ fn build_tray(groups: &[ProxyGroup], connected: bool) -> Option<TrayIcon> {
     }
 }
 
-/// Keeps the `TrayIcon` alive for the lifetime of the app
 #[cfg(not(target_os = "linux"))]
 struct GlobalTray(#[allow(dead_code)] TrayIcon);
 #[cfg(not(target_os = "linux"))]
 impl gpui::Global for GlobalTray {}
 
-/// Snapshots the tray-relevant slice of app state: proxy groups and whether the
-/// proxy is currently connected (TUN on).
+/// The tray-relevant slice of state: groups and whether TUN is on.
 fn tray_state(cx: &App) -> (Vec<ProxyGroup>, bool) {
     let st = AppState::global(cx).read(cx);
     (st.groups.clone(), st.tun_enabled)
@@ -164,7 +155,6 @@ fn create_icon(cx: &mut App) {
     }
 }
 
-/// Rebuilds the tray menu from current state
 #[cfg(not(target_os = "linux"))]
 pub fn rebuild(cx: &App) {
     if let Some(tray) = cx.try_global::<GlobalTray>() {
@@ -196,7 +186,6 @@ pub fn set_enabled(cx: &mut App, enabled: bool) {
     linux::set_enabled(enabled, groups, connected);
 }
 
-/// Builds the tray icon (unless disabled) and starts the gpui event-drain loop.
 pub fn init(cx: &mut App) {
     let enabled = !crate::backend::config::app_config_bool("disableTray");
 
@@ -260,30 +249,28 @@ fn handle_menu(id: &str, cx: &mut App) {
         "mode-global" => actions::set_mode("global", cx),
         "toggle-proxy" => actions::toggle_tun(cx),
         "restart-core" => actions::restart_core(cx),
-        "quit-no-core" => actions::quit_without_core(cx),
-        "quit" => actions::quit_with_core(cx),
+        "quit" => actions::shutdown_and_quit(cx),
         _ => {}
     }
 }
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use std::sync::mpsc::{channel, Receiver, Sender};
+    use std::sync::mpsc::{Receiver, Sender, channel};
     use std::sync::{Mutex, OnceLock};
 
     use ksni::menu::{CheckmarkItem, StandardItem, SubMenu};
     use ksni::{Handle, MenuItem, Tray, TrayMethods};
     use rust_i18n::t;
 
-    use super::{load_icon_rgba, SEP};
+    use super::{SEP, load_icon_rgba};
     use crate::app::runtime;
     use crate::app::state::ProxyGroup;
 
     static HANDLE: Mutex<Option<Handle<NyxTray>>> = Mutex::new(None);
 
-    /// Persistent action channel: menu callbacks (on the ksni thread) push ids
-    /// the gpui loop drains via [`poll_action`]. Lives for the whole process so
-    /// it survives tray enable/disable cycles.
+    /// Menu callbacks run on the ksni thread and push ids the gpui loop drains.
+    /// Lives for the whole process, so it survives tray enable/disable cycles.
     fn actions() -> &'static (Sender<String>, Mutex<Receiver<String>>) {
         static CH: OnceLock<(Sender<String>, Mutex<Receiver<String>>)> = OnceLock::new();
         CH.get_or_init(|| {
@@ -405,7 +392,6 @@ mod linux {
         items.push(std_item("mode-global", t!("tray.modeGlobal").to_string()));
         items.push(MenuItem::Separator);
         items.push(std_item("restart-core", t!("tray.restartCore").to_string()));
-        items.push(std_item("quit-no-core", t!("tray.quitNoCore").to_string()));
         items.push(std_item("quit", t!("tray.quit").to_string()));
         items
     }
@@ -449,12 +435,10 @@ mod linux {
         let present = HANDLE.lock().unwrap().is_some();
         if enabled && !present {
             spawn_tray(groups, connected);
-        } else if !enabled {
-            if let Some(h) = HANDLE.lock().unwrap().take() {
-                runtime::detach(async move {
-                    h.shutdown().await;
-                });
-            }
+        } else if !enabled && let Some(h) = HANDLE.lock().unwrap().take() {
+            runtime::detach(async move {
+                h.shutdown().await;
+            });
         }
     }
 }

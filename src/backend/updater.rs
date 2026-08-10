@@ -6,14 +6,12 @@ const REPO_NAME: &str = "Nyx";
 #[cfg(windows)]
 const WINDOWS_ASSET: &str = "Nyx-x86_64-windows.zip";
 
-/// A newer release available for install.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
     pub version: String,
     pub changelog: String,
 }
 
-/// Returns the newest release if it is newer than the running build, else `None`.
 pub async fn check() -> Result<Option<UpdateInfo>, String> {
     tokio::task::spawn_blocking(|| {
         let releases = self_update::backends::github::ReleaseList::configure()
@@ -43,21 +41,13 @@ pub async fn check() -> Result<Option<UpdateInfo>, String> {
     .map_err(|e| e.to_string())?
 }
 
-/// Downloads and installs the newest release.
-///
-/// Returns `true` when the relaunch is handled externally and the caller should
-/// just leave it to the helper, or `false` when the binary was replaced in place
-/// and the caller should relaunch itself.
-///
-/// On Windows the app lives in `Program Files` and the running `nyx.exe` (plus
-/// the background `--nyx-service` process) lock the file, so a non-elevated
-/// in-place replace fails with "access denied". Instead we download + unpack the
-/// new binary to a temp dir and hand off to a short elevated script that kills
-/// the running processes, overwrites the installed exe, and relaunches it.
+/// Installs the newest release. `true` means an elevated helper will relaunch
+/// (Windows, where the running exe is locked); `false` means the caller should.
 pub async fn download_and_install() -> Result<bool, String> {
     #[cfg(windows)]
     {
-        let _ = crate::backend::service::stop_service_for_update().await;
+        // The service holds the exe open; stop the core so the updater can replace it.
+        let _ = crate::backend::core::stop().await;
         windows_update().await
     }
 
@@ -186,9 +176,7 @@ fn spawn_elevated_swap(
 ) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
 
-    // Kill the running nyx processes (the service is already stopped) so the exe
-    // unlocks, overwrite it, then relaunch via explorer so the new process runs
-    // de-elevated rather than inheriting this script's admin token.
+    // Relaunch through explorer so the new process drops this script's admin token.
     let script = format!(
         "@echo off\r\nchcp 65001 >nul\r\ntaskkill /F /IM nyx.exe >nul 2>&1\r\nset /a n=0\r\n:retry\r\ncopy /Y \"{new}\" \"{inst}\" >nul 2>&1\r\nif not errorlevel 1 goto done\r\nset /a n+=1\r\nif %n% geq 30 goto done\r\ntimeout /t 1 /nobreak >nul\r\ngoto retry\r\n:done\r\nstart \"\" explorer.exe \"{inst}\"\r\n",
         new = new_exe.display(),

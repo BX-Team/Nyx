@@ -1,5 +1,5 @@
 use gpui::{App, AppContext, Global, WindowHandle};
-use gpui_component::{notification::Notification, Root, WindowExt};
+use gpui_component::{Root, WindowExt, notification::Notification};
 use serde_json::json;
 
 use crate::app::runtime;
@@ -9,14 +9,11 @@ use crate::backend;
 struct MainWindow(WindowHandle<Root>);
 impl Global for MainWindow {}
 
-/// Records the main window handle so actions can show/focus it.
 pub fn set_main_window(handle: WindowHandle<Root>, cx: &mut App) {
     cx.set_global(MainWindow(handle));
 }
 
-/// Shows a toast on the main window. Uses `update_window` (not
-/// `WindowHandle::update`) so it doesn't lock `Root`, which `push_notification`
-/// updates itself.
+/// Toasts on the main window via `update_window`, which avoids locking `Root`.
 pub fn notify(note: Notification, cx: &mut App) {
     if AppState::global(cx).read(cx).onboarding_active {
         return;
@@ -29,20 +26,18 @@ pub fn notify(note: Notification, cx: &mut App) {
     });
 }
 
-/// Brings the main window to the foreground (un-hiding it first if it was
-/// closed to the tray).
+/// Brings the main window up, recreating it if it was closed to the tray.
 pub fn show_window(cx: &mut App) {
     cx.activate(true);
     #[cfg(windows)]
     {
-        // `spawn` (not `defer`) so the Win32 ShowWindow runs outside this gpui
-        // flush — otherwise its WM_* messages re-enter a live borrow and panic.
+        // `spawn`, not `defer`: the Win32 call must land outside this gpui flush,
+        // or its WM_* messages re-enter a live borrow and panic.
         cx.spawn(async move |_cx| crate::app::window::show_now())
             .detach();
     }
     #[cfg(not(windows))]
     {
-        // The window may have been removed when closed to the tray; recreate it.
         let shown = cx.try_global::<MainWindow>().map(|m| m.0).is_some_and(|h| {
             h.update(cx, |_root, window, _cx| window.activate_window())
                 .is_ok()
@@ -53,12 +48,10 @@ pub fn show_window(cx: &mut App) {
     }
 }
 
-/// Toggles the main window: closes it to the tray if open, otherwise recreates
-/// and shows it. Backs the "toggle window" hotkey.
+/// Closes the window to the tray if open, otherwise recreates it.
 pub fn toggle_window(cx: &mut App) {
     #[cfg(windows)]
     {
-        // Run the Win32 calls on the next foreground tick — see `show_window`.
         cx.spawn(async move |_cx| crate::app::window::toggle_now())
             .detach();
     }
@@ -78,8 +71,7 @@ pub fn toggle_window(cx: &mut App) {
     }
 }
 
-/// Switches a proxy group's selection (from the tray), then refreshes groups so
-/// the UI and tray check-marks update.
+/// Switches a group's selection from the tray, then refreshes so check-marks follow.
 pub fn set_proxy(group: String, node: String, cx: &mut App) {
     cx.spawn(async move |cx| {
         let (g, n) = (group.clone(), node.clone());
@@ -89,7 +81,6 @@ pub fn set_proxy(group: String, node: String, cx: &mut App) {
     .detach();
 }
 
-/// Optimistically switches proxy mode and patches the controlled config.
 pub fn set_mode(mode: &'static str, cx: &mut App) {
     AppState::global(cx).update(cx, |st, c| st.set_mode(mode, c));
     runtime::detach(async move {
@@ -97,7 +88,6 @@ pub fn set_mode(mode: &'static str, cx: &mut App) {
     });
 }
 
-/// Flips the TUN main switch (optimistic UI + controlled-config patch).
 pub fn toggle_tun(cx: &mut App) {
     let new = !AppState::global(cx).read(cx).tun_enabled;
     AppState::global(cx).update(cx, |st, c| st.set_tun_enabled(new, c));
@@ -109,7 +99,6 @@ pub fn toggle_tun(cx: &mut App) {
     });
 }
 
-/// Sets the system-proxy flag, persists it, and applies/removes the OS proxy.
 pub fn set_sysproxy(enable: bool, cx: &mut App) {
     let affect_vpn = AppState::global(cx)
         .read(cx)
@@ -130,49 +119,34 @@ pub fn set_sysproxy(enable: bool, cx: &mut App) {
     });
 }
 
-/// Flips the system-proxy enable flag (hotkey / tray).
 pub fn toggle_sysproxy(cx: &mut App) {
     let new = !AppState::global(cx).read(cx).app_flag("sysProxy.enable");
     set_sysproxy(new, cx);
 }
 
-/// Restarts the mihomo core (fire-and-forget).
 pub fn restart_core(_cx: &mut App) {
     runtime::detach(async {
-        let _ = backend::manager::restart_core().await;
+        let _ = backend::core::restart().await;
     });
 }
 
-/// Relaunches the app executable, then quits this instance. The relaunch flag
-/// tells the new process to wait for this one to release the single-instance lock.
+/// The single quit path: un-proxy the machine but leave the service and core up,
+/// so reopening restores the previous state without another prompt.
+pub fn shutdown_and_quit(cx: &mut App) {
+    backend::sysproxy::clear();
+    let _ = runtime::runtime().block_on(backend::config::patch_controled_mihomo_config(
+        json!({ "tun": { "enable": false } }),
+    ));
+    cx.quit();
+}
+
+/// Relaunches the executable; the flag makes the new process wait for the
+/// single-instance lock.
 pub fn restart_app(cx: &mut App) {
     if let Ok(exe) = std::env::current_exe() {
         let _ = std::process::Command::new(exe)
             .arg(crate::app::single_instance::RELAUNCH_FLAG)
             .spawn();
     }
-    cx.quit();
-}
-
-/// Quits, leaving the core/service running.
-pub fn quit_without_core(cx: &mut App) {
-    cx.quit();
-}
-
-/// Clears the OS system proxy, stops the core completely (service-managed or
-/// local, best-effort, blocking), then quits.
-pub fn quit_with_core(cx: &mut App) {
-    backend::sysproxy::clear();
-    let _ = runtime::runtime().block_on(backend::service::stop_core_complete());
-    cx.quit();
-}
-
-/// Ctrl+close: turns the proxy off and clears the system proxy, but leaves the
-/// core running in the background.
-pub fn disconnect_and_quit(cx: &mut App) {
-    backend::sysproxy::clear();
-    let _ = runtime::runtime().block_on(backend::config::patch_controled_mihomo_config(
-        json!({ "tun": { "enable": false } }),
-    ));
     cx.quit();
 }

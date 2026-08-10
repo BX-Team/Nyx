@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use global_hotkey::{hotkey::HotKey, GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
 use gpui::{App, AsyncApp, Global};
 
 use crate::app::actions;
 use crate::app::state::AppState;
 
-/// (app-config key, internal action id).
 const BINDINGS: &[(&str, &str)] = &[
     ("showWindowShortcut", "show"),
     ("triggerSysProxyShortcut", "sysproxy"),
@@ -26,7 +25,6 @@ struct Hotkeys {
 }
 impl Global for Hotkeys {}
 
-/// Builds the hotkey manager and starts the gpui event-drain loop.
 pub fn init(cx: &mut App) {
     let manager = match GlobalHotKeyManager::new() {
         Ok(m) => m,
@@ -58,7 +56,6 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-/// Re-registers all hotkeys from the current app config. Safe to call on every config change.
 pub fn reload(cx: &mut App) {
     if cx.try_global::<Hotkeys>().is_none() {
         return;
@@ -107,7 +104,7 @@ fn dispatch(id: u32, cx: &mut App) {
         Some("global") => actions::set_mode("global", cx),
         Some("direct") => actions::set_mode("direct", cx),
         Some("restart-app") => actions::restart_app(cx),
-        Some("quit-nc") => actions::quit_without_core(cx),
+        Some("quit-nc") => actions::shutdown_and_quit(cx),
         _ => {}
     }
 }

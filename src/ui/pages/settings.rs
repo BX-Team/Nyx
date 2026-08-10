@@ -1,25 +1,25 @@
-use gpui::prelude::FluentBuilder;
 use gpui::Entity;
+use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rgb, AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled,
+    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, div, px, rgb,
 };
 use gpui_component::button::{Button, ButtonVariants};
 use gpui_component::input::{Input, InputState};
 use gpui_component::select::Select;
 use gpui_component::{
-    h_flex, switch::Switch, tooltip::Tooltip, v_flex, Disableable, Icon, IconName, Sizable,
-    StyledExt,
+    Disableable, Icon, IconName, Sizable, StyledExt, h_flex, switch::Switch, tooltip::Tooltip,
+    v_flex,
 };
 use rust_i18n::t;
 
 use crate::ui::root::{
-    NyxApp, SettingsSub, AMBER, CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, DIVIDER, GREEN,
-    GREEN_HI, MUTED3, RED, RED_HI, SUBTLE, TEXT,
+    AMBER, CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, DIVIDER, GREEN, GREEN_HI, MUTED3,
+    NyxApp, RED, RED_HI, SUBTLE, SettingsSub, TEXT,
 };
 
 impl NyxApp {
-    pub(crate) fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         match self.settings_sub {
             Some(SettingsSub::Tun) => self.render_settings_tun(cx).into_any_element(),
             Some(SettingsSub::SysProxy) => self.render_settings_sysproxy(cx).into_any_element(),
@@ -34,7 +34,7 @@ impl NyxApp {
         }
     }
 
-    fn render_settings_main(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_main(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let tun = st.tun_enabled;
         let sysproxy = st.app_flag("sysProxy.enable");
@@ -144,7 +144,6 @@ impl NyxApp {
         )
     }
 
-    /// The "Reset application" row — confirms before wiping all app data and relaunching.
     fn reset_row(&self, cx: &mut Context<Self>) -> AnyElement {
         row_shell(true)
             .child(
@@ -174,7 +173,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    fn render_settings_tun(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_tun(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let enabled = st.tun_enabled;
         let stack = st
@@ -292,7 +291,6 @@ impl NyxApp {
         )
     }
 
-    /// One TUN boolean row that patches `tun.<key>` on toggle.
     #[allow(clippy::too_many_arguments)]
     fn tun_toggle(
         &self,
@@ -317,7 +315,7 @@ impl NyxApp {
         )
     }
 
-    fn render_settings_sysproxy(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_sysproxy(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let enable = st.app_flag("sysProxy.enable");
         let affect_vpn = st.app_flag("affectVPNConnections");
@@ -414,7 +412,7 @@ impl NyxApp {
         )
     }
 
-    fn render_settings_dns(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_dns(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let enhanced = st
             .ctl("dns.enhanced-mode")
@@ -547,7 +545,6 @@ impl NyxApp {
         )
     }
 
-    /// One DNS boolean row that patches `dns.<key>` on toggle.
     #[allow(clippy::too_many_arguments)]
     fn dns_toggle(
         &self,
@@ -572,7 +569,7 @@ impl NyxApp {
         )
     }
 
-    fn render_settings_mihomo(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_mihomo(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let allow_lan = st.ctl_bool("allow-lan", false);
         let ipv6 = st.ctl_bool("ipv6", false);
@@ -605,8 +602,7 @@ impl NyxApp {
 
         let body = settings_body()
             .child(self.mihomo_core_card(&core, cx))
-            .when(cfg!(windows), |b| b.child(self.mihomo_service_card(cx)))
-            .when(!cfg!(windows), |b| b.child(self.tun_permission_card(cx)))
+            .child(self.mihomo_service_card(cx))
             .child(group(vec![
                 input_row(
                     t!("pages.settings.mixedPort"),
@@ -786,7 +782,6 @@ impl NyxApp {
         )
     }
 
-    /// Core version + channel (stable/prerelease) + update button.
     fn mihomo_core_card(&self, core: &str, cx: &mut Context<Self>) -> AnyElement {
         let busy = self.service_busy;
         let installed = if self.core_version_installed.is_empty() {
@@ -864,13 +859,13 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// Windows service status + install/start/stop/restart/uninstall controls.
     fn mihomo_service_card(&self, cx: &mut Context<Self>) -> AnyElement {
         let busy = self.service_busy;
         let status = self.service_status.to_string();
         let (label, color) = match status.as_str() {
             "running" => (t!("pages.settings.svcRunning"), GREEN_HI),
             "stopped" => (t!("pages.settings.svcStopped"), AMBER),
+            "stale" => (t!("pages.settings.svcStale"), AMBER),
             "not-installed" => (t!("pages.settings.svcNotInstalled"), MUTED3),
             "" => (t!("pages.settings.svcChecking"), MUTED3),
             _ => (t!("pages.settings.svcUnknown"), MUTED3),
@@ -921,6 +916,14 @@ impl NyxApp {
                     ));
             }
             "" => {}
+            "stale" => {
+                actions = actions.child(svc_btn(
+                    "svc-repair",
+                    "install",
+                    t!("pages.settings.svcRepair").to_string(),
+                    false,
+                ));
+            }
             _ => {
                 actions = actions.child(svc_btn(
                     "svc-install",
@@ -956,78 +959,22 @@ impl NyxApp {
                             ),
                     ),
             )
-            .child(actions)
-            .into_any_element()
-    }
-
-    /// Non-Windows service-card replacement: TUN capability status + (Linux) a grant button.
-    fn tun_permission_card(&self, cx: &mut Context<Self>) -> AnyElement {
-        let granted = tun_granted();
-        let nixos = tun_is_nixos();
-        let (label, color) = if granted {
-            (t!("pages.settings.tunGranted"), GREEN_HI)
-        } else {
-            (t!("pages.settings.tunNotGranted"), AMBER)
-        };
-        let hint = if cfg!(target_os = "macos") {
-            t!("pages.settings.tunHintMac")
-        } else if nixos {
-            t!("pages.settings.tunHintNixos")
-        } else {
-            t!("pages.settings.tunHint")
-        };
-
-        let card = settings_card(t!("pages.settings.tunSection"))
-            .child(
-                h_flex()
-                    .items_center()
-                    .justify_between()
-                    .py(px(2.))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(rgb(TEXT))
-                            .child(t!("pages.settings.tunStatus").to_string()),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(div().size(px(7.)).rounded_full().bg(rgb(color)))
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(rgb(color))
-                                    .child(label.to_string()),
-                            ),
-                    ),
-            )
+            .children(self.service_detail.clone().map(|reason| {
+                div()
+                    .text_xs()
+                    .text_color(rgb(MUTED3))
+                    .child(reason.to_string())
+            }))
             .child(
                 div()
                     .text_xs()
                     .text_color(rgb(MUTED3))
-                    .child(hint.to_string()),
-            );
-
-        #[cfg(target_os = "linux")]
-        let card = card.when(!granted && !nixos, |c| {
-            c.child(
-                h_flex().child(
-                    Button::new("tun-grant")
-                        .small()
-                        .primary()
-                        .label(t!("pages.settings.tunGrant").to_string())
-                        .on_click(cx.listener(|this, _, _, cx| this.grant_tun(cx))),
-                ),
+                    .child(t!("pages.settings.svcHint").to_string()),
             )
-        });
-        #[cfg(not(target_os = "linux"))]
-        let _ = cx;
-
-        card.into_any_element()
+            .child(actions)
+            .into_any_element()
     }
 
-    /// One top-level mihomo boolean row that patches `<key>` and restarts core.
     fn core_toggle(
         &self,
         id: &'static str,
@@ -1049,7 +996,6 @@ impl NyxApp {
         )
     }
 
-    /// A boolean row under the config's `profile` map (`store-selected` / `store-fake-ip`).
     fn profile_toggle(
         &self,
         id: &'static str,
@@ -1071,7 +1017,6 @@ impl NyxApp {
         )
     }
 
-    /// A titled card of choice pills that patch `key` to the picked value (empty clears).
     fn core_choice_card(
         &self,
         key: &'static str,
@@ -1125,7 +1070,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    fn render_settings_sniffer(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_sniffer(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let override_dest = st.ctl_bool("sniffer.override-destination", false);
         let force_dns = st.ctl_bool("sniffer.force-dns-mapping", true);
@@ -1224,7 +1169,6 @@ impl NyxApp {
         )
     }
 
-    /// One sniffer boolean row (patches `sniffer.<key>` + restarts core).
     #[allow(clippy::too_many_arguments)]
     fn sniffer_toggle(
         &self,
@@ -1249,7 +1193,7 @@ impl NyxApp {
         )
     }
 
-    /// Per-protocol sniff toggle: sets/clears `sniffer.sniff.<PROTO>.ports`.
+    /// Per-protocol sniff toggle: sets or clears `sniffer.sniff.<PROTO>.ports`.
     #[allow(clippy::too_many_arguments)]
     fn sniff_proto_toggle(
         &self,
@@ -1279,7 +1223,7 @@ impl NyxApp {
         )
     }
 
-    fn render_settings_resources(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_resources(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let busy = self.resources_busy;
         let geo_btn = Button::new("res-geo")
             .primary()
@@ -1310,7 +1254,6 @@ impl NyxApp {
         )
     }
 
-    /// A card listing providers (per-row view + update) with an "Update all" header button.
     fn providers_card(
         &self,
         title: String,
@@ -1430,12 +1373,13 @@ impl NyxApp {
         card.into_any_element()
     }
 
-    fn render_settings_appearance(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_appearance(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let on_top = st.app_flag("alwaysOnTop");
         let disable_tray = st.app_flag("disableTray");
+        let system_frame = st.app_flag("useWindowFrame");
 
-        let body = settings_body().child(group(vec![
+        let mut rows = vec![
             self.flag_toggle(
                 "ap-ontop",
                 t!("pages.settings.alwaysOnTop"),
@@ -1452,7 +1396,23 @@ impl NyxApp {
                 false,
                 cx,
             ),
-        ]));
+        ];
+        // Only Linux can swap between our title bar and the compositor's.
+        #[cfg(target_os = "linux")]
+        rows.push(toggle_row(
+            t!("pages.settings.systemWindowFrame"),
+            None,
+            Switch::new("ap-frame")
+                .checked(system_frame)
+                .on_click(cx.listener(move |this, checked: &bool, window, cx| {
+                    crate::app::window::request_decorations(window, *checked);
+                    this.set_app_flag(serde_json::json!({ "useWindowFrame": *checked }), cx);
+                })),
+            false,
+        ));
+        #[cfg(not(target_os = "linux"))]
+        let _ = system_frame;
+        let body = settings_body().child(group(rows));
         self.sub_scroll(
             t!("pages.settings.appearance").to_string(),
             false,
@@ -1462,7 +1422,7 @@ impl NyxApp {
         )
     }
 
-    fn render_settings_advanced(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_advanced(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let stop_on_disconnect = st.app_flag("stopCoreOnDisconnect");
         let net_detect = st.app_flag("networkDetection");
@@ -1501,7 +1461,7 @@ impl NyxApp {
         )
     }
 
-    fn render_settings_shortcuts(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_settings_shortcuts(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let cfg = st.app_config.clone();
         let read = |key: &str| -> String {
@@ -1552,7 +1512,6 @@ impl NyxApp {
             .text_color(rgb(MUTED3))
             .child(t!("pages.settings.scHint").to_string());
 
-        // Key-capture surface: rows focus this, the next keystroke is recorded.
         let body = div()
             .track_focus(&self.recorder_focus)
             .child(settings_body().child(card).child(hint))
@@ -1568,7 +1527,6 @@ impl NyxApp {
         )
     }
 
-    /// One shortcut row: click to record, shows "Press keys…" while recording.
     fn shortcut_row(
         &self,
         key: &'static str,
@@ -1612,7 +1570,6 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// One app-config boolean row (patches the flat `<key>` on toggle).
     fn flag_toggle(
         &self,
         id: &'static str,
@@ -1634,8 +1591,7 @@ impl NyxApp {
         )
     }
 
-    /// The "override subscription" toggle + hint atop the DNS/Sniffer/TUN pages;
-    /// `key` is the gating flag (`controlDns`/`controlSniff`/`controlTun`).
+    /// The "override subscription" toggle gating a DNS/Sniffer/TUN page.
     fn override_group(
         &self,
         id: &'static str,
@@ -1664,7 +1620,6 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// A clickable gear icon that opens a Settings sub-page.
     fn gear(&self, id: &'static str, sub: SettingsSub, cx: &mut Context<Self>) -> AnyElement {
         div()
             .id(id)
@@ -1680,7 +1635,6 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// A section row that navigates into a sub-page on click.
     fn nav_sub_row(
         &self,
         label: impl Into<SharedString>,
@@ -1710,7 +1664,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// Wraps a sub-page body with a back header plus optional Save + action elements.
+    /// Wraps a sub-page body with a back header plus optional Save + actions.
     fn sub_scroll(
         &self,
         title: String,
@@ -1788,7 +1742,6 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// The "Check for updates" row; shows a checking state while a GitHub check runs.
     fn check_update_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let checking = self.update_checking;
         let button_label = if checking {
@@ -1823,7 +1776,6 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// The language selector row (a dropdown over the language list).
     fn language_row(&self) -> AnyElement {
         let control = div()
             .w(px(160.))
@@ -1832,7 +1784,6 @@ impl NyxApp {
     }
 }
 
-/// Header + scroll container for a settings list.
 fn settings_scroll(title: String) -> gpui::Stateful<gpui::Div> {
     v_flex()
         .size_full()
@@ -1849,12 +1800,10 @@ fn settings_scroll(title: String) -> gpui::Stateful<gpui::Div> {
         )
 }
 
-/// The padded column that holds the setting cards (full width to the right edge).
 fn settings_body() -> gpui::Div {
     v_flex().w_full().px(px(24.)).pb(px(22.)).gap(px(14.))
 }
 
-/// A rounded group card; children are the (already divider-bordered) rows.
 fn group(rows: Vec<AnyElement>) -> impl IntoElement {
     v_flex()
         .w_full()
@@ -1866,7 +1815,7 @@ fn group(rows: Vec<AnyElement>) -> impl IntoElement {
         .children(rows)
 }
 
-/// Base row: label-left / control-right, with an optional bottom divider.
+/// Base row: label left, control right, optional bottom divider.
 fn row_shell(last: bool) -> gpui::Div {
     h_flex()
         .items_center()
@@ -1876,7 +1825,6 @@ fn row_shell(last: bool) -> gpui::Div {
         .when(!last, |this| this.border_b_1().border_color(rgb(DIVIDER)))
 }
 
-/// A row with a plain text label and an arbitrary control on the right.
 fn control_row(label: impl Into<SharedString>, control: AnyElement, last: bool) -> AnyElement {
     row_shell(last)
         .child(div().text_sm().text_color(rgb(TEXT)).child(label.into()))
@@ -1902,8 +1850,7 @@ fn toggle_row(
         .into_any_element()
 }
 
-/// A row with a label and a text input on the right (empty if no input yet).
-/// `enabled` greys out the input when an override toggle gates the page.
+/// Label + text input; `enabled` greys the input out when an override gates the page.
 fn input_row(
     label: impl Into<SharedString>,
     input: Option<&Entity<InputState>>,
@@ -1920,8 +1867,7 @@ fn input_row(
     control_row(label, control, last)
 }
 
-/// A full-width DNS list card: a label header above a multi-line text input
-/// (one server / entry per line). `enabled` greys out the input.
+/// Multi-line list card (one entry per line); `enabled` greys the input out.
 fn dns_list_card(
     label: impl Into<SharedString>,
     input: Option<&Entity<InputState>>,
@@ -1953,34 +1899,7 @@ fn dns_list_card(
         .into_any_element()
 }
 
-/// Whether the running process can give the core TUN access (Linux: holds
-/// `CAP_NET_ADMIN`; elsewhere: running as root).
-fn tun_granted() -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        crate::backend::elevation::has_net_admin()
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        crate::backend::elevation::is_elevated()
-    }
-}
-
-/// On NixOS, TUN caps come from `programs.nyx.tunMode` (declarative wrapper),
-/// not a runtime `setcap` — so we swap the grant button for instructions.
-fn tun_is_nixos() -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        crate::backend::elevation::is_nixos()
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        false
-    }
-}
-
-/// True on Linux desktops where the system proxy only reaches some apps (not
-/// GNOME-like); used to warn that TUN is the reliable full-coverage option.
+/// True where the system proxy reaches only some apps, so TUN is the reliable option.
 fn sysproxy_partial() -> bool {
     #[cfg(target_os = "linux")]
     {
@@ -2024,7 +1943,6 @@ fn settings_card(title: impl Into<SharedString>) -> gpui::Div {
         )
 }
 
-/// A `label : value` info row (read-only).
 fn kv_text(label: impl Into<SharedString>, value: String) -> AnyElement {
     h_flex()
         .items_center()
@@ -2042,7 +1960,6 @@ fn kv_text(label: impl Into<SharedString>, value: String) -> AnyElement {
         .into_any_element()
 }
 
-/// The current installed app version, shown beneath the "check for updates" row.
 fn version_row() -> AnyElement {
     row_shell(true)
         .child(

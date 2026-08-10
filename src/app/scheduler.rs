@@ -11,8 +11,7 @@ const CHECK_INTERVAL_SECS: u64 = 300;
 const INITIAL_DELAY_SECS: u64 = 15;
 const EXPIRY_WARN_SECS: i64 = 3 * 86_400;
 
-/// Starts the scheduler: a one-time quota/expiry check after startup, then a
-/// recurring sweep of due remote-profile auto-updates.
+/// A one-time quota/expiry check after startup, then a recurring auto-update sweep.
 pub fn init(cx: &mut App) {
     cx.spawn(async move |cx: &mut AsyncApp| {
         cx.background_executor()

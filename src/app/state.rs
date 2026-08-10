@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use gpui::{App, AppContext, Context, Entity, Global, SharedString};
 use serde_json::Value;
 
+use crate::backend::core::{CoreError, FailureKind};
 use crate::backend::{dirs, streaming::StreamEvent};
 
 pub const DEFAULT_LANGUAGE: &str = "en-US";
@@ -14,11 +15,9 @@ pub const LANGUAGES: &[(&str, &str)] = &[
     ("zh-CN", "简体中文"),
 ];
 
-/// Number of per-second traffic samples kept for the Home graph.
+/// Per-second traffic samples kept for the Home graph.
 const MAX_HISTORY: usize = 60;
-/// Cap on the in-memory log ring buffer.
 const MAX_LOGS: usize = 1000;
-/// Cap on the remembered recently-closed connections.
 const MAX_CLOSED: usize = 300;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -26,16 +25,44 @@ pub enum CoreStatus {
     Stopped,
     Starting,
     Running,
-    Failed(SharedString),
+    Failed {
+        kind: FailureKind,
+        detail: SharedString,
+    },
 }
 
 impl CoreStatus {
     pub fn is_running(&self) -> bool {
         matches!(self, CoreStatus::Running)
     }
+
+    pub fn failed(&self) -> Option<(FailureKind, &SharedString)> {
+        match self {
+            CoreStatus::Failed { kind, detail } => Some((*kind, detail)),
+            _ => None,
+        }
+    }
 }
 
-/// A single proxy node inside a group.
+impl From<CoreError> for CoreStatus {
+    fn from(e: CoreError) -> Self {
+        CoreStatus::Failed {
+            kind: e.kind,
+            detail: e.detail.into(),
+        }
+    }
+}
+
+pub fn failure_key(kind: FailureKind) -> &'static str {
+    match kind {
+        FailureKind::CoreMissing => "core.failure.coreMissing",
+        FailureKind::ConfigInvalid => "core.failure.configInvalid",
+        FailureKind::ServiceUnavailable => "core.failure.serviceUnavailable",
+        FailureKind::Timeout => "core.failure.timeout",
+        FailureKind::Other => "core.failure.other",
+    }
+}
+
 #[derive(Clone)]
 pub struct ProxyNode {
     pub name: SharedString,
@@ -43,7 +70,6 @@ pub struct ProxyNode {
     pub delay: Option<u32>,
 }
 
-/// A proxy group with its members and the current selection.
 #[derive(Clone)]
 pub struct ProxyGroup {
     pub name: SharedString,
@@ -52,7 +78,6 @@ pub struct ProxyGroup {
     pub all: Vec<ProxyNode>,
 }
 
-/// A profile entry (subscription or local file).
 #[derive(Clone)]
 pub struct ProfileItem {
     pub id: SharedString,
@@ -67,7 +92,6 @@ pub struct ProfileItem {
     pub interval: i64,
 }
 
-/// One log line for the Logs page / ring buffer.
 #[derive(Clone)]
 pub struct LogLine {
     pub time: SharedString,
@@ -75,20 +99,16 @@ pub struct LogLine {
     pub message: SharedString,
 }
 
-/// Active connections grouped by originating process (Connections page).
 #[derive(Clone)]
 pub struct ConnProcess {
     pub name: SharedString,
     pub count: usize,
     pub up: u64,
     pub down: u64,
-    /// Executable path of the process (for the app icon), if known.
     pub process_path: SharedString,
-    /// Individual connections belonging to this process (for the detail view).
     pub conns: Vec<ConnItem>,
 }
 
-/// A single active connection (shown in a process's detail view).
 #[derive(Clone)]
 pub struct ConnItem {
     pub id: SharedString,
@@ -110,7 +130,6 @@ pub struct ConnItem {
     pub dns_mode: SharedString,
 }
 
-/// One routing rule (Rules page).
 #[derive(Clone)]
 pub struct Rule {
     pub kind: SharedString,
@@ -118,8 +137,7 @@ pub struct Rule {
     pub proxy: SharedString,
 }
 
-/// Shared, observable application state. Views hold the `Entity<AppState>`
-/// (via [`AppState::global`]) and `observe` it to re-render on change.
+/// Shared, observable application state; views `observe` it to re-render.
 pub struct AppState {
     pub language: SharedString,
     pub core_status: CoreStatus,
@@ -141,19 +159,14 @@ pub struct AppState {
     pub current_profile_item: Option<Value>,
     pub mode: SharedString,
     pub app_config: Value,
-    /// Full controlled mihomo config (used by the TUN settings sub-page).
     pub controled_config: Value,
     pub logs: VecDeque<LogLine>,
-    /// Monotonic count of all log lines ever appended; unlike `logs.len()` it
-    /// keeps growing past the ring-buffer cap, so the Logs view can autoscroll.
+    /// Total lines ever appended — keeps growing past the ring cap, so Logs can autoscroll.
     pub log_seq: usize,
     pub connections: Vec<ConnProcess>,
-    /// Recently-closed connections, built by diffing consecutive `/connections`
-    /// snapshots. Powers the Connections "Closed" tab.
+    /// Connections that vanished between two `/connections` snapshots.
     pub closed_connections: Vec<ConnProcess>,
-    /// Last snapshot's active connections keyed by id, to detect closures.
     active_by_id: std::collections::HashMap<String, (String, ConnItem)>,
-    /// Capped ring of closed (process-name, item) pairs.
     closed_items: VecDeque<(String, ConnItem)>,
     pub rules: Vec<Rule>,
 }
@@ -162,8 +175,7 @@ struct GlobalAppState(Entity<AppState>);
 impl Global for GlobalAppState {}
 
 impl AppState {
-    /// Loads persisted state, sets the active locale, and registers the global.
-    /// Call once after `gpui_component::init`.
+    /// Loads persisted state, sets the locale, and registers the global. Call once.
     pub fn init(cx: &mut App) {
         let language = load_language();
         rust_i18n::set_locale(&language);
@@ -198,12 +210,10 @@ impl AppState {
         cx.set_global(GlobalAppState(entity));
     }
 
-    /// The shared `AppState` entity.
     pub fn global(cx: &App) -> Entity<AppState> {
         cx.global::<GlobalAppState>().0.clone()
     }
 
-    /// Switches the UI language, persists it, and notifies observers.
     pub fn set_language(&mut self, lang: impl Into<SharedString>, cx: &mut Context<Self>) {
         let lang: SharedString = lang.into();
         if lang == self.language {
@@ -264,7 +274,6 @@ impl AppState {
         cx.notify();
     }
 
-    /// Reads a value from the controlled mihomo config by dot path.
     pub fn ctl(&self, path: &str) -> Option<&Value> {
         let mut cur = &self.controled_config;
         for seg in path.split('.') {
@@ -273,7 +282,6 @@ impl AppState {
         Some(cur)
     }
 
-    /// Reads a boolean from the controlled mihomo config (dot path).
     pub fn ctl_bool(&self, path: &str, default: bool) -> bool {
         self.ctl(path).and_then(Value::as_bool).unwrap_or(default)
     }
@@ -298,7 +306,6 @@ impl AppState {
         }
     }
 
-    /// Updates a single node's delay (after a proxy delay test).
     pub fn set_node_delay(
         &mut self,
         group: &str,
@@ -306,15 +313,14 @@ impl AppState {
         delay: Option<u32>,
         cx: &mut Context<Self>,
     ) {
-        if let Some(g) = self.groups.iter_mut().find(|g| g.name.as_ref() == group) {
-            if let Some(n) = g.all.iter_mut().find(|n| n.name.as_ref() == node) {
-                n.delay = delay;
-                cx.notify();
-            }
+        if let Some(g) = self.groups.iter_mut().find(|g| g.name.as_ref() == group)
+            && let Some(n) = g.all.iter_mut().find(|n| n.name.as_ref() == node)
+        {
+            n.delay = delay;
+            cx.notify();
         }
     }
 
-    /// Folds one streaming event into the state and notifies observers.
     pub fn apply_stream_event(&mut self, ev: StreamEvent, cx: &mut Context<Self>) {
         match ev {
             StreamEvent::Connections(data) => self.apply_connections(&data),
@@ -403,14 +409,12 @@ impl AppState {
         });
     }
 
-    /// Empties the in-memory log buffer (Logs page "clear" button).
     pub fn clear_logs(&mut self, cx: &mut Context<Self>) {
         self.logs.clear();
         cx.notify();
     }
 }
 
-/// Parses the `{ rules: [...] }` payload from `/rules` into [`Rule`]s.
 pub fn parse_rules(value: &Value) -> Vec<Rule> {
     value
         .get("rules")
@@ -539,8 +543,7 @@ fn parse_conn(c: &Value) -> Option<(String, String, ConnItem)> {
     Some((id, name, item))
 }
 
-/// Groups `(process-name, item)` pairs by process, summing counts + cumulative
-/// up/down bytes. Sorted by total traffic (processes and rows within them).
+/// Groups `(process, item)` pairs by process, sorted by total traffic.
 fn group_items(items: impl Iterator<Item = (String, ConnItem)>) -> Vec<ConnProcess> {
     use std::collections::HashMap;
     let mut map: HashMap<String, ConnProcess> = HashMap::new();
@@ -570,7 +573,6 @@ fn group_items(items: impl Iterator<Item = (String, ConnItem)>) -> Vec<ConnProce
     out
 }
 
-/// Parses the array from `mihomo::groups` into [`ProxyGroup`]s.
 pub fn parse_groups(value: &Value) -> Vec<ProxyGroup> {
     let Some(arr) = value.as_array() else {
         return Vec::new();
@@ -665,7 +667,6 @@ fn persist_language(lang: &str) {
     }
 }
 
-/// Parses `profile.yaml` (`{current, items: [...]}`) into [`ProfileItem`]s.
 pub fn parse_profiles(cfg: &Value) -> Vec<ProfileItem> {
     let current = cfg.get("current").and_then(Value::as_str).unwrap_or("");
     cfg.get("items")

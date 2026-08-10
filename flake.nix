@@ -73,7 +73,7 @@
 
           nyx = rustPlatform.buildRustPackage {
             pname = "nyx";
-            version = "2.0.6";
+            version = "2.1.0";
 
             src = pkgs.lib.cleanSource ./.;
 
@@ -141,93 +141,5 @@
 
           formatter = pkgs.nixfmt-rfc-style;
         }
-      )
-    // {
-      # NixOS module: `imports = [ inputs.nyx.nixosModules.default ];`
-      nixosModules.default =
-        { config
-        , lib
-        , pkgs
-        , ...
-        }:
-        let
-          cfg = config.programs.nyx;
-        in
-        {
-          options.programs.nyx = {
-            enable = lib.mkEnableOption "Nyx Mihomo/Clash GUI";
-            package = lib.mkOption {
-              type = lib.types.package;
-              default = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
-              description = "The Nyx package to use.";
-            };
-            tunMode = lib.mkEnableOption ''
-              TUN mode. Wraps the Nyx binary with cap_net_admin/cap_net_raw/
-              cap_net_bind_service so the mihomo core it spawns can create a TUN
-              device without running as root'';
-            profiles = lib.mkOption {
-              type = lib.types.listOf lib.types.str;
-              default = [ ];
-              example = [ "https://example.com/subscription" ];
-              description = ''
-                Subscription URLs imported automatically on launch, so profiles
-                don't have to be added by hand. Idempotent: already-added URLs
-                are skipped and a failed fetch is retried next launch. Profile
-                names come from the subscription headers. Exported as the
-                NYX_PROFILES environment variable.'';
-            };
-            profilesFile = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
-              default = null;
-              example = "/run/secrets/nyx-profiles";
-              description = ''
-                Path to a file with subscription URLs (whitespace/newline
-                separated), imported like `profiles`. Use this for secret URLs
-                rendered by sops/agenix so they never land in the Nix store.
-                Exported as NYX_PROFILES_FILE.'';
-            };
-          };
-
-          config =
-            let
-              needsWrap = cfg.profiles != [ ] || cfg.profilesFile != null;
-              # Bake the declared profile env vars into the binary. sessionVariables
-              # aren't reliably inherited by GUI-launched apps, so wrap instead —
-              # this reaches Nyx no matter how the desktop starts it.
-              wrapped = pkgs.symlinkJoin {
-                name = "nyx-with-profiles";
-                paths = [ cfg.package ];
-                nativeBuildInputs = [ pkgs.makeWrapper ];
-                postBuild = ''
-                  wrapProgram $out/bin/nyx \
-                    ${
-                      lib.optionalString (
-                        cfg.profiles != [ ]
-                      ) "--set NYX_PROFILES ${lib.escapeShellArg (lib.concatStringsSep " " cfg.profiles)}"
-                    } \
-                    ${lib.optionalString (
-                      cfg.profilesFile != null
-                    ) "--set NYX_PROFILES_FILE ${lib.escapeShellArg cfg.profilesFile}"}
-                '';
-              };
-              runPackage = if needsWrap then wrapped else cfg.package;
-            in
-            lib.mkIf cfg.enable {
-              environment.systemPackages = [ runPackage ];
-              programs.dconf.enable = lib.mkDefault true;
-              services.gnome.gnome-keyring.enable = lib.mkDefault true;
-
-              # Caps live on the security wrapper; it raises them into the ambient
-              # set and execs runPackage, so the core Nyx spawns inherits them.
-              security.wrappers = lib.mkIf cfg.tunMode {
-                nyx = {
-                  owner = "root";
-                  group = "root";
-                  capabilities = "cap_net_bind_service,cap_net_raw,cap_net_admin=+ep";
-                  source = "${runPackage}/bin/nyx";
-                };
-              };
-            };
-        };
-    };
+      );
 }

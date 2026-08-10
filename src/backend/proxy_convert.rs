@@ -170,12 +170,13 @@ fn percent_decode(s: &str) -> String {
     let src = s.as_bytes();
     let mut i = 0;
     while i < src.len() {
-        if src[i] == b'%' && i + 2 < src.len() {
-            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                buf.push(b);
-                i += 3;
-                continue;
-            }
+        if src[i] == b'%'
+            && i + 2 < src.len()
+            && let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            buf.push(b);
+            i += 3;
+            continue;
         }
         buf.push(src[i]);
         i += 1;
@@ -405,7 +406,6 @@ fn parse_ss(uri: &str) -> Option<serde_yaml::Mapping> {
         None => (rest, String::new()),
     };
 
-    // Strip plugin params
     let (main, _plugin) = match before_hash.find('?') {
         Some(i) => (&before_hash[..i], &before_hash[i + 1..]),
         None => (before_hash, ""),
@@ -421,7 +421,6 @@ fn parse_ss(uri: &str) -> Option<serde_yaml::Mapping> {
                 percent_decode(&userinfo[c + 1..]),
             )
         } else {
-            // base64-encoded userinfo
             let decoded = base64_decode_any(userinfo)?;
             let c = decoded.find(':')?;
             (decoded[..c].to_string(), decoded[c + 1..].to_string())

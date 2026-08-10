@@ -1,0 +1,66 @@
+#[cfg(target_os = "linux")]
+pub(crate) mod linux;
+#[cfg(windows)]
+pub(crate) mod windows;
+
+#[cfg(target_os = "linux")]
+use linux as imp;
+#[cfg(windows)]
+use windows as imp;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Status {
+    NotInstalled,
+    Stopped,
+    Running,
+    /// Installed, but pointing at a binary or protocol we can no longer talk to.
+    Stale {
+        reason: String,
+    },
+}
+
+impl Status {
+    pub fn is_running(&self) -> bool {
+        matches!(self, Status::Running)
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Status::NotInstalled => "not-installed",
+            Status::Stopped => "stopped",
+            Status::Running => "running",
+            Status::Stale { .. } => "stale",
+        }
+    }
+}
+
+#[cfg(any(target_os = "linux", windows))]
+pub use imp::{install, ping, start_core, status, stop_core, uninstall};
+
+#[cfg(not(any(target_os = "linux", windows)))]
+mod unsupported {
+    use super::Status;
+    use crate::protocol::CoreSpec;
+
+    pub async fn status() -> Result<Status, String> {
+        Ok(Status::NotInstalled)
+    }
+    pub async fn install() -> Result<(), String> {
+        Err("service mode is not supported on this platform".into())
+    }
+    pub async fn uninstall() -> Result<(), String> {
+        Ok(())
+    }
+    pub async fn start_core(_spec: &CoreSpec) -> Result<u32, String> {
+        Err("service mode is not supported on this platform".into())
+    }
+    pub async fn stop_core() -> Result<(), String> {
+        Ok(())
+    }
+    pub async fn ping() -> Result<Option<u32>, String> {
+        Err("service mode is not supported on this platform".into())
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+pub use unsupported::{install, ping, start_core, status, stop_core, uninstall};
