@@ -273,6 +273,8 @@ pages:
     scQuitKeepCore: Quit (keep core)
     scHint: Click a shortcut, then press the keys. Esc cancels, Backspace clears.
     scPress: Press keys…
+    scWaylandTitle: Global shortcuts are not available on Wayland.
+    scWaylandHint: 'Wayland has no protocol for global key grabs — the compositor owns them. Bind these links in your compositor config instead, launching Nyx with the link as its argument. niri example: Mod+Shift+T { spawn "nyx" "nyx://toggle-tun"; }'
 tooltips:
   refresh: Refresh
   toggleStats: Toggle statistics

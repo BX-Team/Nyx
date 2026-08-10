@@ -153,10 +153,27 @@ fn handle_url(url: &str, cx: &mut App) {
     let params: HashMap<String, String> = parsed.query_pairs().into_owned().collect();
     log::info!("[deep-link] command='{command}' params={params:?}");
 
-    actions::show_window(cx);
     match command.as_str() {
-        "install-config" => install_config(params, cx),
-        other => log::warn!("[deep-link] unknown command '{other}'"),
+        "install-config" => {
+            actions::show_window(cx);
+            install_config(params, cx);
+        }
+        "show" => actions::show_window(cx),
+        "toggle-window" => actions::toggle_window(cx),
+        "toggle-sysproxy" => actions::toggle_sysproxy(cx),
+        "toggle-tun" => actions::toggle_tun(cx),
+        "mode" => match params.get("value").map(String::as_str) {
+            Some("rule") => actions::set_mode("rule", cx),
+            Some("global") => actions::set_mode("global", cx),
+            Some("direct") => actions::set_mode("direct", cx),
+            other => log::warn!("[deep-link] mode: bad value {other:?}"),
+        },
+        "restart" => actions::restart_app(cx),
+        "quit" => actions::shutdown_and_quit(cx),
+        other => {
+            log::warn!("[deep-link] unknown command '{other}'");
+            actions::show_window(cx);
+        }
     }
 }
 

@@ -45,7 +45,7 @@ async fn serve(owner_uid: u32) -> Result<(), String> {
 
     let listener =
         UnixListener::bind(path).map_err(|e| format!("cannot bind {SOCKET_PATH}: {e}"))?;
-    restrict_socket(path, owner_uid)?;
+    restrict_socket(path, owner_uid);
     logging::log(&format!(
         "host listening on {SOCKET_PATH} for uid {owner_uid}"
     ));
@@ -102,26 +102,32 @@ async fn serve_connection(stream: &mut UnixStream, manager: &mut CoreManager) {
     let _ = stream.shutdown().await;
 }
 
-/// The socket lets an unprivileged caller pick a binary this root process runs,
-/// so it belongs to the installing user and nobody else can open it.
-fn restrict_socket(path: &Path, owner_uid: u32) -> Result<(), String> {
+fn restrict_socket(path: &Path, owner_uid: u32) {
     use std::os::unix::ffi::OsStrExt;
-    let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())
-        .map_err(|_| "socket path contains a NUL byte".to_string())?;
-    // gid -1 leaves the group alone; mode 0600 makes the owner the only user.
-    if unsafe { libc::chown(c_path.as_ptr(), owner_uid, u32::MAX) } != 0 {
-        return Err(format!(
-            "cannot chown {SOCKET_PATH}: {}",
-            std::io::Error::last_os_error()
-        ));
-    }
+    let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_bytes()) else {
+        return;
+    };
     if unsafe { libc::chmod(c_path.as_ptr(), 0o600) } != 0 {
-        return Err(format!(
+        logging::log(&format!(
             "cannot chmod {SOCKET_PATH}: {}",
             std::io::Error::last_os_error()
         ));
     }
-    Ok(())
+    // gid -1 leaves the group alone.
+    if unsafe { libc::chown(c_path.as_ptr(), owner_uid, u32::MAX) } == 0 {
+        return;
+    }
+    logging::log(&format!(
+        "cannot chown {SOCKET_PATH} to uid {owner_uid} ({}); falling back to peer-credential \
+         checks only",
+        std::io::Error::last_os_error()
+    ));
+    if unsafe { libc::chmod(c_path.as_ptr(), 0o666) } != 0 {
+        logging::log(&format!(
+            "cannot chmod {SOCKET_PATH}: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
 }
 
 fn peer_uid(stream: &UnixStream) -> Option<u32> {

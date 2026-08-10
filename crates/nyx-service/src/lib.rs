@@ -14,6 +14,9 @@ pub(crate) const ARG_INSTALL: &str = "--nyx-service-install";
 pub(crate) const ARG_UNINSTALL: &str = "--nyx-service-uninstall";
 /// Followed by the SID (Windows) or uid (Linux) allowed to drive the service.
 pub(crate) const ARG_OWNER: &str = "--nyx-service-owner";
+/// Exit code for the helper's own failures, so pkexec's 126/127 keep meaning
+/// "prompt dismissed" and "authorisation refused".
+pub(crate) const HELPER_FAILURE: i32 = 9;
 
 /// Handles the argv modes that must run before any GUI work: the service host
 /// and the two elevated install/uninstall entry points.
@@ -39,7 +42,7 @@ fn report(result: Result<(), String>) -> i32 {
         Err(e) => {
             logging::log(&format!("privileged helper failed: {e}"));
             eprintln!("{e}");
-            1
+            HELPER_FAILURE
         }
     }
 }

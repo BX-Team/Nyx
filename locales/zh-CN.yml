@@ -273,6 +273,8 @@ pages:
     scQuitKeepCore: 退出（保留内核）
     scHint: 点击一个快捷键，然后按下按键。Esc 取消，Backspace 清除。
     scPress: 按下按键…
+    scWaylandTitle: Wayland 下无法使用全局快捷键。
+    scWaylandHint: 'Wayland 没有全局按键抓取协议，快捷键由合成器管理。请改为在合成器配置中绑定下列链接，并把链接作为参数启动 Nyx。niri 示例: Mod+Shift+T { spawn "nyx" "nyx://toggle-tun"; }'
 tooltips:
   refresh: 刷新
   toggleStats: 切换统计

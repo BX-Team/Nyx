@@ -1495,6 +1495,10 @@ impl NyxApp {
                 t!("pages.settings.scQuitKeepCore").into(),
             ),
         ];
+        if !crate::app::hotkeys::supported() {
+            return self.render_shortcuts_unavailable(&rows, cx);
+        }
+
         let n = rows.len();
         let card = group(
             rows.iter()
@@ -1518,6 +1522,74 @@ impl NyxApp {
             .on_key_down(cx.listener(|this, ev: &gpui::KeyDownEvent, _window, cx| {
                 this.on_recorder_key(ev, cx)
             }));
+        self.sub_scroll(
+            t!("pages.settings.shortcuts").to_string(),
+            false,
+            None,
+            body,
+            cx,
+        )
+    }
+
+    /// Wayland offers no global-grab protocol, so instead of dead recorder rows
+    /// we list the `nyx://` commands to bind in the compositor's own config.
+    fn render_shortcuts_unavailable(
+        &self,
+        rows: &[(&'static str, SharedString)],
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let link = |key: &str| match key {
+            "showWindowShortcut" => "nyx://toggle-window",
+            "ruleModeShortcut" => "nyx://mode?value=rule",
+            "globalModeShortcut" => "nyx://mode?value=global",
+            "triggerTunShortcut" => "nyx://toggle-tun",
+            "triggerSysProxyShortcut" => "nyx://toggle-sysproxy",
+            "restartAppShortcut" => "nyx://restart",
+            _ => "nyx://quit",
+        };
+        let n = rows.len();
+        let card = group(
+            rows.iter()
+                .enumerate()
+                .map(|(i, (key, label))| {
+                    row_shell(i + 1 == n)
+                        .child(div().text_sm().text_color(rgb(TEXT)).child(label.clone()))
+                        .child(
+                            div()
+                                .h(px(28.))
+                                .px(px(12.))
+                                .flex()
+                                .items_center()
+                                .rounded(px(7.))
+                                .bg(rgb(CONTROL_BG))
+                                .border_1()
+                                .border_color(rgb(CONTROL_BORDER))
+                                .text_xs()
+                                .text_color(rgb(SUBTLE))
+                                .child(link(key)),
+                        )
+                        .into_any_element()
+                })
+                .collect(),
+        );
+        let body = settings_body()
+            .child(
+                div()
+                    .px(px(24.))
+                    .pb(px(8.))
+                    .text_sm()
+                    .text_color(rgb(TEXT))
+                    .child(t!("pages.settings.scWaylandTitle").to_string()),
+            )
+            .child(card)
+            .child(
+                div()
+                    .px(px(24.))
+                    .pb(px(8.))
+                    .text_xs()
+                    .text_color(rgb(MUTED3))
+                    .child(t!("pages.settings.scWaylandHint").to_string()),
+            );
         self.sub_scroll(
             t!("pages.settings.shortcuts").to_string(),
             false,
