@@ -89,6 +89,32 @@ Then add the package to your `environment.systemPackages` or `home.packages`:
 }
 ```
 
+### NixOS module
+
+On NixOS the `/etc` unit directory is read-only, so the in-app installer has to
+fall back to `/usr/local/lib/systemd/system` and asks polkit for a password
+after every rebuild that moves the binary. The module declares the service
+instead — no password prompt, ever, and TUN works out of the box:
+
+```nix
+# NixOS configuration
+{ inputs, ... }: {
+  imports = [ inputs.nyx.nixosModules.default ];
+
+  programs.nyx = {
+    enable = true;
+    # The account you run the GUI from; only it may drive the service.
+    service.user = "alice";
+  };
+}
+```
+
+The module installs the package too, so it replaces the `environment.systemPackages`
+entry above. With it in place Nyx hides the install/uninstall buttons in
+**Settings → System service** and leaves the unit to your configuration. Set
+`programs.nyx.service.enable = false` if you would rather manage the core
+yourself in direct mode.
+
 To pull a **prebuilt** binary from the Cachix cache instead of compiling locally, add the substituter and its public key:
 
 ```nix

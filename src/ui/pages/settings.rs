@@ -877,8 +877,14 @@ impl NyxApp {
             b.on_click(cx.listener(move |this, _, _, cx| this.service_action(action, cx)))
         };
 
+        let stage = if self.service_managed {
+            "managed"
+        } else {
+            status.as_str()
+        };
+
         let mut actions = h_flex().gap_2().flex_wrap();
-        match status.as_str() {
+        match stage {
             "running" => {
                 actions = actions
                     .child(svc_btn(
@@ -915,7 +921,7 @@ impl NyxApp {
                         true,
                     ));
             }
-            "" => {}
+            "managed" | "" => {}
             "stale" => {
                 actions = actions.child(svc_btn(
                     "svc-repair",
@@ -969,7 +975,11 @@ impl NyxApp {
                 div()
                     .text_xs()
                     .text_color(rgb(MUTED3))
-                    .child(t!("pages.settings.svcHint").to_string()),
+                    .child(if self.service_managed {
+                        t!("pages.settings.svcManagedHint").to_string()
+                    } else {
+                        t!("pages.settings.svcHint").to_string()
+                    }),
             )
             .child(actions)
             .into_any_element()

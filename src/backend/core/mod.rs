@@ -74,6 +74,10 @@ pub async fn service_status() -> ServiceStatus {
     })
 }
 
+pub fn service_managed() -> bool {
+    nyx_service::is_managed()
+}
+
 pub async fn install_service() -> Result<(), CoreError> {
     nyx_service::install()
         .await

@@ -37,6 +37,17 @@ impl Status {
 #[cfg(any(target_os = "linux", windows))]
 pub use imp::{install, ping, start_core, status, stop_core, uninstall};
 
+/// Whether the unit is owned by the OS rather than by Nyx.
+#[cfg(target_os = "linux")]
+pub fn is_managed() -> bool {
+    linux::is_managed()
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn is_managed() -> bool {
+    false
+}
+
 #[cfg(not(any(target_os = "linux", windows)))]
 mod unsupported {
     use super::Status;

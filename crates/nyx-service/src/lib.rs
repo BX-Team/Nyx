@@ -3,7 +3,7 @@ mod host;
 mod logging;
 mod protocol;
 
-pub use control::{Status, install, ping, start_core, status, stop_core, uninstall};
+pub use control::{Status, install, is_managed, ping, start_core, status, stop_core, uninstall};
 pub use protocol::{CoreSpec, PROTOCOL_VERSION};
 
 pub const SERVICE_NAME: &str = "Nyx Service";
@@ -54,7 +54,29 @@ fn run_host() -> i32 {
 
 #[cfg(target_os = "linux")]
 fn run_host() -> i32 {
-    host::linux::run_host(owner_arg().and_then(|s| s.parse().ok()).unwrap_or(0))
+    let owner = match owner_arg() {
+        Some(value) => resolve_uid(&value).unwrap_or_else(|| {
+            logging::log(&format!(
+                "unknown service owner {value:?} — only root may drive the service"
+            ));
+            0
+        }),
+        None => 0,
+    };
+    host::linux::run_host(owner)
+}
+
+/// The owner arrives as a uid from Nyx's own installer, but as a user name from
+/// a declarative unit, where the uid is not known at build time.
+#[cfg(target_os = "linux")]
+fn resolve_uid(value: &str) -> Option<u32> {
+    if let Ok(uid) = value.parse::<u32>() {
+        return Some(uid);
+    }
+    let name = std::ffi::CString::new(value).ok()?;
+    // getpwnam's static buffer is safe here: this runs once, before any threads.
+    let pw = unsafe { libc::getpwnam(name.as_ptr()) };
+    (!pw.is_null()).then(|| unsafe { (*pw).pw_uid })
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
@@ -70,7 +92,7 @@ fn install_here() -> Result<(), String> {
 #[cfg(target_os = "linux")]
 fn install_here() -> Result<(), String> {
     let uid = owner_arg()
-        .and_then(|s| s.parse().ok())
+        .and_then(|s| resolve_uid(&s))
         .or_else(|| {
             std::env::var("PKEXEC_UID")
                 .ok()

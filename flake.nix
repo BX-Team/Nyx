@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+    systems.url = "github:nix-systems/default-linux";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -11,135 +11,136 @@
   };
 
   outputs =
-    { self
-    , nixpkgs
-    , flake-utils
-    , rust-overlay
-    ,
+    {
+      self,
+      nixpkgs,
+      systems,
+      rust-overlay,
     }:
     let
-      supportedSystems = [
-        "x86_64-linux"
-        "aarch64-linux"
-      ];
+      inherit (nixpkgs) lib;
+      eachSystem = f: lib.foldl' lib.recursiveUpdate { } (map f (import systems));
     in
-    flake-utils.lib.eachSystem supportedSystems
-      (
-        system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ (import rust-overlay) ];
-          };
+    eachSystem (
+      system:
+      let
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [ (import rust-overlay) ];
+        };
 
-          rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-            extensions = [
-              "rust-src"
-              "rust-analyzer"
-              "clippy"
-              "rustfmt"
-            ];
-          };
-          rustPlatform = pkgs.makeRustPlatform {
-            cargo = rustToolchain;
-            rustc = rustToolchain;
-          };
-
-          runtimeLibs = with pkgs; [
-            wayland
-            libxkbcommon
-            libx11
-            libxcb
-            libxcursor
-            libxi
-            libxrandr
-            vulkan-loader
-            libGL
-            fontconfig
-            freetype
-            gtk3
-            glib
-            xdotool
-            openssl
+        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+          extensions = [
+            "rust-src"
+            "rust-analyzer"
+            "clippy"
+            "rustfmt"
           ];
+        };
+        rustPlatform = pkgs.makeRustPlatform {
+          cargo = rustToolchain;
+          rustc = rustToolchain;
+        };
 
-          nativeBuildInputs = with pkgs; [
-            pkg-config
-            rustPlatform.bindgenHook # gpui builds bindgen-based crates
-            autoPatchelfHook
-            makeWrapper
-            wrapGAppsHook3
-          ];
+        runtimeLibs = with pkgs; [
+          wayland
+          libxkbcommon
+          libx11
+          libxcb
+          libxcursor
+          libxi
+          libxrandr
+          vulkan-loader
+          libGL
+          fontconfig
+          freetype
+          gtk3
+          glib
+          xdotool
+          openssl
+        ];
 
-          nyx = rustPlatform.buildRustPackage {
-            pname = "nyx";
-            version = "2.1.0";
+        nativeBuildInputs = with pkgs; [
+          pkg-config
+          rustPlatform.bindgenHook # gpui builds bindgen-based crates
+          autoPatchelfHook
+          makeWrapper
+          wrapGAppsHook3
+        ];
 
-            src = pkgs.lib.cleanSource ./.;
+        nyx = rustPlatform.buildRustPackage {
+          pname = "nyx";
+          version = "2.1.0";
 
-            cargoLock = {
-              lockFile = ./Cargo.lock;
-              allowBuiltinFetchGit = true;
-            };
+          src = pkgs.lib.cleanSource ./.;
 
-            inherit nativeBuildInputs;
-            buildInputs = runtimeLibs;
-
-            # gpui dlopens Vulkan/Wayland/GL at runtime; bake them into the rpath.
-            runtimeDependencies = runtimeLibs;
-
-            # Heavy GPU/UI crate graph: skip the (nonexistent) test suite.
-            doCheck = false;
-
-            postInstall = ''
-              install -Dm644 installer/linux/nyx.desktop \
-                $out/share/applications/nyx.desktop
-              install -Dm644 assets/brand/logo.png \
-                $out/share/icons/hicolor/512x512/apps/nyx.png
-            '';
-
-            meta = with pkgs.lib; {
-              description = "Mihomo/Clash GUI (pure-Rust gpui app)";
-              homepage = "https://github.com/BX-Team/Nyx";
-              license = licenses.gpl3Plus;
-              platforms = supportedSystems;
-              mainProgram = "nyx";
-            };
-          };
-        in
-        {
-          packages = {
-            default = nyx;
-            inherit nyx;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            allowBuiltinFetchGit = true;
           };
 
-          apps.default = {
-            type = "app";
-            program = "${nyx}/bin/nyx";
+          inherit nativeBuildInputs;
+          buildInputs = runtimeLibs;
+
+          # gpui dlopens Vulkan/Wayland/GL at runtime; bake them into the rpath.
+          runtimeDependencies = runtimeLibs;
+
+          # Heavy GPU/UI crate graph: skip the (nonexistent) test suite.
+          doCheck = false;
+
+          postInstall = ''
+            install -Dm644 installer/linux/nyx.desktop \
+              $out/share/applications/nyx.desktop
+            install -Dm644 assets/brand/logo.png \
+              $out/share/icons/hicolor/512x512/apps/nyx.png
+          '';
+
+          meta = with pkgs.lib; {
+            description = "Mihomo/Clash GUI";
+            homepage = "https://github.com/BX-Team/Nyx";
+            license = licenses.gpl3Plus;
+            platforms = import systems;
+            mainProgram = "nyx";
           };
+        };
+      in
+      {
+        packages.${system} = {
+          default = nyx;
+          inherit nyx;
+        };
 
-          devShells.default = pkgs.mkShell {
-            buildInputs = runtimeLibs;
-            nativeBuildInputs =
-              nativeBuildInputs
-              ++ (with pkgs; [
-                rustToolchain
-                git
-                cargo-deb
-              ]);
+        apps.${system}.default = {
+          type = "app";
+          program = "${nyx}/bin/nyx";
+        };
 
-            shellHook = ''
-              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
-              export PKG_CONFIG_PATH="${
-                pkgs.lib.makeSearchPathOutput "dev" "lib/pkgconfig" runtimeLibs
-              }:$PKG_CONFIG_PATH"
-              echo "Nyx dev shell ready."
-              echo "  cargo run             # run the app"
-              echo "  cargo build --release # optimized binary"
-            '';
-          };
+        devShells.${system}.default = pkgs.mkShell {
+          buildInputs = runtimeLibs;
+          nativeBuildInputs =
+            nativeBuildInputs
+            ++ (with pkgs; [
+              rustToolchain
+              git
+              cargo-deb
+            ]);
 
-          formatter = pkgs.nixfmt-rfc-style;
-        }
-      );
+          shellHook = ''
+            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
+            export PKG_CONFIG_PATH="${
+              pkgs.lib.makeSearchPathOutput "dev" "lib/pkgconfig" runtimeLibs
+            }:$PKG_CONFIG_PATH"
+            echo "Nyx dev shell ready."
+            echo "  cargo run             # run the app"
+            echo "  cargo build --release # optimized binary"
+          '';
+        };
+
+        formatter.${system} = pkgs.nixfmt-rfc-style;
+      }
+    )
+    // {
+      nixosModules.nyx = import ./nix/module.nix { inherit self; };
+      nixosModules.default = self.nixosModules.nyx;
+    };
 }

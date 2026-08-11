@@ -144,6 +144,7 @@ pub(crate) struct NyxApp {
     pub(crate) recorder_focus: gpui::FocusHandle,
     pub(crate) service_status: gpui::SharedString,
     pub(crate) service_detail: Option<gpui::SharedString>,
+    pub(crate) service_managed: bool,
     pub(crate) core_version_installed: gpui::SharedString,
     pub(crate) service_busy: bool,
     pub(crate) proxy_providers: Vec<ProviderRow>,
@@ -322,6 +323,7 @@ impl NyxApp {
             recorder_focus: cx.focus_handle(),
             service_status: gpui::SharedString::default(),
             service_detail: None,
+            service_managed: backend::core::service_managed(),
             core_version_installed: gpui::SharedString::default(),
             service_busy: false,
             proxy_providers: Vec::new(),
@@ -2393,6 +2395,7 @@ impl NyxApp {
             let status = runtime::spawn(backend::core::service_status()).await;
             let version = runtime::spawn(backend::manager::get_installed_version()).await;
             let _ = this.update(cx, |this, cx| {
+                this.service_managed = backend::core::service_managed();
                 if let Ok(s) = status {
                     this.service_status = s.as_str().into();
                     this.service_detail = match s {

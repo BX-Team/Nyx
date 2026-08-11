@@ -20,6 +20,7 @@ const UNIT_DIRS: [&str; 3] = [
     "/run/systemd/system",
 ];
 const WANTS_DIR: &str = "multi-user.target.wants";
+const MANAGED_MARKER: &str = "/etc/nyx/service-managed";
 
 const CONNECT_GRACE: Duration = Duration::from_secs(10);
 
@@ -43,13 +44,17 @@ ExecStart={exe} {arg_host} {arg_owner} {uid}
 WantedBy=multi-user.target
 "#;
 
+pub fn is_managed() -> bool {
+    Path::new(MANAGED_MARKER).exists()
+}
+
 pub async fn status() -> Result<Status, String> {
     let Some(exec_start) = unit_exec_start() else {
         return Ok(Status::NotInstalled);
     };
 
     let current = std::env::current_exe().map_err(|e| e.to_string())?;
-    if exec_start != current {
+    if !is_managed() && exec_start != current {
         return Ok(Status::Stale {
             reason: format!(
                 "the service points at {}, this build runs from {}",
@@ -69,6 +74,7 @@ pub async fn status() -> Result<Status, String> {
 }
 
 pub async fn install() -> Result<(), String> {
+    require_unmanaged()?;
     require_systemd()?;
     if is_elevated() {
         install_here(owner_uid())?;
@@ -82,6 +88,7 @@ pub async fn install() -> Result<(), String> {
 }
 
 pub async fn uninstall() -> Result<(), String> {
+    require_unmanaged()?;
     if unit_exec_start().is_none() {
         return Ok(());
     }
@@ -134,6 +141,17 @@ pub async fn ping() -> Result<Option<u32>, String> {
         Response::Error { message } => Err(message),
         other => Err(format!("unexpected service response: {other:?}")),
     }
+}
+
+fn require_unmanaged() -> Result<(), String> {
+    if !is_managed() {
+        return Ok(());
+    }
+    Err(
+        "the Nyx service is provided by your system configuration, so Nyx cannot install or \
+         remove it"
+            .into(),
+    )
 }
 
 fn require_systemd() -> Result<(), String> {
