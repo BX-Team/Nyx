@@ -123,7 +123,7 @@ fn uninstall_here() -> Result<(), String> {
 }
 
 #[cfg(any(windows, target_os = "linux"))]
-fn owner_arg() -> Option<String> {
+pub(crate) fn owner_arg() -> Option<String> {
     let mut args = std::env::args();
     while let Some(arg) = args.next() {
         if arg == ARG_OWNER {
@@ -139,7 +139,7 @@ pub fn is_elevated() -> bool {
     use std::ptr;
     unsafe {
         #[link(name = "advapi32")]
-        extern "system" {
+        unsafe extern "system" {
             fn OpenProcessToken(
                 process: *mut std::ffi::c_void,
                 desired_access: u32,
@@ -154,7 +154,7 @@ pub fn is_elevated() -> bool {
             ) -> i32;
         }
         #[link(name = "kernel32")]
-        extern "system" {
+        unsafe extern "system" {
             fn GetCurrentProcess() -> *mut std::ffi::c_void;
             fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
         }

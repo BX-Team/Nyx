@@ -88,6 +88,7 @@ self_update = { version = "0.44", default-features = false, features = [
 [target.'cfg(windows)'.dependencies]
 raw-window-handle = "0.6"
 image = "0.25"
+winreg = "0.56"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Security",

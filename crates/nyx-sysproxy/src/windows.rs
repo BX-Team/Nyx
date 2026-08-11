@@ -243,17 +243,17 @@ impl Autoproxy {
 
 #[inline]
 fn parse_proxy_address(address: &str, host: &mut String, port: &mut u16) {
-    if let Some((h, p)) = address.rsplit_once(':') {
-        if let Ok(port_num) = p.parse::<u16>() {
-            let clean = if h.starts_with('[') && h.ends_with(']') {
-                &h[1..h.len() - 1]
-            } else {
-                h
-            };
-            *host = clean.to_string();
-            *port = port_num;
-            return;
-        }
+    if let Some((h, p)) = address.rsplit_once(':')
+        && let Ok(port_num) = p.parse::<u16>()
+    {
+        let clean = if h.starts_with('[') && h.ends_with(']') {
+            &h[1..h.len() - 1]
+        } else {
+            h
+        };
+        *host = clean.to_string();
+        *port = port_num;
+        return;
     }
 
     if let Ok(url) = Url::parse(&format!("http://{}", address)) {

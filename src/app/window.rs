@@ -34,10 +34,10 @@ static MAIN_HWND: AtomicIsize = AtomicIsize::new(0);
 #[cfg(windows)]
 pub fn remember(window: &Window) {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    if let Ok(handle) = HasWindowHandle::window_handle(window) {
-        if let RawWindowHandle::Win32(w) = handle.as_raw() {
-            MAIN_HWND.store(w.hwnd.get(), Ordering::SeqCst);
-        }
+    if let Ok(handle) = HasWindowHandle::window_handle(window)
+        && let RawWindowHandle::Win32(w) = handle.as_raw()
+    {
+        MAIN_HWND.store(w.hwnd.get(), Ordering::SeqCst);
     }
 }
 

@@ -1389,6 +1389,7 @@ impl NyxApp {
         let disable_tray = st.app_flag("disableTray");
         let system_frame = st.app_flag("useWindowFrame");
 
+        #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
         let mut rows = vec![
             self.flag_toggle(
                 "ap-ontop",

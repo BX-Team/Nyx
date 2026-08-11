@@ -133,10 +133,10 @@ pub fn uninstall_here() -> Result<(), String> {
         Err(e) if is_missing_service(&e) => return Ok(()),
         Err(e) => return Err(format!("failed to open service: {e}")),
     };
-    if let Ok(status) = service.query_status() {
-        if status.current_state != ServiceState::Stopped {
-            let _ = service.stop();
-        }
+    if let Ok(status) = service.query_status()
+        && status.current_state != ServiceState::Stopped
+    {
+        let _ = service.stop();
     }
     service
         .delete()
@@ -154,7 +154,7 @@ fn service_info() -> ServiceInfo {
         launch_arguments: vec![
             OsString::from(ARG_HOST),
             OsString::from(ARG_OWNER),
-            OsString::from(owner_sid_arg().unwrap_or_else(current_user_sid)),
+            OsString::from(crate::owner_arg().unwrap_or_else(current_user_sid)),
         ],
         dependencies: vec![],
         account_name: None,
@@ -281,16 +281,6 @@ fn elevate(args: &[&str]) -> Result<(), String> {
     } else {
         stderr
     })
-}
-
-fn owner_sid_arg() -> Option<String> {
-    let mut args = std::env::args();
-    while let Some(arg) = args.next() {
-        if arg == ARG_OWNER {
-            return args.next().filter(|s| !s.is_empty());
-        }
-    }
-    None
 }
 
 /// SID of the current user, used to lock the IPC pipe to them.
