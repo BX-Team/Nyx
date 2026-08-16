@@ -6,7 +6,6 @@ use tokio::sync::oneshot;
 
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
-/// The process-wide tokio runtime (lazily built on first use).
 pub fn runtime() -> &'static Runtime {
     RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
@@ -16,7 +15,6 @@ pub fn runtime() -> &'static Runtime {
     })
 }
 
-/// Spawns `fut` on the tokio runtime and returns an awaitable receiver for its result.
 pub fn spawn<T, F>(fut: F) -> oneshot::Receiver<T>
 where
     T: Send + 'static,
@@ -29,7 +27,6 @@ where
     rx
 }
 
-/// Fire-and-forget variant for backend work whose result the UI doesn't need.
 pub fn detach<F>(fut: F)
 where
     F: Future<Output = ()> + Send + 'static,

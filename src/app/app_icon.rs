@@ -15,7 +15,6 @@ mod cache {
             RefCell::new(HashMap::new());
     }
 
-    /// Returns the cached icon for `path`, extracting + caching on first use.
     pub(super) fn get(path: &str) -> Option<Arc<RenderImage>> {
         if let Some(hit) = CACHE.with(|c| c.borrow().get(path).cloned()) {
             return hit;
@@ -26,7 +25,6 @@ mod cache {
     }
 }
 
-/// The executable's icon as a gpui image, or `None` if unavailable.
 #[cfg(windows)]
 pub fn for_path(path: &str) -> Option<Arc<RenderImage>> {
     if path.trim().is_empty() {
@@ -42,14 +40,14 @@ pub fn for_path(_path: &str) -> Option<Arc<RenderImage>> {
 
 #[cfg(windows)]
 fn extract(path: &str) -> Option<RenderImage> {
-    use windows::core::PCWSTR;
     use windows::Win32::Graphics::Gdi::{
-        DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO,
-        BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, DeleteObject, GetDC,
+        GetDIBits, GetObjectW, ReleaseDC,
     };
     use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
-    use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON};
+    use windows::Win32::UI::Shell::{SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW};
     use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
+    use windows::core::PCWSTR;
 
     let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
     let mut info: SHFILEINFOW = unsafe { std::mem::zeroed() };

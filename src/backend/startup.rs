@@ -1,17 +1,9 @@
 use serde_json::Value;
 
-use crate::backend::{dirs, manager, mihomo, service};
+use crate::backend::core::CoreError;
+use crate::backend::{core, dirs, mihomo};
 
-fn read_app_config_sync() -> Value {
-    let path = dirs::app_config_path();
-    std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_yaml::from_str::<Value>(&s).ok())
-        .unwrap_or_default()
-}
-
-/// One-time data-dir cleanup: rename legacy `config.yaml` → `app-config.yaml`
-/// and drop the stale `window-state.json`. Safe on every launch.
+/// Renames the legacy `config.yaml` and drops the stale window state.
 pub fn migrate_data_dir() {
     let new = dirs::app_config_path();
     let old = dirs::legacy_app_config_path();
@@ -28,7 +20,6 @@ pub fn migrate_data_dir() {
     }
 }
 
-/// Writes the default `app-config.yaml` if none exists yet (first run).
 pub fn ensure_default_app_config() {
     let config_path = dirs::app_config_path();
     if config_path.exists() {
@@ -50,6 +41,7 @@ pub fn ensure_default_app_config() {
         "maxLogDays": 7,
         "delayTestConcurrency": 50,
         "sysProxy": { "enable": false, "mode": "manual" },
+        "connectionMode": "tun",
         "hosts": [],
         "core": "mihomo",
         "corePermissionMode": "service"
@@ -59,42 +51,59 @@ pub fn ensure_default_app_config() {
     log::info!("created default app config");
 }
 
-/// Brings the core up and confirms it is reachable. On `Ok`, the API client is
-/// initialized, `controller_url()` is populated, and selections are restored.
-pub async fn start_core_flow() -> Result<(), String> {
-    ensure_default_app_config();
+pub async fn normalize_connection_mode() {
+    let cfg = read_app_config_sync();
+    let sysproxy_on = cfg
+        .get("sysProxy")
+        .and_then(|v| v.get("enable"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
 
-    let app_cfg = read_app_config_sync();
-    let use_service_mode =
-        cfg!(windows) && app_cfg["corePermissionMode"].as_str().unwrap_or("service") == "service";
-
-    if use_service_mode {
-        match service::service_status().await {
-            Ok(status) if status == "running" || status == "stopped" => {
-                service::start_service().await?;
-            }
-            Ok(status) if status == "not-installed" => {
-                return Err(
-                    "Service mode is enabled, but the Nyx service is not installed".to_string(),
-                );
-            }
-            Ok(status) => {
-                return Err(format!("Unexpected service status: {status}"));
-            }
-            Err(e) => return Err(e),
+    let mode = match cfg.get("connectionMode").and_then(Value::as_str) {
+        Some(mode) => mode.to_string(),
+        None => {
+            let tun_on = cfg
+                .get("lastConnected")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let inferred = if sysproxy_on && !tun_on {
+                "sysproxy"
+            } else {
+                "tun"
+            };
+            log::info!("[startup] no connection mode saved, assuming {inferred}");
+            let _ = crate::backend::config::patch_app_config(
+                serde_json::json!({ "connectionMode": inferred }),
+            )
+            .await;
+            inferred.to_string()
         }
-    } else {
-        let selected_core = app_cfg["core"].as_str().unwrap_or("mihomo");
-        manager::ensure_core_installed(selected_core)
-            .await
-            .map_err(|e| e.to_string())?;
-        manager::start_core().await.map_err(|e| e.to_string())?;
-    }
+    };
 
+    if mode != "sysproxy" && sysproxy_on {
+        log::info!("[startup] connection mode is {mode}, clearing the saved system proxy");
+        let _ = crate::backend::config::patch_app_config(
+            serde_json::json!({ "sysProxy": { "enable": false } }),
+        )
+        .await;
+    }
+}
+
+/// Brings the core up and confirms it answers; also restores proxy selections.
+pub async fn start_core_flow() -> Result<(), CoreError> {
+    ensure_default_app_config();
+    core::start().await?;
     mihomo::restore_proxy_selections().await;
     log::info!(
         "[startup] core flow complete, controller={}",
-        manager::controller_url()
+        core::controller_url()
     );
     Ok(())
+}
+
+pub fn read_app_config_sync() -> Value {
+    std::fs::read_to_string(dirs::app_config_path())
+        .ok()
+        .and_then(|s| serde_yaml::from_str::<Value>(&s).ok())
+        .unwrap_or_default()
 }

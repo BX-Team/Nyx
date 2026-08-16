@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use global_hotkey::{hotkey::HotKey, GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState, hotkey::HotKey};
 use gpui::{App, AsyncApp, Global};
 
 use crate::app::actions;
 use crate::app::state::AppState;
 
-/// (app-config key, internal action id).
 const BINDINGS: &[(&str, &str)] = &[
     ("showWindowShortcut", "show"),
     ("triggerSysProxyShortcut", "sysproxy"),
@@ -26,8 +25,24 @@ struct Hotkeys {
 }
 impl Global for Hotkeys {}
 
-/// Builds the hotkey manager and starts the gpui event-drain loop.
+/// Global hotkeys need an X11 connection, so user must use nyx:// deep links in Wayland sessions.
+pub fn supported() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::var_os("WAYLAND_DISPLAY").is_none()
+            && std::env::var("XDG_SESSION_TYPE").as_deref() != Ok("wayland")
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        true
+    }
+}
+
 pub fn init(cx: &mut App) {
+    if !supported() {
+        log::info!("[hotkeys] Wayland session — global hotkeys unavailable, use nyx:// deep links");
+        return;
+    }
     let manager = match GlobalHotKeyManager::new() {
         Ok(m) => m,
         Err(e) => {
@@ -58,7 +73,6 @@ pub fn init(cx: &mut App) {
     .detach();
 }
 
-/// Re-registers all hotkeys from the current app config. Safe to call on every config change.
 pub fn reload(cx: &mut App) {
     if cx.try_global::<Hotkeys>().is_none() {
         return;
@@ -107,7 +121,7 @@ fn dispatch(id: u32, cx: &mut App) {
         Some("global") => actions::set_mode("global", cx),
         Some("direct") => actions::set_mode("direct", cx),
         Some("restart-app") => actions::restart_app(cx),
-        Some("quit-nc") => actions::quit_without_core(cx),
+        Some("quit-nc") => actions::shutdown_and_quit(cx),
         _ => {}
     }
 }

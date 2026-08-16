@@ -1,9 +1,12 @@
+[workspace]
+members = ["crates/*"]
+
 [package]
 name = "nyx"
-version = "2.0.6"
+version = "2.1.0"
 description = "Nyx — Mihomo/Clash GUI"
 authors = ["BX Team"]
-edition = "2021"
+edition = "2024"
 license = "GPL-3.0-or-later"
 homepage = "https://github.com/BX-Team/Nyx"
 repository = "https://github.com/BX-Team/Nyx"
@@ -64,6 +67,8 @@ futures-util = "0.3"
 base64 = "0.23"
 md-5 = "0.11"
 emojis = "0.9"
+nyx-sysproxy = { path = "crates/nyx-sysproxy" }
+nyx-service = { path = "crates/nyx-service" }
 
 # --- system integration ---
 global-hotkey = "0.8"
@@ -81,10 +86,9 @@ self_update = { version = "0.44", default-features = false, features = [
 ] }
 
 [target.'cfg(windows)'.dependencies]
-windows-service = "0.8"
-winreg = "0.56"
 raw-window-handle = "0.6"
 image = "0.25"
+winreg = "0.56"
 windows = { version = "0.62", features = [
     "Win32_Foundation",
     "Win32_Security",
@@ -101,16 +105,12 @@ tray-icon = "0.24"
 libc = "0.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-caps = "0.5"
 ksni = { version = "0.3", default-features = false, features = ["async-io"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
 
 # --- Linux packaging (cargo-deb / cargo-generate-rpm) ---
-# These read `target/release/nyx`, so the Linux release job builds without an
-# explicit --target (the ubuntu runner is x86_64 anyway).
-
 [package.metadata.deb]
 maintainer = "BX Team"
 copyright = "BX Team, GPL-3.0-or-later"

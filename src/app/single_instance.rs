@@ -8,9 +8,8 @@ const PORT: u16 = 47654;
 /// Arg telling the relaunched process to wait for the dying instance to free the port.
 pub const RELAUNCH_FLAG: &str = "--nyx-relaunch";
 
-/// Acquires the single-instance lock, returning the bound listener for the
-/// primary instance, or `None` if another instance owns it (deep link already
-/// forwarded; caller must exit).
+/// Returns the bound listener for the primary instance, or `None` when another
+/// instance owns it (the deep link is already forwarded, so the caller exits).
 pub fn acquire_or_forward() -> Option<TcpListener> {
     let relaunch = std::env::args().any(|a| a == RELAUNCH_FLAG);
     // A relaunch (restart) races the dying instance for the port; wait it out.
@@ -34,9 +33,8 @@ pub fn acquire_or_forward() -> Option<TcpListener> {
     }
 }
 
-/// Sends our `nyx://` argument to the primary instance. With no deep link
-/// (a plain relaunch from the launcher), asks it to show its window — which on
-/// Linux was closed to the tray and needs recreating.
+/// Forwards our `nyx://` argument, or — with no deep link — asks the primary
+/// instance to show its window, which on Linux may need recreating.
 fn forward_deep_link() {
     let url = deep_link_arg().unwrap_or_else(|| "nyx://show".to_string());
     if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", PORT)) {
@@ -44,12 +42,10 @@ fn forward_deep_link() {
     }
 }
 
-/// The first `nyx://…` value among the process arguments, if present.
 pub fn deep_link_arg() -> Option<String> {
     std::env::args().find(|a| a.starts_with("nyx://"))
 }
 
-/// Spawns the acceptor that pushes forwarded deep-link URLs onto `tx`.
 pub fn serve(listener: TcpListener, tx: std::sync::mpsc::Sender<String>) {
     std::thread::spawn(move || {
         for stream in listener.incoming() {

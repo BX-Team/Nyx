@@ -2,62 +2,54 @@ use serde::{Deserialize, Serialize};
 
 const REPO_OWNER: &str = "BX-Team";
 const REPO_NAME: &str = "Nyx";
+const BIN_NAME: &str = "nyx";
 
 #[cfg(windows)]
 const WINDOWS_ASSET: &str = "Nyx-x86_64-windows.zip";
+#[cfg(not(windows))]
+const LINUX_TARGET: &str = "x86_64-linux";
 
-/// A newer release available for install.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateInfo {
     pub version: String,
     pub changelog: String,
 }
 
-/// Returns the newest release if it is newer than the running build, else `None`.
+fn latest_release() -> Result<self_update::update::Release, String> {
+    self_update::backends::github::Update::configure()
+        .repo_owner(REPO_OWNER)
+        .repo_name(REPO_NAME)
+        .bin_name(BIN_NAME)
+        .current_version(self_update::cargo_crate_version!())
+        .build()
+        .map_err(|e| e.to_string())?
+        .get_latest_release()
+        .map_err(|e| e.to_string())
+}
+
 pub async fn check() -> Result<Option<UpdateInfo>, String> {
     tokio::task::spawn_blocking(|| {
-        let releases = self_update::backends::github::ReleaseList::configure()
-            .repo_owner(REPO_OWNER)
-            .repo_name(REPO_NAME)
-            .build()
-            .map_err(|e| e.to_string())?
-            .fetch()
-            .map_err(|e| e.to_string())?;
-
-        let Some(latest) = releases.into_iter().next() else {
-            return Ok(None);
-        };
+        let latest = latest_release()?;
         let current = self_update::cargo_crate_version!();
         let newer = self_update::version::bump_is_greater(current, &latest.version)
             .map_err(|e| e.to_string())?;
-        if newer {
-            Ok(Some(UpdateInfo {
-                version: latest.version,
-                changelog: latest.body.unwrap_or_default(),
-            }))
-        } else {
-            Ok(None)
+        if !newer {
+            return Ok(None);
         }
+        Ok(Some(UpdateInfo {
+            version: latest.version,
+            changelog: latest.body.unwrap_or_default(),
+        }))
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// Downloads and installs the newest release.
-///
-/// Returns `true` when the relaunch is handled externally and the caller should
-/// just leave it to the helper, or `false` when the binary was replaced in place
-/// and the caller should relaunch itself.
-///
-/// On Windows the app lives in `Program Files` and the running `nyx.exe` (plus
-/// the background `--nyx-service` process) lock the file, so a non-elevated
-/// in-place replace fails with "access denied". Instead we download + unpack the
-/// new binary to a temp dir and hand off to a short elevated script that kills
-/// the running processes, overwrites the installed exe, and relaunches it.
+/// Installs the newest release. `true` means an elevated helper will relaunch
+/// (Windows, where the running exe is locked); `false` means the caller should.
 pub async fn download_and_install() -> Result<bool, String> {
     #[cfg(windows)]
     {
-        let _ = crate::backend::service::stop_service_for_update().await;
         windows_update().await
     }
 
@@ -77,13 +69,16 @@ pub async fn download_and_install() -> Result<bool, String> {
             ));
         }
         tokio::task::spawn_blocking(|| {
+            let tag = format!("v{}", latest_release()?.version);
             self_update::backends::github::Update::configure()
                 .repo_owner(REPO_OWNER)
                 .repo_name(REPO_NAME)
-                .target("x86_64-linux")
-                .bin_name("nyx")
+                .target(LINUX_TARGET)
+                .bin_name(BIN_NAME)
                 .current_version(self_update::cargo_crate_version!())
+                .target_version_tag(&tag)
                 .no_confirm(true)
+                .show_output(false)
                 .show_download_progress(false)
                 .build()
                 .map_err(|e| e.to_string())?
@@ -93,6 +88,12 @@ pub async fn download_and_install() -> Result<bool, String> {
         })
         .await
         .map_err(|e| e.to_string())??;
+
+        let _ = crate::backend::core::stop().await;
+        crate::backend::sysproxy::clear();
+        if let Err(e) = nyx_service::restart_service().await {
+            log::warn!("[updater] could not restart the service after the update: {e}");
+        }
         Ok(false)
     }
 }
@@ -133,6 +134,9 @@ async fn windows_update() -> Result<bool, String> {
         ));
     }
 
+    let _ = crate::backend::core::stop().await;
+    crate::backend::sysproxy::clear();
+
     tokio::task::spawn_blocking(move || finalize_windows_update(&bytes))
         .await
         .map_err(|e| e.to_string())?
@@ -140,15 +144,7 @@ async fn windows_update() -> Result<bool, String> {
 
 #[cfg(windows)]
 fn windows_asset_url() -> Result<String, String> {
-    let releases = self_update::backends::github::ReleaseList::configure()
-        .repo_owner(REPO_OWNER)
-        .repo_name(REPO_NAME)
-        .build()
-        .map_err(|e| e.to_string())?
-        .fetch()
-        .map_err(|e| e.to_string())?;
-    let latest = releases.into_iter().next().ok_or("no releases found")?;
-    latest
+    latest_release()?
         .assets
         .into_iter()
         .find(|a| a.name.eq_ignore_ascii_case(WINDOWS_ASSET))
@@ -186,11 +182,10 @@ fn spawn_elevated_swap(
 ) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
 
-    // Kill the running nyx processes (the service is already stopped) so the exe
-    // unlocks, overwrite it, then relaunch via explorer so the new process runs
-    // de-elevated rather than inheriting this script's admin token.
     let script = format!(
-        "@echo off\r\nchcp 65001 >nul\r\ntaskkill /F /IM nyx.exe >nul 2>&1\r\nset /a n=0\r\n:retry\r\ncopy /Y \"{new}\" \"{inst}\" >nul 2>&1\r\nif not errorlevel 1 goto done\r\nset /a n+=1\r\nif %n% geq 30 goto done\r\ntimeout /t 1 /nobreak >nul\r\ngoto retry\r\n:done\r\nstart \"\" explorer.exe \"{inst}\"\r\n",
+        "@echo off\r\nchcp 65001 >nul\r\nsc stop \"{svc}\" >nul 2>&1\r\ntaskkill /F /PID {pid} >nul 2>&1\r\nset /a n=0\r\n:retry\r\ncopy /Y \"{new}\" \"{inst}\" >nul 2>&1\r\nif not errorlevel 1 goto done\r\nset /a n+=1\r\nif %n% geq 30 goto done\r\ntimeout /t 1 /nobreak >nul\r\ngoto retry\r\n:done\r\nsc start \"{svc}\" >nul 2>&1\r\nstart \"\" explorer.exe \"{inst}\"\r\n",
+        svc = nyx_service::SERVICE_NAME,
+        pid = std::process::id(),
         new = new_exe.display(),
         inst = install_exe.display(),
     );

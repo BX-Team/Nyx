@@ -1,148 +1,104 @@
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use gpui::{App, AsyncApp};
 
 use crate::app::runtime;
 use crate::app::state::{self, AppState, CoreStatus};
 use crate::backend;
+use crate::backend::core::ServiceStatus;
 
 /// Streams are long-lived reconnect loops — wire them at most once per process.
 static STREAMS_STARTED: AtomicBool = AtomicBool::new(false);
 
-/// On launch: seed config, prefetch the binary, and — if setup is complete —
-/// start the core (with TUN forced off, so opening the app never connects).
+const WATCH_INTERVAL: Duration = Duration::from_secs(5);
+const RETRY_MIN: Duration = Duration::from_secs(5);
+const RETRY_MAX: Duration = Duration::from_secs(300);
+
+/// On launch: seed config, prefetch the binary, then start the core with the
+/// connection state from the last session.
 pub fn spawn_backend_startup(cx: &mut App) {
     cx.spawn(async move |cx: &mut AsyncApp| {
-        let _ = runtime::spawn(async { backend::startup::ensure_default_app_config() }).await;
+        let _ = runtime::spawn(async {
+            backend::startup::ensure_default_app_config();
+            backend::startup::normalize_connection_mode().await;
+        })
+        .await;
         prefetch_core_binary();
-
         refresh_profiles(cx).await;
-        import_declared_profiles(cx).await;
 
-        if can_autostart_core().await {
-            // Restore the proxy connection if it was on when we last exited,
-            // otherwise start the core idle.
-            let connected = backend::config::app_config_bool("lastConnected");
-            let started = if connected {
-                start_core_connected(cx).await
-            } else {
-                start_core_disconnected(cx).await
-            };
-            if !started {
-                retry_core_autostart(cx, connected).await;
-            }
+        if !can_autostart_core().await {
+            cx.update(|cx| {
+                AppState::global(cx)
+                    .update(cx, |st, cx| st.set_core_status(CoreStatus::Stopped, cx));
+            });
+            refresh_runtime_data(cx).await;
             return;
         }
 
-        cx.update(|cx| {
-            AppState::global(cx).update(cx, |st, cx| st.set_core_status(CoreStatus::Stopped, cx));
-        });
-        refresh_runtime_data(cx).await;
+        start_core_and_streams(cx, restore_tun()).await;
+        watch_core(cx).await;
     })
     .detach();
 }
 
-const AUTOSTART_RETRY_DELAYS: [u64; 8] = [5, 10, 20, 30, 60, 60, 120, 120];
+/// The single restart owner: revives a dead core and retries a failed start
+/// with a growing delay.
+async fn watch_core(cx: &mut AsyncApp) {
+    let mut backoff = RETRY_MIN;
+    let mut waited = Duration::ZERO;
 
-async fn retry_core_autostart(cx: &mut AsyncApp, connected: bool) {
-    for delay in AUTOSTART_RETRY_DELAYS {
-        cx.background_executor()
-            .timer(std::time::Duration::from_secs(delay))
-            .await;
+    loop {
+        cx.background_executor().timer(WATCH_INTERVAL).await;
 
-        let mut still_failed = false;
-        cx.update(|cx| {
-            still_failed = matches!(
-                AppState::global(cx).read(cx).core_status,
-                CoreStatus::Failed(_)
-            );
-        });
-        if !still_failed {
-            return;
-        }
+        let mut status = CoreStatus::Stopped;
+        cx.update(|cx| status = AppState::global(cx).read(cx).core_status.clone());
 
-        log::info!("[bootstrap] retrying core autostart (waited {delay}s)");
-        let started = if connected {
-            start_core_connected(cx).await
-        } else {
-            start_core_disconnected(cx).await
-        };
-        if started {
-            return;
+        match status {
+            CoreStatus::Running => {
+                waited = Duration::ZERO;
+                backoff = RETRY_MIN;
+                if runtime::spawn(backend::core::is_alive()).await == Ok(false) {
+                    log::warn!("[watchdog] the core is gone, restarting it");
+                    restart_core(cx).await;
+                }
+            }
+            CoreStatus::Failed { .. } => {
+                waited += WATCH_INTERVAL;
+                if waited < backoff {
+                    continue;
+                }
+                waited = Duration::ZERO;
+                backoff = (backoff * 2).min(RETRY_MAX);
+                log::info!("[watchdog] retrying core start");
+                restart_core(cx).await;
+            }
+            _ => {}
         }
     }
-    log::error!("[bootstrap] core autostart gave up after retries");
 }
 
-/// Core may be started unattended only once a profile exists and the runtime is
-/// available (Windows service installed / core binary present).
+async fn restart_core(cx: &mut AsyncApp) {
+    start_core_and_streams(cx, restore_tun()).await;
+}
+
+pub fn restore_tun() -> bool {
+    backend::config::app_config_bool("lastConnected")
+        && backend::config::app_config_str("connectionMode", "tun") == "tun"
+}
+
+/// Unattended start needs a profile plus a runtime — the service, or direct mode.
 async fn can_autostart_core() -> bool {
     if !has_any_profile().await {
         return false;
     }
-    matches!(
-        runtime::spawn(backend::service::service_status()).await,
-        Ok(Ok(s)) if s != "not-installed"
+    if backend::config::app_config_str("corePermissionMode", "service") == "direct" {
+        return true;
+    }
+    !matches!(
+        runtime::spawn(backend::core::service_status()).await,
+        Ok(ServiceStatus::NotInstalled)
     )
-}
-
-/// Imports remote profiles declared in the `NYX_PROFILES` env var
-async fn import_declared_profiles(cx: &mut AsyncApp) {
-    let mut urls: Vec<String> = Vec::new();
-
-    if let Ok(spec) = std::env::var("NYX_PROFILES") {
-        urls.extend(spec.split_whitespace().map(str::to_string));
-    }
-
-    if let Ok(path) = std::env::var("NYX_PROFILES_FILE") {
-        match std::fs::read_to_string(&path) {
-            Ok(contents) => urls.extend(contents.split_whitespace().map(str::to_string)),
-            Err(e) => log::warn!("[profiles] cannot read NYX_PROFILES_FILE '{path}': {e}"),
-        }
-    }
-    if urls.is_empty() {
-        return;
-    }
-
-    let mut existing_urls = std::collections::HashSet::new();
-    let mut has_current = false;
-    if let Ok(Ok(cfg)) = runtime::spawn(backend::config::get_profile_config()).await {
-        if let Some(items) = cfg.get("items").and_then(|v| v.as_array()) {
-            for it in items {
-                if let Some(url) = it.get("url").and_then(|v| v.as_str()) {
-                    existing_urls.insert(url.to_string());
-                }
-            }
-        }
-        has_current = cfg
-            .get("current")
-            .and_then(|v| v.as_str())
-            .is_some_and(|s| !s.is_empty());
-    }
-
-    let mut first_added: Option<String> = None;
-    for url in urls {
-        if !existing_urls.insert(url.clone()) {
-            continue;
-        }
-        let item = serde_json::json!({ "type": "remote", "url": url });
-        match runtime::spawn(backend::config::add_profile_item(item)).await {
-            Ok(Ok(id)) => {
-                log::info!("[profiles] imported declared profile {url}");
-                first_added.get_or_insert(id);
-            }
-            Ok(Err(e)) => log::warn!("[profiles] failed to import {url}: {e}"),
-            Err(_) => {}
-        }
-    }
-
-    if !has_current {
-        if let Some(id) = first_added {
-            let _ = runtime::spawn(backend::config::change_current_profile(id)).await;
-        }
-    }
-
-    refresh_profiles(cx).await;
 }
 
 async fn has_any_profile() -> bool {
@@ -156,23 +112,15 @@ async fn has_any_profile() -> bool {
     )
 }
 
-pub async fn start_core_disconnected(cx: &mut AsyncApp) -> bool {
-    let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(
-        serde_json::json!({ "tun": { "enable": false } }),
-    ))
-    .await;
-    start_core_and_streams(cx).await
-}
+pub async fn start_core_and_streams(cx: &mut AsyncApp, connected: bool) -> bool {
+    let tun = serde_json::json!({ "tun": { "enable": connected } });
+    let patch = if connected {
+        serde_json::json!({ "tun": { "enable": true }, "dns": { "enable": true } })
+    } else {
+        tun
+    };
+    let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(patch)).await;
 
-pub async fn start_core_connected(cx: &mut AsyncApp) -> bool {
-    let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(
-        serde_json::json!({ "tun": { "enable": true }, "dns": { "enable": true } }),
-    ))
-    .await;
-    start_core_and_streams(cx).await
-}
-
-pub async fn start_core_and_streams(cx: &mut AsyncApp) -> bool {
     cx.update(|cx| {
         AppState::global(cx).update(cx, |st, cx| st.set_core_status(CoreStatus::Starting, cx));
     });
@@ -182,19 +130,22 @@ pub async fn start_core_and_streams(cx: &mut AsyncApp) -> bool {
     cx.update(|cx| {
         AppState::global(cx).update(cx, |st, cx| match &outcome {
             Ok(Ok(())) => st.set_core_status(CoreStatus::Running, cx),
-            Ok(Err(e)) => st.set_core_status(CoreStatus::Failed(e.clone().into()), cx),
-            Err(_) => {
-                st.set_core_status(CoreStatus::Failed("startup task was cancelled".into()), cx)
-            }
+            Ok(Err(e)) => st.set_core_status(e.clone().into(), cx),
+            Err(_) => st.set_core_status(
+                backend::core::CoreError::new(
+                    backend::core::FailureKind::Other,
+                    "the startup task was cancelled",
+                )
+                .into(),
+                cx,
+            ),
         });
     });
 
     if !started {
-        log::error!("[bootstrap] core failed to start: {outcome:?}");
+        log::error!("[bootstrap] core failed to start");
         return false;
     }
-
-    wait_for_core_ready().await;
 
     if !STREAMS_STARTED.swap(true, Ordering::SeqCst) {
         let (tx, mut rx) =
@@ -232,20 +183,6 @@ pub async fn start_core_and_streams(cx: &mut AsyncApp) -> bool {
     true
 }
 
-/// Polls the core's HTTP controller until it answers — mihomo needs a moment to
-/// bind after spawn, else the first groups/version fetch comes back empty.
-async fn wait_for_core_ready() {
-    let _ = runtime::spawn(async {
-        for _ in 0..40 {
-            if backend::api::get_version().await.is_ok() {
-                return;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
-        }
-    })
-    .await;
-}
-
 fn prefetch_core_binary() {
     let core = backend::config::app_config_str("core", "mihomo");
     if core == "system" {
@@ -262,7 +199,6 @@ fn prefetch_core_binary() {
     });
 }
 
-/// Re-fetches groups, TUN state, mihomo version, and the current profile name.
 pub async fn refresh_runtime_data(cx: &mut AsyncApp) {
     if let Ok(Ok(groups_val)) = runtime::spawn(backend::mihomo::groups()).await {
         cx.update(|cx| {
@@ -316,14 +252,16 @@ pub async fn refresh_runtime_data(cx: &mut AsyncApp) {
         });
     }
 
-    if let Ok(Ok(version)) = runtime::spawn(backend::api::get_version()).await {
-        cx.update(|cx| {
-            AppState::global(cx).update(cx, |st, c| {
-                st.mihomo_version = Some(version.into());
-                c.notify();
-            });
+    let version = runtime::spawn(backend::api::get_version()).await;
+    cx.update(|cx| {
+        AppState::global(cx).update(cx, |st, c| {
+            st.mihomo_version = match &version {
+                Ok(Ok(v)) => Some(v.clone().into()),
+                _ => None,
+            };
+            c.notify();
         });
-    }
+    });
 
     refresh_profiles(cx).await;
 }
@@ -343,7 +281,6 @@ pub async fn refresh_profiles(cx: &mut AsyncApp) {
     }
 }
 
-/// Returns the full JSON of the currently selected profile item.
 fn current_profile_item(pcfg: &serde_json::Value) -> Option<serde_json::Value> {
     let current = pcfg.get("current").and_then(|v| v.as_str())?;
     pcfg.get("items")
@@ -353,7 +290,6 @@ fn current_profile_item(pcfg: &serde_json::Value) -> Option<serde_json::Value> {
         .cloned()
 }
 
-/// Resolves the display name of the currently selected profile.
 fn current_profile_name(pcfg: &serde_json::Value) -> Option<gpui::SharedString> {
     let current = pcfg.get("current").and_then(|v| v.as_str())?;
     let items = pcfg.get("items").and_then(|v| v.as_array())?;

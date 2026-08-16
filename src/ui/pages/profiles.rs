@@ -1,21 +1,23 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window,
+    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
 };
 use gpui_component::{
+    Disableable, Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     h_flex,
     input::Input,
+    menu::{DropdownMenu, PopupMenuItem},
     tooltip::Tooltip,
-    v_flex, Disableable, Icon, IconName, Sizable, StyledExt,
+    v_flex,
 };
 use rust_i18n::t;
 
 use crate::app::state::ProfileItem;
 use crate::ui::root::{
-    brand_gradient, fmt_bytes, NyxApp, ACTIVE_CARD_BG, ACTIVE_CARD_BORDER, BLUE, CARD_BG,
-    CARD_BORDER, CONTROL_BG, CONTROL_BORDER, DIVIDER, GREEN, MUTED, MUTED2, RED, SUBTLE, TEXT,
+    ACTIVE_CARD_BG, ACTIVE_CARD_BORDER, BLUE, CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER,
+    DIVIDER, GREEN, MUTED, MUTED2, NyxApp, RED, SUBTLE, TEXT, brand_gradient, fmt_bytes,
 };
 
 /// Days until `expire` (unix ts), or a localized "never" when unset.
@@ -33,7 +35,7 @@ impl NyxApp {
         &self,
         _window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> impl IntoElement + use<> {
         let profiles = self.state.read(cx).profiles.clone();
         let count = profiles.len();
 
@@ -113,7 +115,11 @@ impl NyxApp {
         v_flex().size_full().child(header).child(list)
     }
 
-    fn render_profile_card(&self, p: ProfileItem, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_profile_card(
+        &self,
+        p: ProfileItem,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let is_remote = p.kind.as_ref() == "remote";
         let current = p.is_current;
         let id = p.id.to_string();
@@ -207,7 +213,8 @@ impl NyxApp {
             .child(self.profile_actions(&id, &name, current, is_remote, cx))
     }
 
-    /// The per-card icon action cluster (activate / refresh / edit / delete).
+    /// Activate and update stay icons; the ambiguous actions live in a labelled
+    /// menu, since "edit the subscription" and "edit the config" look alike.
     fn profile_actions(
         &self,
         id: &str,
@@ -215,7 +222,7 @@ impl NyxApp {
         current: bool,
         is_remote: bool,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> impl IntoElement + use<> {
         let mut row = h_flex().gap_1();
         if !current {
             let aid = id.to_string();
@@ -243,52 +250,62 @@ impl NyxApp {
                 .on_click(cx.listener(move |this, _, _, cx| this.update_profile(uid.clone(), cx))),
             );
         }
-        let iid = id.to_string();
-        row = row.child(
-            icon_btn(
-                &format!("info-{id}"),
-                Icon::empty().path("icons/link.svg"),
-                false,
-            )
-            .tooltip(|window, cx| {
-                Tooltip::new(t!("tooltips.editInfo").to_string()).build(window, cx)
-            })
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_profile_edit_info(iid.clone(), window, cx)
-            })),
-        );
-        let eid = id.to_string();
-        let ename = name.to_string();
-        row = row.child(
-            icon_btn(
-                &format!("edit-{id}"),
-                Icon::empty().path("icons/square-pen.svg"),
-                false,
-            )
-            .tooltip(|window, cx| Tooltip::new(t!("tooltips.edit").to_string()).build(window, cx))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_profile_editor(eid.clone(), ename.clone(), window, cx)
-            })),
-        );
-        let del = icon_btn(
-            &format!("del-{id}"),
-            Icon::empty().path("icons/trash-2.svg"),
-            current,
-        );
-        let del = if current {
-            del
-        } else {
-            let did = id.to_string();
-            del.tooltip(|window, cx| {
-                Tooltip::new(t!("tooltips.delete").to_string()).build(window, cx)
-            })
-            .on_click(cx.listener(move |this, _, _, cx| this.delete_profile(did.clone(), cx)))
-        };
-        row.child(del)
+
+        let view = cx.entity();
+        let (id, name) = (id.to_string(), name.to_string());
+        row.child(
+            Button::new(SharedString::from(format!("prof-more-{id}")))
+                .ghost()
+                .icon(Icon::new(IconName::Ellipsis))
+                .dropdown_menu(move |menu, _window, _cx| {
+                    let menu = menu
+                        .item(
+                            PopupMenuItem::new(t!("pages.profiles.menuSubscription").to_string())
+                                .icon(Icon::new(IconName::Globe))
+                                .on_click({
+                                    let (id, view) = (id.clone(), view.clone());
+                                    move |_, window, cx| {
+                                        let id = id.clone();
+                                        view.update(cx, |this, cx| {
+                                            this.open_profile_edit_info(id, window, cx)
+                                        });
+                                    }
+                                }),
+                        )
+                        .item(
+                            PopupMenuItem::new(t!("pages.profiles.menuEditConfig").to_string())
+                                .icon(Icon::empty().path("icons/square-pen.svg"))
+                                .on_click({
+                                    let (id, name, view) = (id.clone(), name.clone(), view.clone());
+                                    move |_, window, cx| {
+                                        let (id, name) = (id.clone(), name.clone());
+                                        view.update(cx, |this, cx| {
+                                            this.open_profile_editor(id, name, window, cx)
+                                        });
+                                    }
+                                }),
+                        )
+                        .separator();
+                    menu.item(
+                        PopupMenuItem::new(t!("pages.profiles.menuDelete").to_string())
+                            .icon(Icon::empty().path("icons/trash-2.svg"))
+                            .disabled(current)
+                            .on_click({
+                                let (id, view) = (id.clone(), view.clone());
+                                move |_, _window, cx| {
+                                    let id = id.clone();
+                                    view.update(cx, |this, cx| this.delete_profile(id, cx));
+                                }
+                            }),
+                    )
+                }),
+        )
     }
 
-    /// The "Add subscription" modal: Remote/Local toggle, URL or file picker, name, Import/Cancel.
-    pub(crate) fn render_profile_add_modal(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_profile_add_modal(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let local = self.profile_add_local;
         let editing = self.profile_edit_id.is_some();
         let busy = self.profile_add_busy;
@@ -433,7 +450,6 @@ impl NyxApp {
     }
 }
 
-/// A small labeled column wrapper for a modal form field.
 fn field_label(label: &str) -> gpui::Div {
     v_flex().gap_1p5().child(
         div()
@@ -443,7 +459,6 @@ fn field_label(label: &str) -> gpui::Div {
     )
 }
 
-/// A Remote/Local source toggle pill.
 fn source_pill(
     label: &str,
     active: bool,
@@ -465,8 +480,7 @@ fn source_pill(
         .on_click(on_click)
 }
 
-/// A small uppercase chip (`ACTIVE`, `REMOTE`, …).
-fn chip(label: &str, accent: bool) -> impl IntoElement {
+fn chip(label: &str, accent: bool) -> impl IntoElement + use<> {
     div()
         .px(px(7.))
         .py(px(2.))
@@ -479,7 +493,6 @@ fn chip(label: &str, accent: bool) -> impl IntoElement {
         .child(label.to_string())
 }
 
-/// A 32px bordered icon button used in the card action cluster.
 fn icon_btn(key: &str, icon: Icon, disabled: bool) -> gpui::Stateful<gpui::Div> {
     div()
         .id(SharedString::from(format!("prof-{key}")))

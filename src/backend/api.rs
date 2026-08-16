@@ -86,7 +86,7 @@ pub async fn reload_config(path: Option<&str>) -> Result<()> {
 }
 
 fn base_url() -> String {
-    crate::backend::manager::controller_url()
+    crate::backend::core::controller_url()
 }
 
 fn http() -> reqwest::Client {

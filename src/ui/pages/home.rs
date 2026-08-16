@@ -1,21 +1,43 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window,
+    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
 };
 use gpui_component::{
+    Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
-    h_flex, v_flex, Icon, IconName, Sizable, StyledExt,
+    h_flex, v_flex,
 };
 use rust_i18n::t;
 use serde_json::Value;
 
 use crate::ui::root::{
-    fmt_bytes, power_on_bg, NyxApp, CARD_BG, CARD_BORDER, GOOD, GREEN, MUTED, PANEL_BG, STROKE,
-    TEXT,
+    CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, GOOD, GREEN, MUTED, NyxApp, PANEL_BG, RED,
+    RED_HI, STROKE, SUBTLE, TEXT, fmt_bytes, power_on_bg,
 };
 
-/// Parsed subscription stats from a profile's `extra` + `announce`.
+/// Names the cause when the core refused to start, instead of leaving the
+/// power button silently dead.
+fn render_core_failure(key: &'static str, detail: SharedString) -> impl IntoElement {
+    v_flex()
+        .mx_1()
+        .mb_2()
+        .p_3()
+        .gap_1()
+        .rounded(px(8.))
+        .bg(rgba((RED << 8) | 0x1A))
+        .border_1()
+        .border_color(rgb(RED))
+        .child(
+            div()
+                .text_sm()
+                .font_semibold()
+                .text_color(rgb(RED_HI))
+                .child(t!(key).to_string()),
+        )
+        .child(div().text_xs().text_color(rgb(MUTED)).child(detail))
+}
+
 struct SubStats {
     has_traffic: bool,
     used: u64,
@@ -81,8 +103,7 @@ fn sub_stats(item: &Option<Value>) -> SubStats {
     }
 }
 
-/// The profile's `supportUrl`, if any, plus whether it points at Telegram
-/// (`tg:` scheme or a `t.me` / `telegram` host) — used to pick the button icon.
+/// The profile's `supportUrl` plus whether it is a Telegram link, for the icon.
 fn support_link(item: &Option<Value>) -> Option<(String, bool)> {
     let url = item
         .as_ref()
@@ -114,7 +135,8 @@ impl NyxApp {
         if st.profiles.is_empty() {
             return self.render_home_empty(cx).into_any_element();
         }
-        let tun = st.tun_enabled;
+        let connected = st.tun_enabled || st.app_flag("sysProxy.enable");
+        let mode = crate::app::actions::connection_mode(cx);
         let total_up = st.total_up;
         let total_down = st.total_down;
         let profile_name = st
@@ -133,19 +155,24 @@ impl NyxApp {
             .connected_since
             .map(|t| t.elapsed().as_secs())
             .unwrap_or(0);
-        let status = if tun {
+        let status = if connected {
             t!("pages.home.connected").to_string()
         } else {
             t!("pages.home.disconnected").to_string()
         };
 
         let support = support_link(&st.current_profile_item);
+        let failure = st
+            .core_status
+            .failed()
+            .map(|(kind, detail)| (crate::app::state::failure_key(kind), detail.clone()));
 
         let main = v_flex()
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(self.render_topbar(&profile_name, tun, &status, support, cx))
+            .child(self.render_topbar(&profile_name, connected, &status, mode, support, cx))
+            .children(failure.map(|(key, detail)| render_core_failure(key, detail)))
             .child(
                 v_flex()
                     .flex_1()
@@ -160,8 +187,8 @@ impl NyxApp {
                             .text_color(rgb(TEXT))
                             .child(status.to_uppercase()),
                     )
-                    .child(self.render_power_button(tun, cx))
-                    .when(tun, |this| {
+                    .child(self.render_power_button(connected, cx))
+                    .when(connected, |this| {
                         this.child(
                             div()
                                 .text_lg()
@@ -186,8 +213,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// Fresh-install home
-    fn render_home_empty(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_home_empty(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         v_flex()
             .size_full()
             .items_center()
@@ -230,15 +256,58 @@ impl NyxApp {
             )
     }
 
+    fn render_mode_switch(&self, mode: &str, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        h_flex()
+            .gap(px(2.))
+            .p(px(2.))
+            .rounded(px(8.))
+            .bg(rgb(CONTROL_BG))
+            .border_1()
+            .border_color(rgb(CONTROL_BORDER))
+            .children(
+                [
+                    (
+                        crate::app::actions::MODE_TUN,
+                        t!("pages.home.modeTun").to_string(),
+                    ),
+                    (
+                        crate::app::actions::MODE_SYSPROXY,
+                        t!("pages.home.modeSysProxy").to_string(),
+                    ),
+                ]
+                .into_iter()
+                .map(|(value, label)| {
+                    let on = mode == value;
+                    div()
+                        .id(SharedString::from(format!("home-mode-{value}")))
+                        .px(px(10.))
+                        .py(px(3.))
+                        .rounded(px(6.))
+                        .text_xs()
+                        .cursor_pointer()
+                        .when(on, |t| t.bg(rgb(GREEN)).text_color(rgb(0x0B1014)))
+                        .when(!on, |t| t.text_color(rgb(SUBTLE)))
+                        .child(label)
+                        .on_click(
+                            cx.listener(move |this, _, _, cx| {
+                                this.select_connection_mode(value, cx)
+                            }),
+                        )
+                }),
+            )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn render_topbar(
         &self,
         profile: &str,
-        tun: bool,
+        connected: bool,
         status: &str,
+        mode: &str,
         support: Option<(String, bool)>,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let dot = if tun { GOOD } else { MUTED };
+    ) -> impl IntoElement + use<> {
+        let dot = if connected { GOOD } else { MUTED };
         let support_btn = support.map(|(url, is_telegram)| {
             let icon = if is_telegram {
                 Icon::empty().path("icons/telegram.svg")
@@ -282,30 +351,42 @@ impl NyxApp {
             )
             .child(
                 h_flex()
-                    .gap_1()
-                    .children(support_btn)
+                    .gap_2()
+                    .items_center()
+                    .child(self.render_mode_switch(mode, cx))
                     .child(
-                        Button::new("home-refresh")
-                            .ghost()
-                            .small()
-                            .icon(Icon::empty().path("icons/refresh.svg"))
-                            .tooltip(t!("tooltips.refresh").to_string())
-                            .on_click(cx.listener(|this, _, _, cx| this.refresh_subscription(cx))),
-                    )
-                    .child(
-                        Button::new("home-stats-toggle")
-                            .ghost()
-                            .small()
-                            .icon(IconName::ChevronRight)
-                            .tooltip(t!("tooltips.toggleStats").to_string())
-                            .on_click(cx.listener(|this, _, _, cx| this.toggle_stats(cx))),
+                        h_flex()
+                            .gap_1()
+                            .children(support_btn)
+                            .child(
+                                Button::new("home-refresh")
+                                    .ghost()
+                                    .small()
+                                    .icon(Icon::empty().path("icons/refresh.svg"))
+                                    .tooltip(t!("tooltips.refresh").to_string())
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.refresh_subscription(cx)),
+                                    ),
+                            )
+                            .child(
+                                Button::new("home-stats-toggle")
+                                    .ghost()
+                                    .small()
+                                    .icon(IconName::ChevronRight)
+                                    .tooltip(t!("tooltips.toggleStats").to_string())
+                                    .on_click(cx.listener(|this, _, _, cx| this.toggle_stats(cx))),
+                            ),
                     ),
             )
     }
 
-    fn render_power_button(&self, tun: bool, cx: &mut Context<Self>) -> impl IntoElement {
-        let icon_color = if tun { 0x06140C } else { MUTED };
-        let inner = if tun {
+    fn render_power_button(
+        &self,
+        connected: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let icon_color = if connected { 0x06140C } else { MUTED };
+        let inner = if connected {
             div().size(px(116.)).rounded_full().bg(power_on_bg())
         } else {
             div()
@@ -315,7 +396,11 @@ impl NyxApp {
                 .border_1()
                 .border_color(rgb(CARD_BORDER))
         };
-        let icon = if tun { IconName::Pause } else { IconName::Play };
+        let icon = if connected {
+            IconName::Pause
+        } else {
+            IconName::Play
+        };
         div()
             .id("power-button")
             .size(px(116.))
@@ -328,7 +413,7 @@ impl NyxApp {
                     .justify_center()
                     .child(Icon::new(icon).large().text_color(rgb(icon_color))),
             )
-            .on_click(cx.listener(|this, _, _, cx| this.toggle_tun(cx)))
+            .on_click(cx.listener(|this, _, _, cx| this.toggle_connection(cx)))
     }
 }
 
@@ -365,7 +450,7 @@ fn render_speeds(up: u64, down: u64) -> impl IntoElement {
 fn render_proxy_card(
     current: Option<(String, String)>,
     cx: &mut Context<NyxApp>,
-) -> impl IntoElement {
+) -> impl IntoElement + use<> {
     let (name, kind) = current.unwrap_or_else(|| ("—".to_string(), String::new()));
     div().flex().justify_center().child(
         div()
@@ -413,7 +498,7 @@ fn render_proxy_card(
     )
 }
 
-fn section_header(text: &str) -> impl IntoElement {
+fn section_header(text: &str) -> impl IntoElement + use<> {
     div()
         .text_xs()
         .font_semibold()
@@ -431,7 +516,7 @@ fn stat_tile() -> gpui::Div {
         .p_3()
 }
 
-fn render_stats(stats: &SubStats) -> impl IntoElement {
+fn render_stats(stats: &SubStats) -> impl IntoElement + use<> {
     let mut col = v_flex().gap_3();
 
     if stats.has_traffic {

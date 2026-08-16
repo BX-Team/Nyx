@@ -1,10 +1,11 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, Styled, Window,
+    Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, px, rgb, rgba,
 };
 use gpui_component::{
+    StyledExt,
     button::{Button, ButtonVariants},
-    h_flex, v_flex, StyledExt,
+    h_flex, v_flex,
 };
 use rust_i18n::t;
 use serde_json::json;
@@ -12,7 +13,7 @@ use serde_json::json;
 use crate::app::runtime;
 use crate::backend;
 use crate::ui::root::{
-    brand_gradient, NyxApp, Route, SettingsSub, BLUE, CARD_BG, CARD_BORDER, GREEN, SUBTLE, TEXT,
+    BLUE, CARD_BG, CARD_BORDER, GREEN, NyxApp, Route, SUBTLE, SettingsSub, TEXT, brand_gradient,
 };
 
 const LAST_STEP: u8 = 3;
@@ -22,7 +23,6 @@ impl NyxApp {
         self.onboarding_step.is_some()
     }
 
-    /// Advances the welcome flow, routing to the screen the next step is about.
     pub(crate) fn onboarding_advance(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let step = self.onboarding_step.unwrap_or(0);
         if step >= LAST_STEP {
@@ -43,7 +43,6 @@ impl NyxApp {
         cx.notify();
     }
 
-    /// Dismisses the flow and records it so it never shows again.
     pub(crate) fn onboarding_finish(&mut self, cx: &mut Context<Self>) {
         self.onboarding_step = None;
         self.state.update(cx, |s, _| s.onboarding_active = false);
@@ -53,7 +52,7 @@ impl NyxApp {
         cx.notify();
     }
 
-    pub(crate) fn render_onboarding(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_onboarding(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let step = self.onboarding_step.unwrap_or(0);
         let (title, body, hint) = match step {
             0 => (
@@ -66,15 +65,10 @@ impl NyxApp {
                 t!("onboarding.profileBody"),
                 Some(t!("onboarding.profileHint")),
             ),
-            2 if cfg!(windows) => (
+            2 => (
                 t!("onboarding.serviceTitle"),
                 t!("onboarding.serviceBody"),
                 Some(t!("onboarding.serviceHint")),
-            ),
-            2 => (
-                t!("onboarding.tunTitle"),
-                t!("onboarding.tunBody"),
-                Some(t!("onboarding.tunHint")),
             ),
             _ => (
                 t!("onboarding.proxyTitle"),
@@ -169,8 +163,7 @@ impl NyxApp {
                     ),
             );
 
-        // Welcome step is a centered modal; action steps float bottom-right with
-        // no scrim, keeping the real UI behind clickable.
+        // Action steps float bottom-right with no scrim, keeping the UI clickable.
         if step == 0 {
             div()
                 .id("onboarding-scrim")

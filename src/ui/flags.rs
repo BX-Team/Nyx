@@ -1,14 +1,13 @@
-use gpui::{div, img, px, AnyElement, IntoElement, ParentElement, SharedString, Styled};
+use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, img, px};
 
-/// A piece of a display name: plain text, or a flag rendered as an SVG image
-/// (gpui paints color emoji blank on Windows, so 🇸🇪 → `assets/flags/se.svg`).
+/// A display-name segment: plain text, or a flag drawn as an SVG (gpui paints
+/// color emoji blank on Windows).
 enum Seg {
     Text(String),
     Flag(&'static str),
 }
 
-/// Maps a Unicode regional-indicator codepoint (U+1F1E6–U+1F1FF) to its ASCII
-/// letter, e.g. 🇸 → `S`.
+/// Regional-indicator codepoint (U+1F1E6–U+1F1FF) to its ASCII letter.
 fn regional_letter(c: char) -> Option<char> {
     let cp = c as u32;
     (0x1F1E6..=0x1F1FF)
@@ -16,8 +15,6 @@ fn regional_letter(c: char) -> Option<char> {
         .then(|| (b'A' + (cp - 0x1F1E6) as u8) as char)
 }
 
-/// Splits a name into text + flag segments; regional-indicator pairs validated
-/// by the `emojis` crate become flags.
 fn segments(name: &str) -> Vec<Seg> {
     let chars: Vec<char> = name.chars().collect();
     let mut out: Vec<Seg> = Vec::new();
@@ -47,8 +44,7 @@ fn segments(name: &str) -> Vec<Seg> {
     out
 }
 
-/// Lowercases the two flag letters into a static asset basename (`se`, `us`, …),
-/// or `""` if we ship no SVG for that code.
+/// Two flag letters to a shipped asset basename, or `""` if we have no SVG.
 fn iso_to_code(a: char, b: char) -> &'static str {
     CODES
         .iter()
@@ -57,15 +53,12 @@ fn iso_to_code(a: char, b: char) -> &'static str {
         .unwrap_or("")
 }
 
-/// Whether `name` contains at least one renderable flag.
 pub(crate) fn has_flag(name: &str) -> bool {
     segments(name)
         .iter()
         .any(|s| matches!(s, Seg::Flag(c) if !c.is_empty()))
 }
 
-/// Renders a display name with inline flag images. Falls back to plain text when
-/// the name has no flags, so callers keep their existing truncation behaviour.
 pub(crate) fn render_name(name: &str) -> AnyElement {
     if !has_flag(name) {
         return name.to_string().into_any_element();
@@ -88,6 +81,27 @@ pub(crate) fn render_name(name: &str) -> AnyElement {
     }
     div().child(row).into_any_element()
 }
+
+/// Lowercase codes we ship a flag SVG for. Generated from `assets/flags/`.
+const CODES: &[&str] = &[
+    "ad", "ae", "af", "ag", "ai", "al", "am", "ao", "aq", "ar", "as", "at", "au", "aw", "ax", "az",
+    "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bl", "bm", "bn", "bo", "bq", "br", "bs",
+    "bt", "bv", "bw", "by", "bz", "ca", "cc", "cd", "cf", "cg", "ch", "ci", "ck", "cl", "cm", "cn",
+    "co", "cp", "cr", "cu", "cv", "cw", "cx", "cy", "cz", "de", "dg", "dj", "dk", "dm", "do", "dz",
+    "ec", "ee", "eg", "eh", "er", "es", "et", "eu", "fi", "fj", "fk", "fm", "fo", "fr", "ga", "gb",
+    "gd", "ge", "gf", "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw",
+    "gy", "hk", "hm", "hn", "hr", "ht", "hu", "ic", "id", "ie", "il", "im", "in", "io", "iq", "ir",
+    "is", "it", "je", "jm", "jo", "jp", "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky",
+    "kz", "la", "lb", "lc", "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me",
+    "mf", "mg", "mh", "mk", "ml", "mm", "mn", "mo", "mp", "mq", "mr", "ms", "mt", "mu", "mv", "mw",
+    "mx", "my", "mz", "na", "nc", "ne", "nf", "ng", "ni", "nl", "no", "np", "nr", "nu", "nz", "om",
+    "pa", "pc", "pe", "pf", "pg", "ph", "pk", "pl", "pm", "pn", "pr", "ps", "pt", "pw", "py", "qa",
+    "re", "ro", "rs", "ru", "rw", "sa", "sb", "sc", "sd", "se", "sg", "sh", "si", "sj", "sk", "sl",
+    "sm", "sn", "so", "sr", "ss", "st", "sv", "sx", "sy", "sz", "tc", "td", "tf", "tg", "th", "tj",
+    "tk", "tl", "tm", "tn", "to", "tr", "tt", "tv", "tw", "tz", "ua", "ug", "um", "un", "us", "uy",
+    "uz", "va", "vc", "ve", "vg", "vi", "vn", "vu", "wf", "ws", "xk", "xx", "ye", "yt", "za", "zm",
+    "zw",
+];
 
 #[cfg(test)]
 mod tests {
@@ -112,25 +126,3 @@ mod tests {
         assert!(!has_flag("auto-fallback"));
     }
 }
-
-/// Lowercase codes we ship a flag SVG for (flag-icons 4x3, ISO 3166-1 alpha-2
-/// plus a few exceptional reservations). Generated from `assets/flags/`.
-const CODES: &[&str] = &[
-    "ad", "ae", "af", "ag", "ai", "al", "am", "ao", "aq", "ar", "as", "at", "au", "aw", "ax", "az",
-    "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bl", "bm", "bn", "bo", "bq", "br", "bs",
-    "bt", "bv", "bw", "by", "bz", "ca", "cc", "cd", "cf", "cg", "ch", "ci", "ck", "cl", "cm", "cn",
-    "co", "cp", "cr", "cu", "cv", "cw", "cx", "cy", "cz", "de", "dg", "dj", "dk", "dm", "do", "dz",
-    "ec", "ee", "eg", "eh", "er", "es", "et", "eu", "fi", "fj", "fk", "fm", "fo", "fr", "ga", "gb",
-    "gd", "ge", "gf", "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw",
-    "gy", "hk", "hm", "hn", "hr", "ht", "hu", "ic", "id", "ie", "il", "im", "in", "io", "iq", "ir",
-    "is", "it", "je", "jm", "jo", "jp", "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky",
-    "kz", "la", "lb", "lc", "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me",
-    "mf", "mg", "mh", "mk", "ml", "mm", "mn", "mo", "mp", "mq", "mr", "ms", "mt", "mu", "mv", "mw",
-    "mx", "my", "mz", "na", "nc", "ne", "nf", "ng", "ni", "nl", "no", "np", "nr", "nu", "nz", "om",
-    "pa", "pc", "pe", "pf", "pg", "ph", "pk", "pl", "pm", "pn", "pr", "ps", "pt", "pw", "py", "qa",
-    "re", "ro", "rs", "ru", "rw", "sa", "sb", "sc", "sd", "se", "sg", "sh", "si", "sj", "sk", "sl",
-    "sm", "sn", "so", "sr", "ss", "st", "sv", "sx", "sy", "sz", "tc", "td", "tf", "tg", "th", "tj",
-    "tk", "tl", "tm", "tn", "to", "tr", "tt", "tv", "tw", "tz", "ua", "ug", "um", "un", "us", "uy",
-    "uz", "va", "vc", "ve", "vg", "vi", "vn", "vu", "wf", "ws", "xk", "xx", "ye", "yt", "za", "zm",
-    "zw",
-];

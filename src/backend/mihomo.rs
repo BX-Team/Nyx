@@ -1,9 +1,8 @@
 use serde_json::Value;
 
-use crate::backend::{api, config, dirs, manager};
+use crate::backend::{api, config, core, dirs};
 
-/// Returns proxy groups as JSON objects, each with its `all` members resolved to
-/// full proxy objects.
+/// Proxy groups with every `all` member resolved to its full proxy object.
 pub async fn groups() -> anyhow::Result<Value> {
     let proxies = api::get_raw_proxies_map().await?;
 
@@ -57,7 +56,7 @@ fn local_http() -> reqwest::Client {
 
 pub async fn change_proxy(group: &str, proxy: &str) -> anyhow::Result<()> {
     let encoded_group = group.replace(' ', "%20");
-    let url = format!("{}/proxies/{}", manager::controller_url(), encoded_group);
+    let url = format!("{}/proxies/{}", core::controller_url(), encoded_group);
     local_http()
         .put(&url)
         .json(&serde_json::json!({ "name": proxy }))
@@ -94,13 +93,12 @@ pub async fn restore_proxy_selections() {
     let Ok(map) = serde_yaml::from_str::<serde_yaml::Mapping>(&text) else {
         return;
     };
-    let base_url = manager::controller_url();
+    let base_url = core::controller_url();
     if base_url.is_empty() {
         return;
     }
 
-    // Selections are stored globally across profiles, so validate each against
-    // the live proxy set first — a stale group/proxy would 404 if restored blindly.
+    // Selections are global across profiles, so a stale group/proxy would 404.
     let proxies = match api::get_raw_proxies_map().await {
         Ok(p) => p,
         Err(e) => {

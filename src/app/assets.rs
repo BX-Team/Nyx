@@ -2,7 +2,6 @@ use std::borrow::Cow;
 
 use gpui::{AssetSource, Result, SharedString};
 
-/// Nyx-owned assets embedded from `assets/` at build time (logo, extra icons, flags).
 #[derive(rust_embed::RustEmbed)]
 #[folder = "assets"]
 #[include = "brand/*"]
@@ -10,7 +9,6 @@ use gpui::{AssetSource, Result, SharedString};
 #[include = "flags/*"]
 struct NyxEmbed;
 
-/// The asset source registered with the gpui application.
 pub struct Assets;
 
 impl AssetSource for Assets {
