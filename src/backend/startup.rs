@@ -41,6 +41,7 @@ pub fn ensure_default_app_config() {
         "maxLogDays": 7,
         "delayTestConcurrency": 50,
         "sysProxy": { "enable": false, "mode": "manual" },
+        "connectionMode": "tun",
         "hosts": [],
         "core": "mihomo",
         "corePermissionMode": "service"
@@ -48,6 +49,44 @@ pub fn ensure_default_app_config() {
     .unwrap_or_default();
     let _ = std::fs::write(&config_path, defaults);
     log::info!("created default app config");
+}
+
+pub async fn normalize_connection_mode() {
+    let cfg = read_app_config_sync();
+    let sysproxy_on = cfg
+        .get("sysProxy")
+        .and_then(|v| v.get("enable"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    let mode = match cfg.get("connectionMode").and_then(Value::as_str) {
+        Some(mode) => mode.to_string(),
+        None => {
+            let tun_on = cfg
+                .get("lastConnected")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let inferred = if sysproxy_on && !tun_on {
+                "sysproxy"
+            } else {
+                "tun"
+            };
+            log::info!("[startup] no connection mode saved, assuming {inferred}");
+            let _ = crate::backend::config::patch_app_config(
+                serde_json::json!({ "connectionMode": inferred }),
+            )
+            .await;
+            inferred.to_string()
+        }
+    };
+
+    if mode != "sysproxy" && sysproxy_on {
+        log::info!("[startup] connection mode is {mode}, clearing the saved system proxy");
+        let _ = crate::backend::config::patch_app_config(
+            serde_json::json!({ "sysProxy": { "enable": false } }),
+        )
+        .await;
+    }
 }
 
 /// Brings the core up and confirms it answers; also restores proxy selections.

@@ -57,6 +57,8 @@ pages:
     emptyTitle: No profile yet
     emptyBody: Add a subscription or local config file to start using Nyx.
     emptyCta: Add profile
+    modeTun: TUN
+    modeSysProxy: System proxy
   proxies:
     testGroup: Test
     refresh: Refresh
@@ -202,7 +204,7 @@ pages:
     svcRestart: Restart
     svcStale: Needs repair
     svcRepair: Repair…
-    svcHint: Nyx runs the mihomo core through a system service, which is what lets TUN mode create a network device. Installing or repairing it asks for your password once.
+    svcHint: Nyx runs the mihomo core through a system service, which is what lets TUN mode create a network device. Installing or repairing it requires administrator rights.
     svcManagedHint: The service comes from your system configuration, so Nyx neither installs nor removes it. Manage it there instead.
     sniffer: Sniffer
     snifferOverrideDest: Override destination
@@ -261,6 +263,7 @@ pages:
     trayNodeInfo: Show node info in tray
     takeOverDns: Take over DNS
     takeOverSniffer: Take over sniffer
+    connectivityHint: TUN and the system proxy cannot run at the same time; turning one on turns the other off.
     overrideSettings: Override subscription
     overrideHint: When off, the active subscription's values are used (or defaults if it provides none). Turn on to force these settings.
     networkDetection: Network change detection

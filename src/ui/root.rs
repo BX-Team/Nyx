@@ -269,9 +269,12 @@ impl NyxApp {
             &proxies_search,
             |_this, _input, _event: &gpui_component::input::InputEvent, cx| cx.notify(),
         );
-        // Re-render on shared-state change; track TUN up-time for Home's timer.
+        // Re-render on shared-state change; track uptime for Home's timer.
         let sub = cx.observe(&state, |this: &mut Self, observed, cx| {
-            let connected = observed.read(cx).tun_enabled;
+            let connected = {
+                let st = observed.read(cx);
+                st.tun_enabled || st.app_flag("sysProxy.enable")
+            };
             if connected && this.connected_since.is_none() {
                 this.connected_since = Some(std::time::Instant::now());
             } else if !connected {
@@ -479,43 +482,15 @@ impl NyxApp {
 
 impl NyxApp {
     pub(crate) fn toggle_tun(&mut self, cx: &mut Context<Self>) {
-        let new = !self.state.read(cx).tun_enabled;
-        let running = self.state.read(cx).core_status.is_running();
-        self.state.update(cx, |st, c| st.set_tun_enabled(new, c));
-        crate::app::tray::rebuild(cx);
-        cx.spawn(async move |_this, cx| {
-            if !running && !crate::app::bootstrap::start_core_and_streams(cx, new).await {
-                cx.update(|cx| {
-                    AppState::global(cx).update(cx, |st, c| st.set_tun_enabled(false, c));
-                    crate::app::tray::rebuild(cx);
-                });
-                return;
-            }
-            let patch = if new {
-                serde_json::json!({ "tun": { "enable": true }, "dns": { "enable": true } })
-            } else {
-                serde_json::json!({ "tun": { "enable": false } })
-            };
-            let _ = runtime::spawn(backend::config::patch_controled_mihomo_config(patch)).await;
-            let _ = runtime::spawn(backend::config::patch_app_config(
-                serde_json::json!({ "lastConnected": new }),
-            ))
-            .await;
-            if let Ok(Ok(cfg)) =
-                runtime::spawn(backend::config::get_controled_mihomo_config()).await
-            {
-                let tun = cfg
-                    .get("tun")
-                    .and_then(|t| t.get("enable"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(new);
-                cx.update(|cx| {
-                    AppState::global(cx).update(cx, |st, c| st.set_tun_enabled(tun, c));
-                    crate::app::tray::rebuild(cx);
-                });
-            }
-        })
-        .detach();
+        crate::app::actions::toggle_tun(cx);
+    }
+
+    pub(crate) fn toggle_connection(&mut self, cx: &mut Context<Self>) {
+        crate::app::actions::toggle_connection(cx);
+    }
+
+    pub(crate) fn select_connection_mode(&mut self, mode: &'static str, cx: &mut Context<Self>) {
+        crate::app::actions::select_connection_mode(mode, cx);
     }
 
     pub(crate) fn change_proxy(&mut self, group: String, proxy: String, cx: &mut Context<Self>) {
@@ -1026,9 +1001,9 @@ impl Render for NyxApp {
         let mrs_modal = self.mrs_open.then(|| self.render_mrs_modal(cx));
         let onboarding = self.onboarding_active().then(|| self.render_onboarding(cx));
 
-        // Server-side decorations already draw a title bar — ours would be a second one.
-        let title_bar = matches!(window.window_decorations(), Decorations::Client { .. })
-            .then(|| self.render_title_bar());
+        let title_bar = (!cfg!(target_os = "linux")
+            || matches!(window.window_decorations(), Decorations::Client { .. }))
+        .then(|| self.render_title_bar());
 
         window_border().child(
             v_flex()

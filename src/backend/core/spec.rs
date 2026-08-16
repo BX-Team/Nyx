@@ -101,14 +101,11 @@ async fn validate(
     work_dir: &std::path::Path,
     config: &std::path::Path,
 ) -> Result<(), CoreError> {
-    let out = tokio::process::Command::new(binary)
-        .arg("-t")
-        .arg("-d")
-        .arg(work_dir)
-        .arg("-f")
-        .arg(config)
-        .output()
-        .await;
+    let mut cmd = tokio::process::Command::new(binary);
+    cmd.arg("-t").arg("-d").arg(work_dir).arg("-f").arg(config);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+    let out = cmd.output().await;
 
     let Ok(out) = out else {
         // Could not even run the binary; the spawn below will report why.

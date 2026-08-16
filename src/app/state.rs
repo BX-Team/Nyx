@@ -298,6 +298,29 @@ impl AppState {
         cur.as_bool().unwrap_or(false)
     }
 
+    pub fn set_app_value(&mut self, path: &str, value: Value, cx: &mut Context<Self>) {
+        if !self.app_config.is_object() {
+            self.app_config = Value::Object(Default::default());
+        }
+        let (parents, leaf) = path.rsplit_once('.').unwrap_or(("", path));
+        let mut cur = &mut self.app_config;
+        for seg in parents.split('.').filter(|s| !s.is_empty()) {
+            let Some(obj) = cur.as_object_mut() else {
+                return;
+            };
+            cur = obj
+                .entry(seg)
+                .or_insert_with(|| Value::Object(Default::default()));
+            if !cur.is_object() {
+                *cur = Value::Object(Default::default());
+            }
+        }
+        if let Some(obj) = cur.as_object_mut() {
+            obj.insert(leaf.to_string(), value);
+            cx.notify();
+        }
+    }
+
     pub fn set_mode(&mut self, mode: impl Into<SharedString>, cx: &mut Context<Self>) {
         let mode = mode.into();
         if self.mode != mode {

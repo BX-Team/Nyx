@@ -19,7 +19,11 @@ const RETRY_MAX: Duration = Duration::from_secs(300);
 /// connection state from the last session.
 pub fn spawn_backend_startup(cx: &mut App) {
     cx.spawn(async move |cx: &mut AsyncApp| {
-        let _ = runtime::spawn(async { backend::startup::ensure_default_app_config() }).await;
+        let _ = runtime::spawn(async {
+            backend::startup::ensure_default_app_config();
+            backend::startup::normalize_connection_mode().await;
+        })
+        .await;
         prefetch_core_binary();
         refresh_profiles(cx).await;
 
@@ -32,8 +36,7 @@ pub fn spawn_backend_startup(cx: &mut App) {
             return;
         }
 
-        let connected = backend::config::app_config_bool("lastConnected");
-        start_core_and_streams(cx, connected).await;
+        start_core_and_streams(cx, restore_tun()).await;
         watch_core(cx).await;
     })
     .detach();
@@ -76,8 +79,12 @@ async fn watch_core(cx: &mut AsyncApp) {
 }
 
 async fn restart_core(cx: &mut AsyncApp) {
-    let connected = backend::config::app_config_bool("lastConnected");
-    start_core_and_streams(cx, connected).await;
+    start_core_and_streams(cx, restore_tun()).await;
+}
+
+fn restore_tun() -> bool {
+    backend::config::app_config_bool("lastConnected")
+        && backend::config::app_config_str("connectionMode", "tun") == "tun"
 }
 
 /// Unattended start needs a profile plus a runtime — the service, or direct mode.

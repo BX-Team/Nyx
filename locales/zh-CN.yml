@@ -57,6 +57,8 @@ pages:
     emptyTitle: 尚未添加配置
     emptyBody: 添加订阅或本地配置文件即可开始使用 Nyx。
     emptyCta: 添加配置
+    modeTun: TUN
+    modeSysProxy: 系统代理
   proxies:
     testGroup: 测试
     refresh: 刷新
@@ -202,7 +204,7 @@ pages:
     svcRestart: 重启
     svcStale: 需要修复
     svcRepair: 修复…
-    svcHint: Nyx 通过系统服务运行 mihomo 内核，这正是 TUN 模式能够创建网络设备的原因。安装或修复时会要求输入一次密码。
+    svcHint: Nyx 通过系统服务运行 mihomo 内核，这正是 TUN 模式能够创建网络设备的原因。安装或修复需要管理员权限。
     svcManagedHint: 该服务由你的系统配置提供，因此 Nyx 不会安装或卸载它。请在系统配置中管理。
     sniffer: 嗅探器
     snifferOverrideDest: 覆盖目标地址
@@ -261,6 +263,7 @@ pages:
     trayNodeInfo: 在托盘显示节点信息
     takeOverDns: 接管 DNS
     takeOverSniffer: 接管嗅探器
+    connectivityHint: TUN 与系统代理不能同时启用，开启其一会关闭另一个。
     overrideSettings: 覆盖订阅设置
     overrideHint: 关闭时使用当前订阅的值（若订阅未提供则使用默认值）。开启以强制应用这些设置。
     networkDetection: 网络变化检测

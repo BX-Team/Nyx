@@ -138,10 +138,13 @@ struct GlobalTray(#[allow(dead_code)] TrayIcon);
 #[cfg(not(target_os = "linux"))]
 impl gpui::Global for GlobalTray {}
 
-/// The tray-relevant slice of state: groups and whether TUN is on.
+/// The tray-relevant slice of state: groups and whether traffic is being routed.
 fn tray_state(cx: &App) -> (Vec<ProxyGroup>, bool) {
     let st = AppState::global(cx).read(cx);
-    (st.groups.clone(), st.tun_enabled)
+    (
+        st.groups.clone(),
+        st.tun_enabled || st.app_flag("sysProxy.enable"),
+    )
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -247,7 +250,7 @@ fn handle_menu(id: &str, cx: &mut App) {
         "show" => actions::show_window(cx),
         "mode-rule" => actions::set_mode("rule", cx),
         "mode-global" => actions::set_mode("global", cx),
-        "toggle-proxy" => actions::toggle_tun(cx),
+        "toggle-proxy" => actions::toggle_connection(cx),
         "restart-core" => actions::restart_core(cx),
         "quit" => actions::shutdown_and_quit(cx),
         _ => {}

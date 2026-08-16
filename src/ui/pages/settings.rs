@@ -42,26 +42,36 @@ impl NyxApp {
         let silent = st.app_flag("silentStart");
         let autocheck = st.app_flag("autoCheckUpdate");
 
-        let connectivity = group(vec![
-            toggle_row(
-                t!("pages.settings.tunMode"),
-                Some(self.gear("gear-tun", SettingsSub::Tun, cx)),
-                Switch::new("set-tun")
-                    .checked(tun)
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_tun(cx))),
-                false,
-            ),
-            toggle_row(
-                t!("pages.settings.systemProxy"),
-                Some(self.gear("gear-sysproxy", SettingsSub::SysProxy, cx)),
-                Switch::new("set-sysproxy")
-                    .checked(sysproxy)
-                    .on_click(cx.listener(|_this, checked: &bool, _, cx| {
-                        crate::app::actions::set_sysproxy(*checked, cx)
-                    })),
-                true,
-            ),
-        ]);
+        let connectivity = v_flex()
+            .w_full()
+            .gap(px(6.))
+            .child(group(vec![
+                toggle_row(
+                    t!("pages.settings.tunMode"),
+                    Some(self.gear("gear-tun", SettingsSub::Tun, cx)),
+                    Switch::new("set-tun")
+                        .checked(tun)
+                        .on_click(cx.listener(|this, _, _, cx| this.toggle_tun(cx))),
+                    false,
+                ),
+                toggle_row(
+                    t!("pages.settings.systemProxy"),
+                    Some(self.gear("gear-sysproxy", SettingsSub::SysProxy, cx)),
+                    Switch::new("set-sysproxy")
+                        .checked(sysproxy)
+                        .on_click(cx.listener(|_this, checked: &bool, _, cx| {
+                            crate::app::actions::set_sysproxy(*checked, cx)
+                        })),
+                    true,
+                ),
+            ]))
+            .child(
+                div()
+                    .px(px(4.))
+                    .text_xs()
+                    .text_color(rgb(MUTED3))
+                    .child(t!("pages.settings.connectivityHint").to_string()),
+            );
 
         let startup = group(vec![
             toggle_row(
@@ -222,6 +232,7 @@ impl NyxApp {
                     None,
                     Switch::new("tun-enable")
                         .checked(enabled)
+                        .disabled(!override_on)
                         .on_click(cx.listener(|this, _, _, cx| this.toggle_tun(cx))),
                     false,
                 ),
@@ -1389,6 +1400,7 @@ impl NyxApp {
         let disable_tray = st.app_flag("disableTray");
         let system_frame = st.app_flag("useWindowFrame");
 
+        let tray_last = !cfg!(target_os = "linux");
         #[cfg_attr(not(target_os = "linux"), allow(unused_mut))]
         let mut rows = vec![
             self.flag_toggle(
@@ -1404,7 +1416,7 @@ impl NyxApp {
                 t!("pages.settings.disableTray"),
                 "disableTray",
                 disable_tray,
-                false,
+                tray_last,
                 cx,
             ),
         ];
@@ -1419,7 +1431,7 @@ impl NyxApp {
                     crate::app::window::request_decorations(window, *checked);
                     this.set_app_flag(serde_json::json!({ "useWindowFrame": *checked }), cx);
                 })),
-            false,
+            true,
         ));
         #[cfg(not(target_os = "linux"))]
         let _ = system_frame;

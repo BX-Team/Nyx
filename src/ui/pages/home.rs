@@ -12,8 +12,8 @@ use rust_i18n::t;
 use serde_json::Value;
 
 use crate::ui::root::{
-    CARD_BG, CARD_BORDER, GOOD, GREEN, MUTED, NyxApp, PANEL_BG, RED, RED_HI, STROKE, TEXT,
-    fmt_bytes, power_on_bg,
+    CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, GOOD, GREEN, MUTED, NyxApp, PANEL_BG, RED,
+    RED_HI, STROKE, SUBTLE, TEXT, fmt_bytes, power_on_bg,
 };
 
 /// Names the cause when the core refused to start, instead of leaving the
@@ -135,7 +135,8 @@ impl NyxApp {
         if st.profiles.is_empty() {
             return self.render_home_empty(cx).into_any_element();
         }
-        let tun = st.tun_enabled;
+        let connected = st.tun_enabled || st.app_flag("sysProxy.enable");
+        let mode = crate::app::actions::connection_mode(cx);
         let total_up = st.total_up;
         let total_down = st.total_down;
         let profile_name = st
@@ -154,7 +155,7 @@ impl NyxApp {
             .connected_since
             .map(|t| t.elapsed().as_secs())
             .unwrap_or(0);
-        let status = if tun {
+        let status = if connected {
             t!("pages.home.connected").to_string()
         } else {
             t!("pages.home.disconnected").to_string()
@@ -170,7 +171,7 @@ impl NyxApp {
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(self.render_topbar(&profile_name, tun, &status, support, cx))
+            .child(self.render_topbar(&profile_name, connected, &status, mode, support, cx))
             .children(failure.map(|(key, detail)| render_core_failure(key, detail)))
             .child(
                 v_flex()
@@ -186,8 +187,8 @@ impl NyxApp {
                             .text_color(rgb(TEXT))
                             .child(status.to_uppercase()),
                     )
-                    .child(self.render_power_button(tun, cx))
-                    .when(tun, |this| {
+                    .child(self.render_power_button(connected, cx))
+                    .when(connected, |this| {
                         this.child(
                             div()
                                 .text_lg()
@@ -255,15 +256,58 @@ impl NyxApp {
             )
     }
 
+    fn render_mode_switch(&self, mode: &str, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        h_flex()
+            .gap(px(2.))
+            .p(px(2.))
+            .rounded(px(8.))
+            .bg(rgb(CONTROL_BG))
+            .border_1()
+            .border_color(rgb(CONTROL_BORDER))
+            .children(
+                [
+                    (
+                        crate::app::actions::MODE_TUN,
+                        t!("pages.home.modeTun").to_string(),
+                    ),
+                    (
+                        crate::app::actions::MODE_SYSPROXY,
+                        t!("pages.home.modeSysProxy").to_string(),
+                    ),
+                ]
+                .into_iter()
+                .map(|(value, label)| {
+                    let on = mode == value;
+                    div()
+                        .id(SharedString::from(format!("home-mode-{value}")))
+                        .px(px(10.))
+                        .py(px(3.))
+                        .rounded(px(6.))
+                        .text_xs()
+                        .cursor_pointer()
+                        .when(on, |t| t.bg(rgb(GREEN)).text_color(rgb(0x0B1014)))
+                        .when(!on, |t| t.text_color(rgb(SUBTLE)))
+                        .child(label)
+                        .on_click(
+                            cx.listener(move |this, _, _, cx| {
+                                this.select_connection_mode(value, cx)
+                            }),
+                        )
+                }),
+            )
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn render_topbar(
         &self,
         profile: &str,
-        tun: bool,
+        connected: bool,
         status: &str,
+        mode: &str,
         support: Option<(String, bool)>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let dot = if tun { GOOD } else { MUTED };
+        let dot = if connected { GOOD } else { MUTED };
         let support_btn = support.map(|(url, is_telegram)| {
             let icon = if is_telegram {
                 Icon::empty().path("icons/telegram.svg")
@@ -307,30 +351,42 @@ impl NyxApp {
             )
             .child(
                 h_flex()
-                    .gap_1()
-                    .children(support_btn)
+                    .gap_2()
+                    .items_center()
+                    .child(self.render_mode_switch(mode, cx))
                     .child(
-                        Button::new("home-refresh")
-                            .ghost()
-                            .small()
-                            .icon(Icon::empty().path("icons/refresh.svg"))
-                            .tooltip(t!("tooltips.refresh").to_string())
-                            .on_click(cx.listener(|this, _, _, cx| this.refresh_subscription(cx))),
-                    )
-                    .child(
-                        Button::new("home-stats-toggle")
-                            .ghost()
-                            .small()
-                            .icon(IconName::ChevronRight)
-                            .tooltip(t!("tooltips.toggleStats").to_string())
-                            .on_click(cx.listener(|this, _, _, cx| this.toggle_stats(cx))),
+                        h_flex()
+                            .gap_1()
+                            .children(support_btn)
+                            .child(
+                                Button::new("home-refresh")
+                                    .ghost()
+                                    .small()
+                                    .icon(Icon::empty().path("icons/refresh.svg"))
+                                    .tooltip(t!("tooltips.refresh").to_string())
+                                    .on_click(
+                                        cx.listener(|this, _, _, cx| this.refresh_subscription(cx)),
+                                    ),
+                            )
+                            .child(
+                                Button::new("home-stats-toggle")
+                                    .ghost()
+                                    .small()
+                                    .icon(IconName::ChevronRight)
+                                    .tooltip(t!("tooltips.toggleStats").to_string())
+                                    .on_click(cx.listener(|this, _, _, cx| this.toggle_stats(cx))),
+                            ),
                     ),
             )
     }
 
-    fn render_power_button(&self, tun: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let icon_color = if tun { 0x06140C } else { MUTED };
-        let inner = if tun {
+    fn render_power_button(
+        &self,
+        connected: bool,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let icon_color = if connected { 0x06140C } else { MUTED };
+        let inner = if connected {
             div().size(px(116.)).rounded_full().bg(power_on_bg())
         } else {
             div()
@@ -340,7 +396,11 @@ impl NyxApp {
                 .border_1()
                 .border_color(rgb(CARD_BORDER))
         };
-        let icon = if tun { IconName::Pause } else { IconName::Play };
+        let icon = if connected {
+            IconName::Pause
+        } else {
+            IconName::Play
+        };
         div()
             .id("power-button")
             .size(px(116.))
@@ -353,7 +413,7 @@ impl NyxApp {
                     .justify_center()
                     .child(Icon::new(icon).large().text_color(rgb(icon_color))),
             )
-            .on_click(cx.listener(|this, _, _, cx| this.toggle_tun(cx)))
+            .on_click(cx.listener(|this, _, _, cx| this.toggle_connection(cx)))
     }
 }
 
