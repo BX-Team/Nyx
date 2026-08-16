@@ -7,9 +7,8 @@ mod backend;
 mod ui;
 
 pub fn run() {
-    // When launched as the Windows service host (`--nyx-service`), run the
-    // dispatcher and exit before touching any GUI.
-    if let Some(code) = backend::maybe_run_as_service_from_args() {
+    // Service host and the elevated install/uninstall helpers run without a GUI.
+    if let Some(code) = nyx_service::maybe_run_service_mode() {
         std::process::exit(code);
     }
 
@@ -26,7 +25,6 @@ pub fn run() {
 
     let app = gpui_platform::application().with_assets(app::assets::Assets);
 
-    // Tidy the data dir (rename legacy config) before anything reads it.
     backend::startup::migrate_data_dir();
     let silent = backend::config::app_config_bool("silentStart");
 
@@ -35,9 +33,7 @@ pub fn run() {
         gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
         ui::theme::apply(cx);
         app::state::AppState::init(cx);
-        // Closing the window hides Nyx to the tray instead of quitting; the tray
-        // keeps the process alive, so don't auto-quit when no window is open.
-        // (Windows hides the native window in place and keeps its own logic.)
+        // Closing the window hides Nyx to the tray; the tray keeps the process alive.
         #[cfg(not(windows))]
         cx.set_quit_mode(gpui::QuitMode::Explicit);
         if !silent {

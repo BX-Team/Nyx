@@ -1,0 +1,26 @@
+[package]
+name = "nyx-sysproxy"
+version = "1.0.0"
+description = "Get/set the OS system proxy on Windows and Linux"
+edition = "2024"
+license = "MIT"
+
+[lib]
+name = "nyx_sysproxy"
+
+[dependencies]
+log = "0.4"
+thiserror = "2"
+url = "2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+dirs = "6"
+
+[target.'cfg(windows)'.dependencies]
+winreg = { version = "0.56", features = ["transactions"] }
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Networking_WinInet",
+    "Win32_NetworkManagement_Rras",
+    "Win32_System_Memory",
+] }

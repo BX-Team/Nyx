@@ -1,21 +1,20 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, img, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled,
+    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, div, img, px, rgb, rgba,
 };
-use gpui_component::{h_flex, v_flex, Icon, IconName, StyledExt};
+use gpui_component::{Icon, IconName, StyledExt, h_flex, v_flex};
 use rust_i18n::t;
 
 use crate::ui::root::{NyxApp, Route};
 use crate::ui::theme::*;
 
-/// Off-state icon tint used throughout the rail (design `#74879a`).
 const RAIL_ICON: u32 = 0x74879A;
 const RAIL_W_COLLAPSED: f32 = 56.;
 const RAIL_W_EXPANDED: f32 = 208.;
 
 impl NyxApp {
-    pub(crate) fn render_rail(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_rail(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let expanded = self.rail_expanded;
         let mode = self.state.read(cx).mode.clone();
         // No profile yet: keep only Home, Profiles, Settings; hide proxy pages.
@@ -142,8 +141,7 @@ impl NyxApp {
             .child(bottom)
     }
 
-    /// The app logo (and wordmark, when expanded) in a dark rounded tile.
-    fn brand_mark(&self) -> impl IntoElement {
+    fn brand_mark(&self) -> impl IntoElement + use<> {
         let logo = img("brand/logo.png").size(px(28.)).rounded(px(7.));
         if self.rail_expanded {
             h_flex()
@@ -166,7 +164,6 @@ impl NyxApp {
         }
     }
 
-    /// A primary destination (active when it matches the current route).
     fn rail_nav(
         &self,
         key: &str,
@@ -199,7 +196,6 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// A bottom action button (mode toggle / sidebar toggle).
     fn rail_action(
         &self,
         key: &str,
@@ -216,8 +212,7 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// Shared rail cell: icon-only when collapsed, icon+label when expanded;
-    /// active state is a faint green wash.
+    /// Shared rail cell: icon-only when collapsed, icon+label when expanded.
     fn rail_cell(&self, icon: Icon, label: impl Into<SharedString>, on: bool) -> impl IntoElement {
         let color = if on { GREEN_HI } else { RAIL_ICON };
         let glyph = icon.size(px(19.)).text_color(rgb(color));

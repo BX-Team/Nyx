@@ -1,18 +1,17 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window,
+    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
 };
-use gpui_component::{h_flex, input::Input, tooltip::Tooltip, v_flex, Icon, IconName, StyledExt};
+use gpui_component::{Icon, IconName, StyledExt, h_flex, input::Input, tooltip::Tooltip, v_flex};
 use rust_i18n::t;
 
 use crate::app::state::{ProxyGroup, ProxyNode};
 use crate::ui::root::{
-    delay_color, NyxApp, CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, GREEN, GREEN_GLOW,
-    GREEN_HI, MUTED, MUTED2, PANEL_BG, SUBTLE, TEXT,
+    CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, GREEN, GREEN_GLOW, GREEN_HI, MUTED, MUTED2,
+    NyxApp, PANEL_BG, SUBTLE, TEXT, delay_color,
 };
 
-/// Short uppercase label for a group's selection strategy.
 fn kind_label(kind: &str) -> String {
     match kind {
         "Selector" => "SELECT".into(),
@@ -29,7 +28,7 @@ impl NyxApp {
         &self,
         _window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> impl IntoElement + use<> {
         let groups = self.state.read(cx).groups.clone();
 
         let focused: Option<SharedString> = self
@@ -118,7 +117,6 @@ impl NyxApp {
                 )
                 .into_any_element()
         } else {
-            // Group list as its own left panel, reading as a selector.
             let list = v_flex()
                 .w(px(228.))
                 .h_full()
@@ -158,13 +156,12 @@ impl NyxApp {
         v_flex().size_full().child(header).child(body)
     }
 
-    /// One entry in the left group list.
     fn render_group_card(
         &self,
         group: &ProxyGroup,
         active: bool,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> impl IntoElement + use<> {
         let name = group.name.clone();
         let now = group.now.clone();
         let count = group.all.len();
@@ -224,8 +221,11 @@ impl NyxApp {
             }))
     }
 
-    /// The 3-up node grid for the focused group.
-    fn render_node_grid(&self, group: &ProxyGroup, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_node_grid(
+        &self,
+        group: &ProxyGroup,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
         let group_name = group.name.to_string();
         let now = group.now.to_string();
 
@@ -270,8 +270,7 @@ impl NyxApp {
             )
     }
 
-    /// Search box + sort-by-latency and alive-only toggles above the node grid.
-    fn render_node_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_node_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let toggle = |id: &'static str, label: String, active: bool| {
             div()
                 .id(SharedString::from(id))
@@ -334,7 +333,7 @@ impl NyxApp {
         node: &ProxyNode,
         now: &str,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> impl IntoElement + use<> {
         let selected = node.name.as_ref() == now;
         let node_name = node.name.to_string();
         let test_group = group.clone();
@@ -425,8 +424,7 @@ impl NyxApp {
     }
 }
 
-/// A group's kind chip (`SELECT`, `URL-TEST`, …).
-fn kind_chip(kind: &str) -> impl IntoElement {
+fn kind_chip(kind: &str) -> impl IntoElement + use<> {
     div()
         .px(px(6.))
         .py(px(2.))
@@ -437,7 +435,7 @@ fn kind_chip(kind: &str) -> impl IntoElement {
         .child(kind_label(kind))
 }
 
-fn seg_pill(label: &str, active: bool) -> impl IntoElement {
+fn seg_pill(label: &str, active: bool) -> impl IntoElement + use<> {
     div()
         .px(px(12.))
         .py(px(5.))

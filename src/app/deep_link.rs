@@ -11,8 +11,8 @@ use crate::backend;
 /// Registers the `nyx://` URI scheme so the OS launches this exe with the URL. Idempotent.
 #[cfg(windows)]
 pub fn register_scheme() {
-    use winreg::enums::HKEY_CURRENT_USER;
     use winreg::RegKey;
+    use winreg::enums::HKEY_CURRENT_USER;
 
     let Ok(exe) = std::env::current_exe() else {
         return;
@@ -32,8 +32,7 @@ pub fn register_scheme() {
     }
 }
 
-/// Linux: install a `.desktop` entry claiming `x-scheme-handler/nyx` and set it
-/// as the default handler. Idempotent.
+/// Linux: install a `.desktop` claiming `x-scheme-handler/nyx`. Idempotent.
 #[cfg(target_os = "linux")]
 pub fn register_scheme() {
     let Ok(exe) = std::env::current_exe() else {
@@ -67,10 +66,8 @@ pub fn register_scheme() {
         .status();
 }
 
-/// Sets `nyx-url.desktop` as the `x-scheme-handler/nyx` handler by editing
-/// `~/.config/mimeapps.list` ourselves. The system `xdg-mime` helper writes
-/// its temp file next to the first `mimeapps.list` it finds, which on NixOS is
-/// a read-only `/nix/store` path, so it fails there.
+/// Edits `~/.config/mimeapps.list` ourselves: `xdg-mime` writes its temp file
+/// beside the first `mimeapps.list` it finds, which on NixOS is read-only.
 #[cfg(target_os = "linux")]
 fn set_default_handler() {
     let Some(path) = dirs::config_dir().map(|d| d.join("mimeapps.list")) else {
@@ -130,20 +127,20 @@ fn upsert_default_application(contents: &str, key: &str, value: &str) -> String 
 #[cfg(not(any(windows, target_os = "linux")))]
 pub fn register_scheme() {}
 
-/// Starts the deep-link drain loop on the gpui main thread, consuming URLs from `rx`.
 pub fn start(rx: Receiver<String>, cx: &mut App) {
-    cx.spawn(async move |cx: &mut AsyncApp| loop {
-        cx.background_executor()
-            .timer(Duration::from_millis(150))
-            .await;
-        while let Ok(url) = rx.try_recv() {
-            cx.update(|cx| handle_url(&url, cx));
+    cx.spawn(async move |cx: &mut AsyncApp| {
+        loop {
+            cx.background_executor()
+                .timer(Duration::from_millis(150))
+                .await;
+            while let Ok(url) = rx.try_recv() {
+                cx.update(|cx| handle_url(&url, cx));
+            }
         }
     })
     .detach();
 }
 
-/// Parses and dispatches a single `nyx://` URL.
 fn handle_url(url: &str, cx: &mut App) {
     let Ok(parsed) = url::Url::parse(url) else {
         log::warn!("[deep-link] failed to parse: {url}");
@@ -156,14 +153,30 @@ fn handle_url(url: &str, cx: &mut App) {
     let params: HashMap<String, String> = parsed.query_pairs().into_owned().collect();
     log::info!("[deep-link] command='{command}' params={params:?}");
 
-    actions::show_window(cx);
     match command.as_str() {
-        "install-config" => install_config(params, cx),
-        other => log::warn!("[deep-link] unknown command '{other}'"),
+        "install-config" => {
+            actions::show_window(cx);
+            install_config(params, cx);
+        }
+        "show" => actions::show_window(cx),
+        "toggle-window" => actions::toggle_window(cx),
+        "toggle-sysproxy" => actions::toggle_sysproxy(cx),
+        "toggle-tun" => actions::toggle_tun(cx),
+        "mode" => match params.get("value").map(String::as_str) {
+            Some("rule") => actions::set_mode("rule", cx),
+            Some("global") => actions::set_mode("global", cx),
+            Some("direct") => actions::set_mode("direct", cx),
+            other => log::warn!("[deep-link] mode: bad value {other:?}"),
+        },
+        "restart" => actions::restart_app(cx),
+        "quit" => actions::shutdown_and_quit(cx),
+        other => {
+            log::warn!("[deep-link] unknown command '{other}'");
+            actions::show_window(cx);
+        }
     }
 }
 
-/// Adds a remote profile from `nyx://install-config?url=…` and activates it.
 fn install_config(params: HashMap<String, String>, cx: &mut App) {
     let Some(config_url) = params.get("url").cloned() else {
         log::warn!("[deep-link] install-config: missing 'url'");

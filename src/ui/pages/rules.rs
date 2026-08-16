@@ -1,22 +1,23 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window,
+    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
 };
 use gpui_component::{
+    Disableable, Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     h_flex,
     input::Input,
     select::Select,
     tooltip::Tooltip,
-    v_flex, Disableable, Icon, IconName, Sizable, StyledExt,
+    v_flex,
 };
 use rust_i18n::t;
 
 use crate::app::state::Rule;
 use crate::ui::root::{
-    NyxApp, CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, DIVIDER, GREEN, GREEN_HI, MUTED2,
-    MUTED3, MUTED4, RED, RED_HI, SUBTLE, TEXT,
+    CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, DIVIDER, GREEN, GREEN_HI, MUTED2, MUTED3,
+    MUTED4, NyxApp, RED, RED_HI, SUBTLE, TEXT,
 };
 
 /// Rule types offered by the smart editor's type picker (mihomo rule set).
@@ -56,7 +57,6 @@ pub(crate) const RULE_TYPES: &[&str] = &[
     "MATCH",
 ];
 
-/// Example payload placeholder for a given rule type in the "add rule" form.
 pub(crate) fn rule_example(kind: &str) -> &'static str {
     match kind {
         "DOMAIN" => "example.com",
@@ -113,8 +113,7 @@ pub(crate) fn rule_example(kind: &str) -> &'static str {
     }
 }
 
-/// Reconstructs the rule string for a subscription rule (matches the override
-/// `delete` format), e.g. `DOMAIN-SUFFIX,example.com,DIRECT`.
+/// Rebuilds a subscription rule string in the override `delete` format.
 fn rule_to_string(r: &Rule) -> String {
     if r.kind.as_ref() == "MATCH" {
         format!("MATCH,{}", r.proxy)
@@ -125,7 +124,6 @@ fn rule_to_string(r: &Rule) -> String {
     }
 }
 
-/// Policy category derived from a rule's target.
 #[derive(Clone, Copy, PartialEq)]
 enum Policy {
     Proxy,
@@ -146,7 +144,6 @@ fn policy_of(r: &Rule) -> Policy {
     }
 }
 
-/// Type-column color, keyed off the rule's policy (mirrors the mockup).
 fn type_color(p: Policy) -> u32 {
     match p {
         Policy::Match => MUTED3,
@@ -156,7 +153,6 @@ fn type_color(p: Policy) -> u32 {
     }
 }
 
-/// Policy dot + text color.
 fn policy_colors(p: Policy) -> (u32, u32) {
     match p {
         Policy::Direct => (0x8493A1, SUBTLE),
@@ -169,7 +165,7 @@ const COL_TYPE: f32 = 170.;
 const COL_POLICY: f32 = 150.;
 
 impl NyxApp {
-    pub(crate) fn render_rules(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_rules(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let st = self.state.read(cx);
         let rules = st.rules.clone();
         let mode = st.mode.clone();
@@ -273,8 +269,7 @@ impl NyxApp {
         v_flex().size_full().child(header).child(table)
     }
 
-    /// The MRS converter modal: pick a `.mrs` file + behavior, write a decoded ruleset beside it.
-    pub(crate) fn render_mrs_modal(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_mrs_modal(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let input_name = self
             .mrs_input
             .as_ref()
@@ -388,7 +383,6 @@ impl NyxApp {
             )
     }
 
-    /// The smart rule-override editor (opened from the Rules page edit button).
     pub(crate) fn render_rule_editor(
         &self,
         _window: &mut Window,
@@ -555,7 +549,6 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// A custom (prepend/append) rule row with a remove button.
     fn rule_custom_row(
         &self,
         rule: String,
@@ -619,7 +612,6 @@ impl NyxApp {
             .into_any_element()
     }
 
-    /// A read-only subscription rule row with a delete/restore toggle.
     fn rule_base_row(
         &self,
         r: &Rule,
@@ -696,8 +688,7 @@ impl NyxApp {
     }
 }
 
-/// A small section header inside the rule editor list.
-fn section_label(label: &str, count: usize) -> impl IntoElement {
+fn section_label(label: &str, count: usize) -> impl IntoElement + use<> {
     h_flex()
         .items_center()
         .gap_2()

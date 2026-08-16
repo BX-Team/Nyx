@@ -6,10 +6,9 @@ mod proxies;
 mod rules;
 mod settings;
 
-pub(crate) use rules::{rule_example, RULE_TYPES};
+pub(crate) use rules::{RULE_TYPES, rule_example};
 
-/// Converts a [`gpui::Keystroke`] into a `global-hotkey` accelerator string
-/// (e.g. `Ctrl+Shift+KeyT`), or `None` if it can't be mapped.
+/// A [`gpui::Keystroke`] as a `global-hotkey` accelerator (`Ctrl+Shift+KeyT`).
 pub(crate) fn keystroke_to_accel(ks: &gpui::Keystroke) -> Option<String> {
     let code = key_to_code(&ks.key)?;
     let m = &ks.modifiers;
@@ -34,8 +33,7 @@ pub(crate) fn keystroke_to_accel(ks: &gpui::Keystroke) -> Option<String> {
     Some(accel)
 }
 
-/// Maps a gpui logical key (e.g. `t`, `1`, `f5`, `-`) to a W3C `Code` name
-/// (`KeyT`, `Digit1`, `F5`, `Minus`).
+/// A gpui logical key to its W3C `Code` name (`t` → `KeyT`, `1` → `Digit1`).
 fn key_to_code(key: &str) -> Option<String> {
     if key.len() == 1 {
         let c = key.chars().next().unwrap();
@@ -60,12 +58,11 @@ fn key_to_code(key: &str) -> Option<String> {
             _ => None,
         };
     }
-    if let Some(n) = key.strip_prefix('f').or_else(|| key.strip_prefix('F')) {
-        if let Ok(num) = n.parse::<u8>() {
-            if (1..=24).contains(&num) {
-                return Some(format!("F{num}"));
-            }
-        }
+    if let Some(n) = key.strip_prefix('f').or_else(|| key.strip_prefix('F'))
+        && let Ok(num) = n.parse::<u8>()
+        && (1..=24).contains(&num)
+    {
+        return Some(format!("F{num}"));
     }
     match key {
         "space" => Some("Space".into()),

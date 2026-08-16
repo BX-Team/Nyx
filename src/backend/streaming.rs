@@ -2,18 +2,14 @@ use futures_util::StreamExt;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::backend::manager;
+use crate::backend::core;
 
-/// One update produced by the streaming loops.
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
-    /// Raw payload of `GET /connections`.
     Connections(serde_json::Value),
-    /// One parsed log line `{ "type": <level>, "payload": <msg> }`.
     Log(serde_json::Value),
 }
 
-/// Polls `/connections` once per second and forwards each snapshot.
 pub async fn stream_connections(tx: UnboundedSender<StreamEvent>) {
     let client = reqwest::Client::builder()
         .no_proxy()
@@ -25,7 +21,7 @@ pub async fn stream_connections(tx: UnboundedSender<StreamEvent>) {
         if tx.is_closed() {
             return;
         }
-        let url = manager::controller_url();
+        let url = core::controller_url();
         if url.is_empty() {
             tokio::time::sleep(Duration::from_secs(1)).await;
             continue;
@@ -33,10 +29,10 @@ pub async fn stream_connections(tx: UnboundedSender<StreamEvent>) {
         let connections_url = format!("{url}/connections");
         match client.get(&connections_url).send().await {
             Ok(resp) => {
-                if let Ok(data) = resp.json::<serde_json::Value>().await {
-                    if tx.send(StreamEvent::Connections(data)).is_err() {
-                        return;
-                    }
+                if let Ok(data) = resp.json::<serde_json::Value>().await
+                    && tx.send(StreamEvent::Connections(data)).is_err()
+                {
+                    return;
                 }
             }
             Err(e) => log::debug!("[streaming] connections poll error: {e}"),
@@ -51,7 +47,7 @@ pub async fn stream_logs(tx: UnboundedSender<StreamEvent>) {
         if tx.is_closed() {
             return;
         }
-        let url = manager::controller_url();
+        let url = core::controller_url();
         if url.is_empty() {
             tokio::time::sleep(Duration::from_secs(1)).await;
             continue;
@@ -81,10 +77,10 @@ pub async fn stream_logs(tx: UnboundedSender<StreamEvent>) {
                             if line.is_empty() {
                                 continue;
                             }
-                            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line) {
-                                if tx.send(StreamEvent::Log(entry)).is_err() {
-                                    return;
-                                }
+                            if let Ok(entry) = serde_json::from_str::<serde_json::Value>(&line)
+                                && tx.send(StreamEvent::Log(entry)).is_err()
+                            {
+                                return;
                             }
                         }
                     }

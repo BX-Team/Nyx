@@ -57,6 +57,8 @@ pages:
     emptyTitle: No profile yet
     emptyBody: Add a subscription or local config file to start using Nyx.
     emptyCta: Add profile
+    modeTun: TUN
+    modeSysProxy: System proxy
   proxies:
     testGroup: Test
     refresh: Refresh
@@ -91,6 +93,9 @@ pages:
     activate: Activate
     count: "%{n} subscriptions"
     updateAll: Update all
+    menuSubscription: Subscription settings
+    menuEditConfig: Edit config
+    menuDelete: Delete
     add: Add
     importFailed: Import failed
     addTitle: Add subscription
@@ -186,16 +191,6 @@ pages:
     corePrerelease: Prerelease
     coreUpdate: Update core
     svcSection: System service
-    tunSection: TUN access
-    tunStatus: TUN privileges
-    tunGranted: Granted
-    tunNotGranted: Not granted
-    tunGrant: Grant…
-    tunHint: "TUN mode needs network privileges. Click Grant to apply them via pkexec, or run manually: sudo setcap cap_net_admin,cap_net_bind_service,cap_net_raw=+ep $(which nyx). Restart Nyx to apply."
-    tunHintMac: TUN on macOS requires launching Nyx as root.
-    tunHintNixos: "On NixOS grant TUN declaratively: set programs.nyx.tunMode = true, rebuild, then relaunch Nyx — the nyx command resolves to the capability wrapper. A runtime setcap doesn't persist here."
-    tunGrantedToast: TUN privileges granted — restart Nyx to apply.
-    tunGrantFailed: Failed to grant TUN privileges
     svcStatus: Status
     svcRunning: Running
     svcStopped: Stopped
@@ -207,6 +202,10 @@ pages:
     svcStart: Start
     svcStop: Stop
     svcRestart: Restart
+    svcStale: Needs repair
+    svcRepair: Repair…
+    svcHint: Nyx runs the mihomo core through a system service, which is what lets TUN mode create a network device. Installing, starting, stopping or removing it requires administrator rights.
+    svcManagedHint: The service comes from your system configuration, so Nyx neither installs nor removes it. Manage it there instead.
     sniffer: Sniffer
     snifferOverrideDest: Override destination
     snifferForceDns: Force DNS mapping
@@ -260,9 +259,11 @@ pages:
     spBypass: Bypass
     alwaysOnTop: Always on top
     disableTray: Disable tray icon
+    systemWindowFrame: System window frame
     trayNodeInfo: Show node info in tray
     takeOverDns: Take over DNS
     takeOverSniffer: Take over sniffer
+    connectivityHint: TUN and the system proxy cannot run at the same time; turning one on turns the other off.
     overrideSettings: Override subscription
     overrideHint: When off, the active subscription's values are used (or defaults if it provides none). Turn on to force these settings.
     networkDetection: Network change detection
@@ -276,6 +277,8 @@ pages:
     scQuitKeepCore: Quit (keep core)
     scHint: Click a shortcut, then press the keys. Esc cancels, Backspace clears.
     scPress: Press keys…
+    scWaylandTitle: Global shortcuts are not available on Wayland.
+    scWaylandHint: 'Wayland has no protocol for global key grabs — the compositor owns them. Bind these links in your compositor config instead, launching Nyx with the link as its argument. niri example: Mod+Shift+T { spawn "nyx" "nyx://toggle-tun"; }'
 tooltips:
   refresh: Refresh
   toggleStats: Toggle statistics
@@ -284,9 +287,6 @@ tooltips:
   testLatency: Test latency
   activate: Activate
   update: Update
-  edit: Edit
-  editInfo: Edit info
-  delete: Delete
   configure: Configure
   unfix: Reset to auto
   restartConnections: Restart connections
@@ -308,11 +308,8 @@ onboarding:
   profileBody: Import a subscription URL or a local config file — this is your proxy source.
   profileHint: Use the “Add” button at the top right.
   serviceTitle: Install the service
-  serviceBody: The background service lets Nyx manage the core and TUN mode without admin prompts.
-  serviceHint: Open Mihomo settings and install the service.
-  tunTitle: Choose how to route traffic
-  tunBody: "Two ways to route traffic. System proxy needs no privileges but only covers apps that honor the desktop/proxy settings. TUN/VPN mode covers the whole device but needs network privileges for the core."
-  tunHint: "On GNOME or Windows the system proxy is usually enough; on other Linux desktops use TUN for full coverage."
+  serviceBody: "Nyx runs the mihomo core through a system service — that is what gives TUN mode the network privileges it needs. Installing it asks for your password once."
+  serviceHint: "Open Settings → Mihomo → System service and install it."
   proxyTitle: Turn on the proxy
   proxyBody: Flip the main switch on the Home screen to route your traffic.
   proxyHint: Use the main toggle on Home.
@@ -328,5 +325,11 @@ tray:
   connect: Connect
   disconnect: Disconnect
   restartCore: Restart core
-  quitNoCore: Quit without core
   quit: Quit
+core:
+  failure:
+    coreMissing: The mihomo core is unavailable
+    configInvalid: The profile was rejected by the core
+    serviceUnavailable: The Nyx service is unavailable
+    timeout: The core did not start in time
+    other: The core could not be started

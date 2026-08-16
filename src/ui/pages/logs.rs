@@ -1,18 +1,17 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    div, px, rgb, rgba, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled,
+    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, div, px, rgb, rgba,
 };
-use gpui_component::{h_flex, v_flex, Icon, StyledExt};
+use gpui_component::{Icon, StyledExt, h_flex, v_flex};
 use rust_i18n::t;
 
 use crate::app::state::LogLine;
 use crate::ui::root::{
-    LogFilter, NyxApp, AMBER, BLUE, CARD_BG, CARD_BORDER, GREEN, MUTED2, MUTED4, PANEL_BG, RED,
+    AMBER, BLUE, CARD_BG, CARD_BORDER, GREEN, LogFilter, MUTED2, MUTED4, NyxApp, PANEL_BG, RED,
     SUBTLE, TEXT,
 };
 
-/// Visual treatment for a log level: chip text, chip colour, message colour.
 fn level_style(level: &str) -> (&'static str, u32, u32) {
     match level {
         "warning" | "warn" => ("WARN", AMBER, 0xE6C98A),
@@ -32,7 +31,7 @@ fn matches(filter: LogFilter, level: &str) -> bool {
 }
 
 impl NyxApp {
-    pub(crate) fn render_logs(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    pub(crate) fn render_logs(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let filter = self.logs_filter;
         let st = self.state.read(cx);
         // Cap rendered rows (no virtualization) — newest 400 after filtering.
@@ -48,8 +47,7 @@ impl NyxApp {
             .rev()
             .collect();
 
-        // Autoscroll on new lines, keyed off monotonic `log_seq` (not `logs.len()`,
-        // which saturates at the ring-buffer cap).
+        // Autoscroll keys off monotonic `log_seq`, since `logs.len()` saturates at the cap.
         let seq = st.log_seq;
         if self.logs_seen.get() != seq {
             self.logs_seen.set(seq);
@@ -117,8 +115,7 @@ impl NyxApp {
         v_flex().size_full().child(header).child(console)
     }
 
-    /// The Все / Info / Warn / Error level filter.
-    fn logs_segmented(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn logs_segmented(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let cur = self.logs_filter;
         let pill = |label: String, f: LogFilter, cx: &mut Context<Self>| {
             div()

@@ -1,15 +1,9 @@
 use anyhow::Result;
 use mihomo_rs::{Channel, ConfigManager, VersionManager};
 use once_cell::sync::Lazy;
-use parking_lot::Mutex;
-use std::path::PathBuf;
 use tokio::sync::Mutex as AsyncMutex;
 
-static CONTROLLER_URL: Lazy<Mutex<String>> = Lazy::new(|| Mutex::new(String::new()));
-
 static REBUILD_LOCK: Lazy<AsyncMutex<()>> = Lazy::new(|| AsyncMutex::new(()));
-
-static CORE_CHILD: Lazy<Mutex<Option<std::process::Child>>> = Lazy::new(|| Mutex::new(None));
 
 fn vm() -> Result<VersionManager> {
     VersionManager::with_home(crate::backend::dirs::data_dir()).map_err(|e| anyhow::anyhow!("{e}"))
@@ -25,146 +19,7 @@ fn version_matches_channel(version: &str, want_alpha: bool) -> bool {
         || lower.contains("preview")
         || lower.contains("pre")
         || lower.contains("nightly");
-    if want_alpha {
-        is_alpha
-    } else {
-        !is_alpha
-    }
-}
-
-fn pid_file() -> PathBuf {
-    crate::backend::dirs::data_dir().join("mihomo.pid")
-}
-
-async fn spawn_mihomo(binary: &std::path::Path, config: &std::path::Path) -> Result<u32> {
-    let mut cmd = std::process::Command::new(binary);
-    cmd.arg("-d")
-        .arg(
-            config
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("config has no parent dir"))?,
-        )
-        .arg("-f")
-        .arg(config)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
-    }
-
-    // Let the core inherit CAP_NET_ADMIN for TUN; no-op unless Nyx holds the caps.
-    #[cfg(target_os = "linux")]
-    crate::backend::elevation::raise_net_ambient_caps();
-
-    let child = cmd
-        .spawn()
-        .map_err(|e| anyhow::anyhow!("failed to spawn mihomo: {e}"))?;
-    let pid = child.id();
-    *CORE_CHILD.lock() = Some(child);
-
-    let pf = pid_file();
-    if let Some(p) = pf.parent() {
-        let _ = std::fs::create_dir_all(p);
-    }
-    tokio::fs::write(&pf, pid.to_string())
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to write PID file: {e}"))?;
-
-    Ok(pid)
-}
-
-/// `Some` once the core we spawned has exited — a config or binary problem
-/// usually kills it within a second, long before the readiness timeout.
-fn core_exit_status() -> Option<std::process::ExitStatus> {
-    CORE_CHILD
-        .lock()
-        .as_mut()
-        .and_then(|child| child.try_wait().ok().flatten())
-}
-
-/// Waits briefly for the killed core to be reaped, then drops the handle.
-async fn reap_core_child() {
-    for _ in 0..20 {
-        let exited = match CORE_CHILD.lock().as_mut() {
-            Some(child) => !matches!(child.try_wait(), Ok(None)),
-            None => true,
-        };
-        if exited {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    CORE_CHILD.lock().take();
-}
-
-async fn stop_mihomo() -> Result<()> {
-    let pf = pid_file();
-    if !pf.exists() {
-        reap_core_child().await;
-        return Ok(());
-    }
-    let content = match tokio::fs::read_to_string(&pf).await {
-        Ok(s) => s,
-        Err(_) => return Ok(()),
-    };
-    let pid: u32 = match content.trim().parse() {
-        Ok(p) => p,
-        Err(_) => {
-            let _ = tokio::fs::remove_file(&pf).await;
-            return Ok(());
-        }
-    };
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        let _ = std::process::Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .creation_flags(0x08000000)
-            .output();
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        #[cfg(target_os = "linux")]
-        let is_core = match std::fs::read_to_string(format!("/proc/{pid}/comm")) {
-            Ok(comm) => {
-                let comm = comm.trim();
-                comm.contains("mihomo") || comm == system_core_name().await.unwrap_or_default()
-            }
-            Err(_) => false,
-        };
-        #[cfg(not(target_os = "linux"))]
-        let is_core = true;
-        if is_core {
-            let _ = std::process::Command::new("kill")
-                .args(["-TERM", &pid.to_string()])
-                .output();
-        }
-    }
-
-    reap_core_child().await;
-    let _ = tokio::fs::remove_file(&pf).await;
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-async fn system_core_name() -> Option<String> {
-    let cfg = tokio::fs::read_to_string(crate::backend::dirs::app_config_path())
-        .await
-        .ok()?;
-    let val: serde_yaml::Value = serde_yaml::from_str(&cfg).ok()?;
-    let path = val.get("systemCorePath")?.as_str()?;
-    std::path::Path::new(path)
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+    if want_alpha { is_alpha } else { !is_alpha }
 }
 
 async fn read_current_profile_id() -> Option<String> {
@@ -273,19 +128,19 @@ async fn read_mihomo_overrides() -> String {
     if content.is_empty() {
         return content;
     }
-    if let Ok(mut val) = serde_yaml::from_str::<serde_yaml::Value>(&content) {
-        if let serde_yaml::Value::Mapping(ref mut map) = val {
-            let before = map.len();
-            map.retain(|_, v| !v.is_null());
-            if map.len() != before {
-                log::info!(
-                    "[read_mihomo_overrides] cleaned {} stale null entries from mihomo.yaml",
-                    before - map.len()
-                );
-                let clean = serde_yaml::to_string(&val).unwrap_or_default();
-                let _ = tokio::fs::write(&path, &clean).await;
-                return clean;
-            }
+    if let Ok(mut val) = serde_yaml::from_str::<serde_yaml::Value>(&content)
+        && let serde_yaml::Value::Mapping(ref mut map) = val
+    {
+        let before = map.len();
+        map.retain(|_, v| !v.is_null());
+        if map.len() != before {
+            log::info!(
+                "[read_mihomo_overrides] cleaned {} stale null entries from mihomo.yaml",
+                before - map.len()
+            );
+            let clean = serde_yaml::to_string(&val).unwrap_or_default();
+            let _ = tokio::fs::write(&path, &clean).await;
+            return clean;
         }
     }
     content
@@ -298,18 +153,17 @@ fn merge_yaml(base: &str, patch: &str) -> String {
         serde_yaml::from_str(base).unwrap_or(serde_yaml::Value::Mapping(Default::default()))
     };
 
-    if !patch.is_empty() {
-        if let Ok(patch_val) = serde_yaml::from_str::<serde_yaml::Value>(patch) {
-            deep_merge_yaml(&mut base_val, patch_val);
-        }
+    if !patch.is_empty()
+        && let Ok(patch_val) = serde_yaml::from_str::<serde_yaml::Value>(patch)
+    {
+        deep_merge_yaml(&mut base_val, patch_val);
     }
 
     serde_yaml::to_string(&base_val).unwrap_or_default()
 }
 
-/// Layers the app's override block onto a section (`dns`/`sniffer`/`tun`). With
-/// `force`, the app block wins; otherwise a non-empty profile section is kept.
-/// `tun` always retains its `enable` key (the master switch).
+/// Layers the app's override onto a section. With `force` the app wins; else a
+/// non-empty profile section is kept. `tun` always keeps its `enable` key.
 fn apply_section_policy(
     profile: &serde_yaml::Value,
     overrides: &mut serde_yaml::Value,
@@ -327,7 +181,7 @@ fn apply_section_policy(
     if !profile_has {
         return;
     }
-    let serde_yaml::Value::Mapping(ref mut map) = overrides else {
+    let serde_yaml::Value::Mapping(map) = overrides else {
         return;
     };
     let key = serde_yaml::Value::String(section.to_string());
@@ -343,30 +197,40 @@ fn apply_section_policy(
 }
 
 fn deep_merge_yaml(base: &mut serde_yaml::Value, patch: serde_yaml::Value) {
-    if let (serde_yaml::Value::Mapping(ref mut base_map), serde_yaml::Value::Mapping(patch_map)) =
+    if let (serde_yaml::Value::Mapping(base_map), serde_yaml::Value::Mapping(patch_map)) =
         (base, patch)
     {
         for (k, v) in patch_map {
             if v.is_null() {
                 continue;
             }
-            if v.is_mapping() {
-                if let Some(existing) = base_map.get_mut(&k) {
-                    if existing.is_mapping() {
-                        deep_merge_yaml(existing, v);
-                        continue;
-                    }
-                }
+            if v.is_mapping()
+                && let Some(existing) = base_map.get_mut(&k)
+                && existing.is_mapping()
+            {
+                deep_merge_yaml(existing, v);
+                continue;
             }
             base_map.insert(k, v);
         }
     }
 }
 
-fn ensure_external_controller_in_yaml(
-    yaml: &str,
-    preferred_addr: Option<&str>,
-) -> (String, String) {
+/// Fixed, so the app and the core agree across restarts without persisting it.
+const DEFAULT_CONTROLLER_PORT: u16 = 9097;
+
+fn free_controller_port() -> u16 {
+    let taken = |p: u16| std::net::TcpListener::bind(("127.0.0.1", p)).is_err();
+    if !taken(DEFAULT_CONTROLLER_PORT) {
+        return DEFAULT_CONTROLLER_PORT;
+    }
+    log::warn!("[core] port {DEFAULT_CONTROLLER_PORT} is busy, picking another");
+    (DEFAULT_CONTROLLER_PORT + 1..DEFAULT_CONTROLLER_PORT + 100)
+        .find(|p| !taken(*p))
+        .unwrap_or(DEFAULT_CONTROLLER_PORT)
+}
+
+fn ensure_external_controller_in_yaml(yaml: &str) -> (String, String) {
     let mut val: serde_yaml::Value = if yaml.is_empty() {
         serde_yaml::Value::Mapping(Default::default())
     } else {
@@ -382,16 +246,7 @@ fn ensure_external_controller_in_yaml(
     let addr = match existing_addr {
         Some(a) => a,
         None => {
-            let a = if let Some(p) = preferred_addr.filter(|s| !s.is_empty()) {
-                p.trim_start_matches("http://")
-                    .trim_start_matches("https://")
-                    .to_string()
-            } else {
-                let port = (9090u16..9190)
-                    .find(|p| std::net::TcpListener::bind(("127.0.0.1", *p)).is_ok())
-                    .unwrap_or(9090);
-                format!("127.0.0.1:{port}")
-            };
+            let a = format!("127.0.0.1:{}", free_controller_port());
             if let serde_yaml::Value::Mapping(ref mut map) = val {
                 map.insert(
                     serde_yaml::Value::String("external-controller".into()),
@@ -460,14 +315,7 @@ pub async fn rebuild_config() -> Result<String> {
         base_merged
     };
 
-    let running_url = CONTROLLER_URL.lock().clone();
-    let preferred_addr = if running_url.is_empty() {
-        None
-    } else {
-        Some(running_url.as_str())
-    };
-
-    let (final_yaml, url) = ensure_external_controller_in_yaml(&merged, preferred_addr);
+    let (final_yaml, url) = ensure_external_controller_in_yaml(&merged);
 
     if let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(&final_yaml) {
         let tun_enable = val.get("tun").and_then(|t| t.get("enable"));
@@ -573,145 +421,6 @@ pub async fn install_core_for_core_type(core: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn start_core() -> Result<String> {
-    log::info!("[start_core] stopping any existing core...");
-    stop_core().await.ok();
-
-    let app_cfg = tokio::fs::read_to_string(crate::backend::dirs::app_config_path())
-        .await
-        .ok()
-        .and_then(|s| serde_yaml::from_str::<serde_yaml::Value>(&s).ok())
-        .unwrap_or_default();
-    let core_type = app_cfg
-        .get("core")
-        .and_then(|v| v.as_str())
-        .unwrap_or("mihomo");
-
-    let binary = if core_type == "system" {
-        let system_path = app_cfg
-            .get("systemCorePath")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| anyhow::anyhow!("system core path is not configured"))?;
-        let p = std::path::PathBuf::from(system_path);
-        if !p.exists() {
-            return Err(anyhow::anyhow!(
-                "system core does not exist: {}",
-                p.display()
-            ));
-        }
-        p
-    } else {
-        ensure_core_installed(core_type).await?;
-        let vm = vm()?;
-        vm.get_binary_path(None)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?
-    };
-    log::info!("[start_core] binary: {:?}", binary);
-
-    let url = rebuild_config().await?;
-    log::info!("[start_core] rebuild_config returned url={url}");
-
-    save_controller_to_overrides(&url).await;
-
-    let cm = cm()?;
-    let config = cm
-        .get_current_path()
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-    log::info!("[start_core] config path: {:?}", config);
-
-    let secret = extract_secret_from_config(&config).await;
-    if secret.is_some() {
-        log::info!("[start_core] extracted secret from config (non-empty)");
-    }
-
-    spawn_mihomo(&binary, &config).await?;
-    log::info!("[start_core] mihomo process started");
-
-    *CONTROLLER_URL.lock() = url.clone();
-    crate::backend::api::init_client(&url, secret)?;
-    log::info!("[start_core] API client initialised");
-
-    if !wait_for_core_ready(&url).await {
-        return Err(anyhow::anyhow!(
-            "mihomo was spawned but its API never came up — the binary or profile config is likely broken"
-        ));
-    }
-
-    log::info!("[start_core] mihomo ready at {url}");
-    Ok(url)
-}
-
-async fn extract_secret_from_config(config_path: &std::path::Path) -> Option<String> {
-    let content = tokio::fs::read_to_string(config_path).await.ok()?;
-    let val: serde_yaml::Value = serde_yaml::from_str(&content).ok()?;
-    val.get("secret")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-}
-
-async fn save_controller_to_overrides(url: &str) {
-    use crate::backend::dirs;
-    let addr = url
-        .trim_start_matches("http://")
-        .trim_start_matches("https://")
-        .to_string();
-    let path = dirs::controled_mihomo_config_path();
-    let mut val: serde_yaml::Value = if path.exists() {
-        tokio::fs::read_to_string(&path)
-            .await
-            .ok()
-            .and_then(|s| serde_yaml::from_str(&s).ok())
-            .unwrap_or(serde_yaml::Value::Mapping(Default::default()))
-    } else {
-        serde_yaml::Value::Mapping(Default::default())
-    };
-    if let serde_yaml::Value::Mapping(ref mut map) = val {
-        map.insert(
-            serde_yaml::Value::String("external-controller".into()),
-            serde_yaml::Value::String(addr),
-        );
-    }
-    let _ = tokio::fs::write(&path, serde_yaml::to_string(&val).unwrap_or_default()).await;
-}
-
-pub async fn stop_core() -> Result<()> {
-    #[cfg(windows)]
-    if crate::backend::service::service_status().await == Ok("running".to_string()) {
-        log::info!("[stop_core] mihomo relies on background service, skipping local stop");
-        return Ok(());
-    }
-
-    log::info!("[stop_core] stopping mihomo...");
-    match stop_mihomo().await {
-        Ok(_) => log::info!("[stop_core] mihomo stopped"),
-        Err(e) => log::warn!("[stop_core] stop error (may be expected): {e}"),
-    }
-    Ok(())
-}
-
-pub async fn restart_core() -> Result<String> {
-    log::info!("[restart_core] restarting...");
-    stop_core().await.ok();
-    let result = start_core().await;
-    match &result {
-        Ok(url) => log::info!("[restart_core] restarted successfully at {url}"),
-        Err(e) => log::error!("[restart_core] failed: {e}"),
-    }
-    result
-}
-
-pub fn controller_url() -> String {
-    CONTROLLER_URL.lock().clone()
-}
-
-pub fn set_controller_url(url: String) {
-    *CONTROLLER_URL.lock() = url;
-}
-
 pub async fn core_installed() -> bool {
     match vm() {
         Ok(vm) => vm.get_binary_path(None).await.is_ok(),
@@ -730,25 +439,4 @@ pub async fn get_installed_version() -> Result<String> {
         .next()
         .map(|v| v.version)
         .ok_or_else(|| anyhow::anyhow!("no installed versions"))
-}
-
-async fn wait_for_core_ready(url: &str) -> bool {
-    let version_url = format!("{url}/version");
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .timeout(std::time::Duration::from_secs(2))
-        .build()
-        .unwrap_or_default();
-    for _ in 0..50 {
-        if client.get(&version_url).send().await.is_ok() {
-            return true;
-        }
-        if let Some(status) = core_exit_status() {
-            log::warn!("mihomo exited right after start ({status})");
-            return false;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    }
-    log::warn!("mihomo did not become ready within 10 seconds");
-    false
 }

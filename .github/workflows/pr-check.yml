@@ -2,7 +2,9 @@ name: PR Check
 
 on:
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
+
+permissions: {}
 
 concurrency:
   group: pr-check-${{ github.event.pull_request.number || github.ref }}
@@ -10,50 +12,255 @@ concurrency:
 
 env:
   CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
   RUST_BACKTRACE: short
 
 jobs:
-  check:
-    name: Check (${{ matrix.target }})
+  prepare:
+    name: Resolve the version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      rpm_version: ${{ steps.resolve.outputs.rpm_version }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Derive the dev version
+        id: resolve
+        env:
+          NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          base="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          if [ -z "$base" ]; then
+            echo "::error::could not read the version from Cargo.toml"
+            exit 1
+          fi
+          version="${base%%-*}-dev.pr${NUMBER}.${HEAD_SHA:0:7}"
+          {
+            echo "version=$version"
+            echo "rpm_version=${version//-/\~}"
+          } >> "$GITHUB_OUTPUT"
+
+  format:
+    name: Formatting
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+
+  lint:
+    name: Lint (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
+          - name: linux
+            os: ubuntu-latest
+          - name: windows
+            os: windows-latest
     steps:
-      - name: Checkout repository
+      - name: Check out the repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      # gpui (X11/Wayland/Vulkan/font-kit) + tray-icon (GTK/appindicator/xdo).
-      - name: Install Linux dependencies
+      - name: Install the Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libgtk-3-dev libxdo-dev libayatana-appindicator3-dev \
+            libgtk-3-dev libxdo-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
             libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
             libfontconfig1-dev libfreetype6-dev \
             libvulkan-dev mesa-vulkan-drivers
 
-      - name: Install Rust toolchain
+      - name: Install the Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
-          components: clippy, rustfmt
+          components: clippy
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
+        with:
+          key: lint-${{ matrix.name }}
 
-      - name: Cargo format check
-        run: cargo fmt --check
+      - name: Lint with clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-      - name: Cargo check
-        run: cargo check --target ${{ matrix.target }}
+  build:
+    name: Build (${{ matrix.name }})
+    needs: [prepare]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+          - name: windows
+            os: windows-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      - name: Cargo clippy
-        run: cargo clippy --target ${{ matrix.target }} -- -D warnings
+      - name: Install the Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libxdo-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libfontconfig1-dev libfreetype6-dev \
+            libvulkan-dev mesa-vulkan-drivers
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: build-${{ matrix.name }}
+
+      - name: Stamp the dev version into Cargo.toml and Cargo.lock
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          sed -i "0,/^version = \".*\"$/s//version = \"$VERSION\"/" Cargo.toml
+          sed -i '/^name = "nyx"$/,/^version = / s/^version = ".*/version = "'"$VERSION"'"/' Cargo.lock
+          grep -q "^version = \"$VERSION\"$" Cargo.toml
+
+      - name: Build the release binary
+        run: cargo build --release --locked
+
+      - name: Install the packaging tools
+        if: runner.os == 'Linux'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-generate-rpm
+
+      - name: Package for Linux
+        if: runner.os == 'Linux'
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar -C target/release -czf "dist/Nyx-${VERSION}-x86_64-linux.tar.gz" nyx
+          cargo deb -p nyx --no-build --output "dist/Nyx_${VERSION}_amd64.deb"
+          cargo generate-rpm -s "version = \"$RPM_VERSION\""
+          cp target/generate-rpm/*.rpm "dist/Nyx-${RPM_VERSION}.x86_64.rpm"
+
+      - name: Package for Windows
+        if: runner.os == 'Windows'
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path "target/release/nyx.exe" -DestinationPath "dist/Nyx-$env:VERSION-x86_64-windows.zip" -Force
+
+      - name: Upload the Linux portable archive
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Nyx-${{ needs.prepare.outputs.version }}-x86_64-linux.tar.gz
+          path: dist/Nyx-${{ needs.prepare.outputs.version }}-x86_64-linux.tar.gz
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload the Debian package
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Nyx_${{ needs.prepare.outputs.version }}_amd64.deb
+          path: dist/Nyx_${{ needs.prepare.outputs.version }}_amd64.deb
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload the RPM package
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Nyx-${{ needs.prepare.outputs.rpm_version }}.x86_64.rpm
+          path: dist/Nyx-${{ needs.prepare.outputs.rpm_version }}.x86_64.rpm
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload the Windows portable archive
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: Nyx-${{ needs.prepare.outputs.version }}-x86_64-windows.zip
+          path: dist/Nyx-${{ needs.prepare.outputs.version }}-x86_64-windows.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
+
+  summary:
+    name: Report the check result
+    if: always()
+    needs: [prepare, format, lint, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the result to the run summary
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
+        shell: bash
+        run: |
+          {
+            echo "## PR check — \`$VERSION\`"
+            echo
+            echo '| Job | Result |'
+            echo '| --- | --- |'
+            echo '| Formatting | ${{ needs.format.result }} |'
+            echo '| Lint | ${{ needs.lint.result }} |'
+            echo '| Build | ${{ needs.build.result }} |'
+            echo
+            echo '| Asset | Platform |'
+            echo '| --- | --- |'
+            echo "| \`Nyx-${VERSION}-x86_64-windows.zip\` | Windows portable |"
+            echo "| \`Nyx-${VERSION}-x86_64-linux.tar.gz\` | Linux portable |"
+            echo "| \`Nyx_${VERSION}_amd64.deb\` | Debian/Ubuntu |"
+            echo "| \`Nyx-${RPM_VERSION}.x86_64.rpm\` | Fedora/RHEL |"
+            echo
+            echo 'Dev builds are attached to this run as artifacts and expire after 7 days.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if printf '%s' "$RESULTS" | grep -qE 'failure|cancelled'; then
+            echo "::error::the PR check did not pass"
+            exit 1
+          fi
