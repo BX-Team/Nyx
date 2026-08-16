@@ -82,7 +82,7 @@ async fn restart_core(cx: &mut AsyncApp) {
     start_core_and_streams(cx, restore_tun()).await;
 }
 
-fn restore_tun() -> bool {
+pub fn restore_tun() -> bool {
     backend::config::app_config_bool("lastConnected")
         && backend::config::app_config_str("connectionMode", "tun") == "tun"
 }
@@ -252,14 +252,16 @@ pub async fn refresh_runtime_data(cx: &mut AsyncApp) {
         });
     }
 
-    if let Ok(Ok(version)) = runtime::spawn(backend::api::get_version()).await {
-        cx.update(|cx| {
-            AppState::global(cx).update(cx, |st, c| {
-                st.mihomo_version = Some(version.into());
-                c.notify();
-            });
+    let version = runtime::spawn(backend::api::get_version()).await;
+    cx.update(|cx| {
+        AppState::global(cx).update(cx, |st, c| {
+            st.mihomo_version = match &version {
+                Ok(Ok(v)) => Some(v.clone().into()),
+                _ => None,
+            };
+            c.notify();
         });
-    }
+    });
 
     refresh_profiles(cx).await;
 }

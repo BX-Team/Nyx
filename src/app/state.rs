@@ -227,6 +227,9 @@ impl AppState {
 
     pub fn set_core_status(&mut self, status: CoreStatus, cx: &mut Context<Self>) {
         if self.core_status != status {
+            if !status.is_running() {
+                self.mihomo_version = None;
+            }
             self.core_status = status;
             cx.notify();
         }

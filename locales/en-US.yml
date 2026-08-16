@@ -204,7 +204,7 @@ pages:
     svcRestart: Restart
     svcStale: Needs repair
     svcRepair: Repair…
-    svcHint: Nyx runs the mihomo core through a system service, which is what lets TUN mode create a network device. Installing or repairing it requires administrator rights.
+    svcHint: Nyx runs the mihomo core through a system service, which is what lets TUN mode create a network device. Installing, starting, stopping or removing it requires administrator rights.
     svcManagedHint: The service comes from your system configuration, so Nyx neither installs nor removes it. Manage it there instead.
     sniffer: Sniffer
     snifferOverrideDest: Override destination

@@ -11,7 +11,9 @@ use crate::control::Status;
 use crate::host::linux::SOCKET_PATH;
 use crate::logging;
 use crate::protocol::{CoreSpec, PROTOCOL_VERSION, Request, Response};
-use crate::{ARG_HOST, ARG_INSTALL, ARG_OWNER, ARG_UNINSTALL, HELPER_FAILURE, is_elevated};
+use crate::{
+    ARG_CONTROL, ARG_HOST, ARG_INSTALL, ARG_OWNER, ARG_UNINSTALL, HELPER_FAILURE, is_elevated,
+};
 
 pub const UNIT_NAME: &str = "nyx.service";
 const UNIT_DIRS: [&str; 3] = [
@@ -100,6 +102,43 @@ pub async fn uninstall() -> Result<(), String> {
         run_privileged(&exe, &[ARG_UNINSTALL]).await?;
     }
     Ok(())
+}
+
+pub async fn start_service() -> Result<(), String> {
+    control("start").await?;
+    wait_for_socket(CONNECT_GRACE).await?;
+    ping().await.map(|_| ())
+}
+
+pub async fn stop_service() -> Result<(), String> {
+    if unit_exec_start().is_none() {
+        return Ok(());
+    }
+    control("stop").await
+}
+
+pub async fn restart_service() -> Result<(), String> {
+    control("restart").await?;
+    wait_for_socket(CONNECT_GRACE).await?;
+    ping().await.map(|_| ())
+}
+
+async fn control(action: &'static str) -> Result<(), String> {
+    if unit_exec_start().is_none() {
+        return Err("the Nyx service is not installed".into());
+    }
+    if is_elevated() {
+        return control_here(action);
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    run_privileged(&exe, &[ARG_CONTROL, action]).await
+}
+
+pub fn control_here(action: &str) -> Result<(), String> {
+    match action {
+        "start" | "stop" | "restart" => systemctl(&[action, UNIT_NAME]),
+        other => Err(format!("unknown service action {other:?}")),
+    }
 }
 
 pub async fn start_core(spec: &CoreSpec) -> Result<u32, String> {

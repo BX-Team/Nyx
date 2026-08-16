@@ -33,8 +33,6 @@ pub async fn build() -> Result<StartSpec, CoreError> {
         .map(PathBuf::from)
         .ok_or_else(|| CoreError::new(FailureKind::Other, "config has no parent directory"))?;
 
-    validate(&binary, &work_dir, &config).await?;
-
     Ok(StartSpec {
         secret: read_secret(&config).await,
         max_log_days: app_cfg
@@ -94,25 +92,19 @@ async fn resolve_binary(app_cfg: &serde_yaml::Value) -> Result<PathBuf, CoreErro
         .map_err(|e| CoreError::new(FailureKind::CoreMissing, e.to_string()))
 }
 
-/// `mihomo -t` parses the merged config without binding anything, so a broken
-/// profile is reported here instead of as a silent exit after spawn.
-async fn validate(
-    binary: &std::path::Path,
-    work_dir: &std::path::Path,
-    config: &std::path::Path,
-) -> Result<(), CoreError> {
-    let mut cmd = tokio::process::Command::new(binary);
-    cmd.arg("-t").arg("-d").arg(work_dir).arg("-f").arg(config);
+pub async fn config_error(spec: &StartSpec) -> Option<String> {
+    let mut cmd = tokio::process::Command::new(&spec.binary);
+    cmd.arg("-t")
+        .arg("-d")
+        .arg(&spec.work_dir)
+        .arg("-f")
+        .arg(&spec.config);
     #[cfg(windows)]
     cmd.creation_flags(0x08000000);
-    let out = cmd.output().await;
 
-    let Ok(out) = out else {
-        // Could not even run the binary; the spawn below will report why.
-        return Ok(());
-    };
+    let out = cmd.output().await.ok()?;
     if out.status.success() {
-        return Ok(());
+        return None;
     }
 
     let text = format!(
@@ -123,10 +115,9 @@ async fn validate(
     // A core build without `-t` must not be treated as a broken profile.
     if text.contains("flag provided but not defined") {
         log::warn!("[core] this core does not support -t, skipping config validation");
-        return Ok(());
+        return None;
     }
-
-    Err(CoreError::new(FailureKind::ConfigInvalid, summarize(&text)))
+    Some(summarize(&text))
 }
 
 /// mihomo prints a banner first; the tail holds the offending key.

@@ -204,7 +204,7 @@ pages:
     svcRestart: 重启
     svcStale: 需要修复
     svcRepair: 修复…
-    svcHint: Nyx 通过系统服务运行 mihomo 内核，这正是 TUN 模式能够创建网络设备的原因。安装或修复需要管理员权限。
+    svcHint: Nyx 通过系统服务运行 mihomo 内核，这正是 TUN 模式能够创建网络设备的原因。安装、启动、停止或删除服务需要管理员权限。
     svcManagedHint: 该服务由你的系统配置提供，因此 Nyx 不会安装或卸载它。请在系统配置中管理。
     sniffer: 嗅探器
     snifferOverrideDest: 覆盖目标地址

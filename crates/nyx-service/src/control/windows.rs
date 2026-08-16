@@ -12,8 +12,8 @@ use crate::control::Status;
 use crate::host::windows::PIPE_NAME;
 use crate::protocol::{CoreSpec, PROTOCOL_VERSION, Request, Response};
 use crate::{
-    ARG_HOST, ARG_INSTALL, ARG_OWNER, ARG_UNINSTALL, SERVICE_DISPLAY_NAME, SERVICE_NAME,
-    is_elevated,
+    ARG_CONTROL, ARG_HOST, ARG_INSTALL, ARG_OWNER, ARG_UNINSTALL, SERVICE_DISPLAY_NAME,
+    SERVICE_NAME, is_elevated,
 };
 
 const ERR_NO_SERVICE: i32 = 1060;
@@ -54,6 +54,82 @@ pub async fn uninstall() -> Result<(), String> {
         elevate(&[ARG_UNINSTALL])?;
     }
     Ok(())
+}
+
+pub async fn start_service() -> Result<(), String> {
+    control("start")?;
+    wait_for_state(true).await?;
+    ping().await.map(|_| ())
+}
+
+pub async fn stop_service() -> Result<(), String> {
+    if query_state()?.is_none() {
+        return Ok(());
+    }
+    control("stop")?;
+    wait_for_state(false).await
+}
+
+pub async fn restart_service() -> Result<(), String> {
+    control("restart")?;
+    wait_for_state(true).await?;
+    ping().await.map(|_| ())
+}
+
+fn control(action: &'static str) -> Result<(), String> {
+    if query_state()?.is_none() {
+        return Err("the Nyx service is not installed".into());
+    }
+    if is_elevated() {
+        return control_here(action);
+    }
+    elevate(&[ARG_CONTROL, action])
+}
+
+pub fn control_here(action: &str) -> Result<(), String> {
+    let manager = open_manager(ServiceManagerAccess::CONNECT)?;
+    let service = manager
+        .open_service(
+            SERVICE_NAME,
+            ServiceAccess::START | ServiceAccess::STOP | ServiceAccess::QUERY_STATUS,
+        )
+        .map_err(|e| format!("failed to open service: {e}"))?;
+
+    let stop = |service: &windows_service::service::Service| -> Result<(), String> {
+        let running = service
+            .query_status()
+            .map(|s| s.current_state != ServiceState::Stopped)
+            .unwrap_or(false);
+        if !running {
+            return Ok(());
+        }
+        service
+            .stop()
+            .map(|_| ())
+            .map_err(|e| format!("failed to stop service: {e}"))
+    };
+
+    match action {
+        "start" => start_if_stopped(&service),
+        "stop" => stop(&service),
+        "restart" => {
+            stop(&service)?;
+            wait_for_stopped_blocking(&service);
+            start_if_stopped(&service)
+        }
+        other => Err(format!("unknown service action {other:?}")),
+    }
+}
+
+/// The elevated helper is a plain process, so the wait stays synchronous.
+fn wait_for_stopped_blocking(service: &windows_service::service::Service) {
+    for _ in 0..50 {
+        match service.query_status() {
+            Ok(s) if s.current_state == ServiceState::Stopped => return,
+            Err(_) => return,
+            _ => std::thread::sleep(Duration::from_millis(200)),
+        }
+    }
 }
 
 pub async fn start_core(spec: &CoreSpec) -> Result<u32, String> {

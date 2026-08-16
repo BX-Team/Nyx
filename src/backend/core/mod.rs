@@ -91,6 +91,32 @@ pub async fn uninstall_service() -> Result<(), CoreError> {
         .map_err(|e| CoreError::new(FailureKind::ServiceUnavailable, e))
 }
 
+pub async fn start_service() -> Result<(), CoreError> {
+    nyx_service::start_service()
+        .await
+        .map_err(|e| CoreError::new(FailureKind::ServiceUnavailable, e))
+}
+
+pub async fn stop_service() -> Result<(), CoreError> {
+    nyx_service::stop_service()
+        .await
+        .map_err(|e| CoreError::new(FailureKind::ServiceUnavailable, e))?;
+    let _ = stop().await;
+    Ok(())
+}
+
+pub async fn restart_service() -> Result<(), CoreError> {
+    nyx_service::restart_service()
+        .await
+        .map_err(|e| CoreError::new(FailureKind::ServiceUnavailable, e))?;
+    let _ = stop().await;
+    Ok(())
+}
+
+pub fn is_active() -> bool {
+    ACTIVE.lock().is_some()
+}
+
 /// Brings the core up and does not return `Ok` until its controller answers.
 pub async fn start() -> Result<(), CoreError> {
     let _lock = TRANSITION.lock().await;
@@ -119,7 +145,7 @@ async fn start_locked() -> Result<(), CoreError> {
         spec.controller
     );
 
-    match backend {
+    let launched = match backend {
         Backend::Service => {
             let request = nyx_service::CoreSpec {
                 binary: spec.binary.clone(),
@@ -129,11 +155,13 @@ async fn start_locked() -> Result<(), CoreError> {
             };
             nyx_service::start_core(&request)
                 .await
-                .map_err(|e| CoreError::new(FailureKind::ServiceUnavailable, e))?;
+                .map(|_| ())
+                .map_err(classify_service_start)
         }
-        Backend::Direct => {
-            process::spawn(&spec).await?;
-        }
+        Backend::Direct => process::spawn(&spec).await.map(|_| ()),
+    };
+    if let Err(e) = launched {
+        return Err(explain(&spec, e).await);
     }
     *ACTIVE.lock() = Some(backend);
 
@@ -141,9 +169,39 @@ async fn start_locked() -> Result<(), CoreError> {
     api::init_client(&spec.controller, spec.secret.clone())
         .map_err(|e| CoreError::new(FailureKind::Other, e.to_string()))?;
 
-    wait_ready(backend, &spec.controller).await?;
+    if let Err(e) = wait_ready(backend, &spec.controller).await {
+        return Err(explain(&spec, e).await);
+    }
     log::info!("[core] ready at {}", spec.controller);
     Ok(())
+}
+
+/// The host reports everything as one string; a core that came up and died is a
+/// broken config, not a broken service.
+fn classify_service_start(message: String) -> CoreError {
+    let kind = if message.contains("core exited") {
+        FailureKind::ConfigInvalid
+    } else if message.contains("core binary not found") {
+        FailureKind::CoreMissing
+    } else {
+        FailureKind::ServiceUnavailable
+    };
+    CoreError::new(kind, message)
+}
+
+/// A core that died or never answered is almost always a config the core
+/// rejected, so name the offending key instead of the symptom.
+async fn explain(spec: &spec::StartSpec, error: CoreError) -> CoreError {
+    if !matches!(
+        error.kind,
+        FailureKind::ConfigInvalid | FailureKind::Timeout
+    ) {
+        return error;
+    }
+    match spec::config_error(spec).await {
+        Some(detail) => CoreError::new(FailureKind::ConfigInvalid, detail),
+        None => error,
+    }
 }
 
 async fn stop_locked() {

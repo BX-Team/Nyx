@@ -198,20 +198,48 @@ pub fn toggle_sysproxy(cx: &mut App) {
     set_connection(MODE_SYSPROXY, on, cx);
 }
 
+pub async fn mark_disconnected(cx: &mut gpui::AsyncApp) {
+    let _ = runtime::spawn(async {
+        let _ = backend::config::patch_app_config(json!({ "sysProxy": { "enable": false } })).await;
+        backend::sysproxy::clear();
+    })
+    .await;
+    cx.update(|cx| {
+        AppState::global(cx).update(cx, |st, c| {
+            st.set_core_status(crate::app::state::CoreStatus::Stopped, c);
+            st.set_tun_enabled(false, c);
+            st.set_app_value("sysProxy.enable", json!(false), c);
+        });
+        crate::app::tray::rebuild(cx);
+    });
+}
+
 pub fn restart_core(_cx: &mut App) {
     runtime::detach(async {
         let _ = backend::core::restart().await;
     });
 }
 
+const SHUTDOWN_GRACE: std::time::Duration = std::time::Duration::from_millis(1500);
+
 /// The single quit path: un-proxy the machine but leave the service and core up,
-/// so reopening restores the previous state without another prompt.
-pub fn shutdown_and_quit(cx: &mut App) {
+/// so reopening restores the previous state without another prompt. Runs on the
+/// UI thread, so every step is bounded — a wedged core must not freeze the window.
+pub fn shutdown_and_quit(_cx: &mut App) {
+    let started = std::time::Instant::now();
     backend::sysproxy::clear();
-    let _ = runtime::runtime().block_on(backend::config::patch_controled_mihomo_config(
-        json!({ "tun": { "enable": false } }),
-    ));
-    cx.quit();
+    let dropped_tun = runtime::runtime().block_on(async {
+        tokio::time::timeout(
+            SHUTDOWN_GRACE,
+            backend::config::patch_controled_mihomo_config(json!({ "tun": { "enable": false } })),
+        )
+        .await
+    });
+    if dropped_tun.is_err() {
+        log::warn!("[quit] the core did not answer in time, leaving TUN to the next start");
+    }
+    log::info!("[quit] shutdown took {}ms", started.elapsed().as_millis());
+    std::process::exit(0);
 }
 
 /// Relaunches the executable; the flag makes the new process wait for the

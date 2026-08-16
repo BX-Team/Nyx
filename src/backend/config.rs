@@ -169,8 +169,11 @@ pub async fn patch_controled_mihomo_config(config: Value) -> Result<()> {
         write_json_as_yaml(&config_path, &running)?;
     }
 
-    let patch_url = format!("{}/configs", crate::backend::core::controller_url());
-    let _ = local_http().patch(&patch_url).json(&config).send().await;
+    let controller = crate::backend::core::controller_url();
+    if crate::backend::core::is_active() && !controller.is_empty() {
+        let patch_url = format!("{controller}/configs");
+        let _ = local_http().patch(&patch_url).json(&config).send().await;
+    }
     Ok(())
 }
 

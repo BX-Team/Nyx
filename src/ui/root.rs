@@ -2398,9 +2398,9 @@ impl NyxApp {
                 match action {
                     "install" => backend::core::install_service().await,
                     "uninstall" => backend::core::uninstall_service().await,
-                    "start" => backend::core::start().await,
-                    "stop" => backend::core::stop().await,
-                    "restart" => backend::core::restart().await,
+                    "start" => backend::core::start_service().await,
+                    "stop" => backend::core::stop_service().await,
+                    "restart" => backend::core::restart_service().await,
                     _ => Ok(()),
                 }
             })
@@ -2415,20 +2415,21 @@ impl NyxApp {
                     );
                 });
             }
-            if matches!(action, "stop" | "uninstall") && matches!(res, Ok(Ok(()))) {
-                // Stopping/uninstalling kills the core — drop the stale state.
-                cx.update(|cx| {
-                    AppState::global(cx).update(cx, |st, c| {
-                        st.set_core_status(crate::app::state::CoreStatus::Stopped, c);
-                        st.set_tun_enabled(false, c);
-                    });
-                });
-                crate::app::bootstrap::refresh_runtime_data(cx).await;
-            } else if action == "install" && matches!(res, Ok(Ok(()))) {
-                // Bring the core up (TUN stays off) so its version/groups populate.
-                crate::app::bootstrap::start_core_and_streams(cx, false).await;
-            } else {
-                crate::app::bootstrap::refresh_runtime_data(cx).await;
+            match action {
+                "stop" | "uninstall" if matches!(res, Ok(Ok(()))) => {
+                    // The core went down with the service — drop the stale state.
+                    crate::app::actions::mark_disconnected(cx).await;
+                    crate::app::bootstrap::refresh_runtime_data(cx).await;
+                }
+                // Install brings the core up with TUN off; start/restart restores it.
+                "install" if matches!(res, Ok(Ok(()))) => {
+                    crate::app::bootstrap::start_core_and_streams(cx, false).await;
+                }
+                "start" | "restart" if matches!(res, Ok(Ok(()))) => {
+                    let tun = crate::app::bootstrap::restore_tun();
+                    crate::app::bootstrap::start_core_and_streams(cx, tun).await;
+                }
+                _ => crate::app::bootstrap::refresh_runtime_data(cx).await,
             }
             let _ = this.update(cx, |this, cx| {
                 this.service_busy = false;

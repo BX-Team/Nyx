@@ -35,7 +35,10 @@ impl Status {
 }
 
 #[cfg(any(target_os = "linux", windows))]
-pub use imp::{install, ping, start_core, status, stop_core, uninstall};
+pub use imp::{
+    install, ping, restart_service, start_core, start_service, status, stop_core, stop_service,
+    uninstall,
+};
 
 /// Whether the unit is owned by the OS rather than by Nyx.
 #[cfg(target_os = "linux")]
@@ -71,7 +74,19 @@ mod unsupported {
     pub async fn ping() -> Result<Option<u32>, String> {
         Err("service mode is not supported on this platform".into())
     }
+    pub async fn start_service() -> Result<(), String> {
+        Err("service mode is not supported on this platform".into())
+    }
+    pub async fn stop_service() -> Result<(), String> {
+        Ok(())
+    }
+    pub async fn restart_service() -> Result<(), String> {
+        Err("service mode is not supported on this platform".into())
+    }
 }
 
 #[cfg(not(any(target_os = "linux", windows)))]
-pub use unsupported::{install, ping, start_core, status, stop_core, uninstall};
+pub use unsupported::{
+    install, ping, restart_service, start_core, start_service, status, stop_core, stop_service,
+    uninstall,
+};

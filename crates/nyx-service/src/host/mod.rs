@@ -136,7 +136,9 @@ fn request_termination(_child: &mut Child, pid: u32) {
 }
 
 #[cfg(not(unix))]
-fn request_termination(_child: &mut Child, _pid: u32) {}
+fn request_termination(child: &mut Child, _pid: u32) {
+    let _ = child.start_kill();
+}
 
 pub fn encode(res: &Response) -> Vec<u8> {
     serde_json::to_vec(res).unwrap_or_else(|_| br#"{"status":"ERROR","message":"encode"}"#.to_vec())

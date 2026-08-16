@@ -3,7 +3,10 @@ mod host;
 mod logging;
 mod protocol;
 
-pub use control::{Status, install, is_managed, ping, start_core, status, stop_core, uninstall};
+pub use control::{
+    Status, install, is_managed, ping, restart_service, start_core, start_service, status,
+    stop_core, stop_service, uninstall,
+};
 pub use protocol::{CoreSpec, PROTOCOL_VERSION};
 
 pub const SERVICE_NAME: &str = "Nyx Service";
@@ -12,9 +15,9 @@ pub const SERVICE_DISPLAY_NAME: &str = "Nyx Mihomo Service";
 pub(crate) const ARG_HOST: &str = "--nyx-service";
 pub(crate) const ARG_INSTALL: &str = "--nyx-service-install";
 pub(crate) const ARG_UNINSTALL: &str = "--nyx-service-uninstall";
-/// Followed by the SID (Windows) or uid (Linux) allowed to drive the service.
+pub(crate) const ARG_CONTROL: &str = "--nyx-service-control";
 pub(crate) const ARG_OWNER: &str = "--nyx-service-owner";
-/// Exit code for the helper's own failures, so pkexec's 126/127 keep meaning
+
 /// "prompt dismissed" and "authorisation refused".
 pub(crate) const HELPER_FAILURE: i32 = 9;
 
@@ -32,6 +35,11 @@ pub fn maybe_run_service_mode() -> Option<i32> {
     }
     if has(ARG_UNINSTALL) {
         return Some(report(uninstall_here()));
+    }
+    if has(ARG_CONTROL) {
+        return Some(report(control_here(
+            &flag_value(ARG_CONTROL).unwrap_or_default(),
+        )));
     }
     None
 }
@@ -122,15 +130,34 @@ fn uninstall_here() -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(any(windows, target_os = "linux"))]
-pub(crate) fn owner_arg() -> Option<String> {
+#[cfg(windows)]
+fn control_here(action: &str) -> Result<(), String> {
+    control::windows::control_here(action)
+}
+
+#[cfg(target_os = "linux")]
+fn control_here(action: &str) -> Result<(), String> {
+    control::linux::control_here(action)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+fn control_here(_action: &str) -> Result<(), String> {
+    Err("service mode is not supported on this platform".into())
+}
+
+fn flag_value(flag: &str) -> Option<String> {
     let mut args = std::env::args();
     while let Some(arg) = args.next() {
-        if arg == ARG_OWNER {
+        if arg == flag {
             return args.next().filter(|s| !s.is_empty());
         }
     }
     None
+}
+
+#[cfg(any(windows, target_os = "linux"))]
+pub(crate) fn owner_arg() -> Option<String> {
+    flag_value(ARG_OWNER)
 }
 
 #[cfg(windows)]
