@@ -5202,7 +5202,7 @@ dependencies = [
 
 [[package]]
 name = "nyx-service"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "chrono",
  "libc",
@@ -5216,7 +5216,7 @@ dependencies = [
 
 [[package]]
 name = "nyx-sysproxy"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "dirs",
  "log",
