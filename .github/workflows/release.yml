@@ -7,12 +7,17 @@ on:
         description: Version to release (e.g. 2.1.0)
         required: true
         type: string
+      description:
+        description: "Optional summary for the top of the release notes. Use \\n for a line break."
+        required: false
+        default: ""
+        type: string
       prerelease:
         description: Mark the release as a pre-release
         default: false
         type: boolean
       draft:
-        description: Publish the release as a draft
+        description: Leave the release as a draft instead of publishing it
         default: false
         type: boolean
 
@@ -128,9 +133,41 @@ jobs:
       - name: Lint with clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install the Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libxdo-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libfontconfig1-dev libfreetype6-dev \
+            libvulkan-dev mesa-vulkan-drivers
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: test-linux
+
+      - name: Run the tests
+        run: cargo test --workspace --locked
+
   tag:
-    name: Bump the version and tag
-    needs: [prepare, format, lint]
+    name: Tag the release
+    needs: [prepare, format, lint, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -169,12 +206,24 @@ jobs:
           git push origin "$TAG"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Open the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        shell: bash
+        run: |
+          gh release create "$TAG" \
+            --draft \
+            --title "Nyx $VERSION" \
+            --notes "Assets are still uploading."
+
   build:
     name: Build (${{ matrix.name }})
     needs: [prepare, tag]
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: read
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -267,65 +316,12 @@ jobs:
             installer/windows/nyx.nsi
           Copy-Item "installer/windows/Nyx_${env:VERSION}_x64-setup.exe" dist/
 
-      - name: Upload the Linux portable archive
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Nyx-x86_64-linux.tar.gz
-          path: dist/Nyx-x86_64-linux.tar.gz
-          archive: false
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload the Debian package
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Nyx_${{ needs.prepare.outputs.version }}_amd64.deb
-          path: dist/Nyx_${{ needs.prepare.outputs.version }}_amd64.deb
-          archive: false
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload the RPM package
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Nyx-${{ needs.prepare.outputs.rpm_version }}.x86_64.rpm
-          path: dist/Nyx-${{ needs.prepare.outputs.rpm_version }}.x86_64.rpm
-          archive: false
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload the Arch package
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Nyx-${{ needs.prepare.outputs.version }}-x86_64.pkg.tar.xz
-          path: dist/Nyx-${{ needs.prepare.outputs.version }}-x86_64.pkg.tar.xz
-          archive: false
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload the Windows portable archive
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Nyx-x86_64-windows.zip
-          path: dist/Nyx-x86_64-windows.zip
-          archive: false
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload the Windows installer
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Nyx_${{ needs.prepare.outputs.version }}_x64-setup.exe
-          path: dist/Nyx_${{ needs.prepare.outputs.version }}_x64-setup.exe
-          archive: false
-          if-no-files-found: error
-          retention-days: 1
+      - name: Upload the assets to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: gh release upload "$TAG" dist/* --clobber
 
   cachix:
     name: Push to Cachix
@@ -370,19 +366,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Download the release assets
-        uses: actions/download-artifact@v8
-        with:
-          pattern: Nyx*
-          merge-multiple: true
-          path: dist
-
       - name: Verify the release assets
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
           RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
         shell: bash
         run: |
+          have="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          printf 'attached:\n%s\n\n' "$have"
+          missing=0
           for asset in \
             "Nyx-x86_64-linux.tar.gz" \
             "Nyx_${VERSION}_amd64.deb" \
@@ -390,11 +384,12 @@ jobs:
             "Nyx-${VERSION}-x86_64.pkg.tar.xz" \
             "Nyx-x86_64-windows.zip" \
             "Nyx_${VERSION}_x64-setup.exe"; do
-            if [ ! -f "dist/$asset" ]; then
+            if ! printf '%s\n' "$have" | grep -qxF "$asset"; then
               echo "::error::missing release asset '$asset'"
-              exit 1
+              missing=1
             fi
           done
+          exit "$missing"
 
       - name: Build the changelog
         id: changelog
@@ -407,33 +402,52 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish the GitHub release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: Nyx ${{ needs.prepare.outputs.version }}
-          body: ${{ steps.changelog.outputs.changelog }}
-          files: dist/*
-          draft: ${{ inputs.draft }}
-          prerelease: ${{ inputs.prerelease }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  summary:
-    name: Report the release result
-    if: always()
-    needs: [prepare, format, lint, tag, build, cachix, publish]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish the result to the run summary
+      - name: Compose the release body
         env:
-          RESULTS: ${{ toJSON(needs.*.result) }}
+          DESCRIPTION: ${{ inputs.description }}
+          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
+        shell: bash
+        run: |
+          if [ -n "$(printf '%s' "$DESCRIPTION" | tr -d '[:space:]')" ]; then
+            {
+              echo '## 📑 Changelog'
+              echo
+              # %b so a '\n' typed into the dispatch field becomes a real line
+              # break — GitHub renders that input as a single-line box.
+              printf '%b\n' "$DESCRIPTION"
+              echo
+              printf '%s\n' "$CHANGELOG" | sed 's/^## /### /'
+            } >body.md
+          else
+            printf '%s\n' "$CHANGELOG" >body.md
+          fi
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          DRAFT: ${{ inputs.draft }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        shell: bash
+        run: |
+          gh release edit "$TAG" \
+            --title "Nyx $VERSION" \
+            --notes-file body.md \
+            --draft="$DRAFT" \
+            --prerelease="$PRERELEASE" \
+            --latest="$([ "$PRERELEASE" = 'true' ] && echo false || echo true)"
+
+      - name: Write the result to the run summary
+        env:
           TAG: ${{ needs.prepare.outputs.tag }}
           VERSION: ${{ needs.prepare.outputs.version }}
           RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.tag }}
         shell: bash
         run: |
           {
-            echo "## $TAG"
+            echo "## [$TAG]($URL)"
             echo
             echo '| Asset | Platform |'
             echo '| --- | --- |'
@@ -443,8 +457,6 @@ jobs:
             echo "| \`Nyx_${VERSION}_amd64.deb\` | Debian/Ubuntu |"
             echo "| \`Nyx-${RPM_VERSION}.x86_64.rpm\` | Fedora/RHEL |"
             echo "| \`Nyx-${VERSION}-x86_64.pkg.tar.xz\` | Arch |"
+            echo
+            cat body.md
           } >> "$GITHUB_STEP_SUMMARY"
-          if printf '%s' "$RESULTS" | grep -qE 'failure|cancelled'; then
-            echo "::error::release $TAG did not complete"
-            exit 1
-          fi

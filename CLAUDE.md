@@ -22,13 +22,14 @@ The crate is `nyx_lib` (binary `nyx`). Three top-level modules under `src/`:
 cargo run               # dev build
 cargo build --release   # optimized binary → target/release/nyx
 cargo fmt               # format
-cargo clippy -- -D warnings
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
 cargo check
 ```
 
 On Linux you need the gpui/tray system libraries (see README → Build from source) or just `nix develop`.
 
-Before every commit, the same checks CI runs must pass: `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo check`.
+Before every commit, the same checks CI runs must pass: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, and `cargo test --workspace --locked`. Clippy runs on Linux **and** Windows in CI, so a `cfg`-gated branch that only compiles on one of them fails there and not locally.
 
 ## Code Guidelines
 
@@ -57,6 +58,17 @@ Before every commit, the same checks CI runs must pass: `cargo fmt --check`, `ca
 - System proxy (`backend/sysproxy.rs`): on Linux we set both GSettings and the proxy env vars (systemd user manager + D-Bus activation env). Only GNOME-like desktops reliably honor the GSettings proxy — `session_honors_proxy()` gates the "partial coverage" note; TUN is the full-device path.
 - Privileged service (`crates/nyx-service`): the unit goes to the first writable dir of `/etc/systemd/system` → `/usr/local/lib/systemd/system` → `/run/systemd/system` (NixOS `/etc` is a read-only store symlink). Elevation is `pkexec` on the app binary itself; pkexec wipes `PATH` and detaches from the tty, so resolve helper binaries absolutely and expect to bring up a polkit agent first. `CapabilityBoundingSet` must keep `CAP_CHOWN` or the host cannot hand its socket to the GUI user.
 - NixOS: the flake exposes `nixosModules.nyx`/`.default` (`nix/module.nix`) next to `packages.nyx`, the `nyx` app and the dev shell. `programs.nyx.enable` declares the unit and drops `/etc/nyx/service-managed`, which makes the app treat the service as read-only (no install/uninstall, no `Stale` on an ExecStart mismatch). A declarative unit passes the owner as a user name, so `--nyx-service-owner` takes either a uid or a name.
+
+### Testing
+
+Tests live next to the code in `#[cfg(test)]` modules — `src/ui/flags.rs` and
+`crates/nyx-sysproxy/{linux,windows}.rs`. What earns one is a real trap: a parser
+that has already mis-read a subscription, a platform quirk with a known-wrong
+edge. Not one test per function.
+
+`crates/nyx-sysproxy/src/windows.rs` tests only compile under `cfg(windows)`, so
+`cargo test` on Linux does not run them and CI's Windows clippy leg is what keeps
+them honest.
 
 ## Bash Guidelines
 - Don't pipe output through `head`/`tail`/`less` to truncate — use tool-native flags (`git log -n 10`, `cargo clippy --message-format=short`). Read the full output.

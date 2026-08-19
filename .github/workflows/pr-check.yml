@@ -2,6 +2,7 @@ name: PR Check
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     branches: ["master"]
 
 permissions: {}
@@ -14,6 +15,7 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: short
+  UPLOAD: ${{ contains(github.event.pull_request.labels.*.name, '📦 upload artifacts') }}
 
 jobs:
   prepare:
@@ -110,6 +112,38 @@ jobs:
       - name: Lint with clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install the Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libxdo-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libfontconfig1-dev libfreetype6-dev \
+            libvulkan-dev mesa-vulkan-drivers
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: test-linux
+
+      - name: Run the tests
+        run: cargo test --workspace --locked
+
   build:
     name: Build (${{ matrix.name }})
     needs: [prepare]
@@ -162,13 +196,13 @@ jobs:
         run: cargo build --release --locked
 
       - name: Install the packaging tools
-        if: runner.os == 'Linux'
+        if: env.UPLOAD == 'true' && runner.os == 'Linux'
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-deb,cargo-generate-rpm
 
       - name: Package for Linux
-        if: runner.os == 'Linux'
+        if: env.UPLOAD == 'true' && runner.os == 'Linux'
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
@@ -181,7 +215,7 @@ jobs:
           cp target/generate-rpm/*.rpm "dist/Nyx-${RPM_VERSION}.x86_64.rpm"
 
       - name: Package for Windows
-        if: runner.os == 'Windows'
+        if: env.UPLOAD == 'true' && runner.os == 'Windows'
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         shell: pwsh
@@ -189,78 +223,37 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Compress-Archive -Path "target/release/nyx.exe" -DestinationPath "dist/Nyx-$env:VERSION-x86_64-windows.zip" -Force
 
-      - name: Upload the Linux portable archive
-        if: runner.os == 'Linux'
+      - name: Upload the Linux packages
+        if: env.UPLOAD == 'true' && runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
-          name: Nyx-${{ needs.prepare.outputs.version }}-x86_64-linux.tar.gz
-          path: dist/Nyx-${{ needs.prepare.outputs.version }}-x86_64-linux.tar.gz
-          archive: false
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload the Debian package
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Nyx_${{ needs.prepare.outputs.version }}_amd64.deb
-          path: dist/Nyx_${{ needs.prepare.outputs.version }}_amd64.deb
-          archive: false
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload the RPM package
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          name: Nyx-${{ needs.prepare.outputs.rpm_version }}.x86_64.rpm
-          path: dist/Nyx-${{ needs.prepare.outputs.rpm_version }}.x86_64.rpm
+          name: Nyx-${{ needs.prepare.outputs.version }}-linux
+          path: dist/*
           archive: false
           if-no-files-found: error
           retention-days: 7
 
       - name: Upload the Windows portable archive
-        if: runner.os == 'Windows'
+        if: env.UPLOAD == 'true' && runner.os == 'Windows'
         uses: actions/upload-artifact@v7
         with:
-          name: Nyx-${{ needs.prepare.outputs.version }}-x86_64-windows.zip
+          name: Nyx-${{ needs.prepare.outputs.version }}-windows
           path: dist/Nyx-${{ needs.prepare.outputs.version }}-x86_64-windows.zip
-          archive: false
           if-no-files-found: error
           retention-days: 7
 
-  summary:
-    name: Report the check result
+  gate:
+    name: PR check
     if: always()
-    needs: [prepare, format, lint, build]
+    needs: [prepare, format, lint, test, build]
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
-      - name: Publish the result to the run summary
+      - name: Fail if any required job did not succeed
         env:
-          RESULTS: ${{ toJSON(needs.*.result) }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-          RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
-        shell: bash
+          RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
-          {
-            echo "## PR check — \`$VERSION\`"
-            echo
-            echo '| Job | Result |'
-            echo '| --- | --- |'
-            echo '| Formatting | ${{ needs.format.result }} |'
-            echo '| Lint | ${{ needs.lint.result }} |'
-            echo '| Build | ${{ needs.build.result }} |'
-            echo
-            echo '| Asset | Platform |'
-            echo '| --- | --- |'
-            echo "| \`Nyx-${VERSION}-x86_64-windows.zip\` | Windows portable |"
-            echo "| \`Nyx-${VERSION}-x86_64-linux.tar.gz\` | Linux portable |"
-            echo "| \`Nyx_${VERSION}_amd64.deb\` | Debian/Ubuntu |"
-            echo "| \`Nyx-${RPM_VERSION}.x86_64.rpm\` | Fedora/RHEL |"
-            echo
-            echo 'Dev builds are attached to this run as artifacts and expire after 7 days.'
-          } >> "$GITHUB_STEP_SUMMARY"
-          if printf '%s' "$RESULTS" | grep -qE 'failure|cancelled'; then
-            echo "::error::the PR check did not pass"
-            exit 1
-          fi
+          printf 'upstream results: %s\n' "$RESULTS"
+          case "$RESULTS" in
+            *failure*|*cancelled*|*skipped*) exit 1 ;;
+          esac
