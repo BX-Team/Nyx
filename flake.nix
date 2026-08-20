@@ -70,7 +70,7 @@
 
         nyx = rustPlatform.buildRustPackage {
           pname = "nyx";
-          version = "2.0.6";
+          version = "2.1.0";
 
           src = pkgs.lib.cleanSource ./.;
 
