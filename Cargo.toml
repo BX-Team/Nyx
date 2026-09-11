@@ -99,7 +99,7 @@ windows = { version = "0.62", features = [
 ] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-tray-icon = "0.24"
+tray-icon = "0.25"
 
 [target.'cfg(not(windows))'.dependencies]
 libc = "0.2"
