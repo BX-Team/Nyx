@@ -1929,7 +1929,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2207,7 +2207,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2900,7 +2900,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c386b0a4a70cb2d39fffd74480f985b6f0bfbcb934b6a6b6b7e630e448f242e"
 dependencies = [
  "crossbeam-channel",
- "keyboard-types",
+ "keyboard-types 0.7.0",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
  "once_cell",
@@ -3765,7 +3765,7 @@ dependencies = [
  "tokio",
  "tower-service",
  "tracing",
- "windows-registry 0.4.0",
+ "windows-registry 0.6.1",
 ]
 
 [[package]]
@@ -4247,6 +4247,16 @@ dependencies = [
  "bitflags 2.13.0",
  "serde",
  "unicode-segmentation",
+]
+
+[[package]]
+name = "keyboard-types"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fbe853b403ae61a04233030ae8a79d94975281ed9770a1f9e246732b534b28d"
+dependencies = [
+ "bitflags 2.13.0",
+ "serde",
 ]
 
 [[package]]
@@ -4850,14 +4860,14 @@ dependencies = [
 
 [[package]]
 name = "muda"
-version = "0.19.2"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47a2e3dff89cd322c66647942668faee0a2b1f88ea6cbb4d374b4a8d7e92528c"
+checksum = "cca139e57da4383727f189e43e66e84fa372347027fc996f9f1a007ec0a37996"
 dependencies = [
  "crossbeam-channel",
  "dpi",
  "gtk",
- "keyboard-types",
+ "keyboard-types 0.8.3",
  "libxdo",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -5034,7 +5044,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6910,7 +6920,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6978,7 +6988,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8110,7 +8120,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -8585,9 +8595,9 @@ dependencies = [
 
 [[package]]
 name = "tray-icon"
-version = "0.24.2"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "045979e3f037cd18ad1cb2a419dfda133c5c29c9f3453370079f2255d46c257e"
+checksum = "b1d7d8cfccf1ae7ae9cba25a60daac8355bbaaf0fd07ff1c3af8f9872c4e4cb8"
 dependencies = [
  "crossbeam-channel",
  "dirs",
@@ -9581,7 +9591,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10238,7 +10248,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
