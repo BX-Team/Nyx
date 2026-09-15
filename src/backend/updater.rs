@@ -15,7 +15,7 @@ pub struct UpdateInfo {
     pub changelog: String,
 }
 
-fn latest_release() -> Result<self_update::update::Release, String> {
+fn latest_release() -> Result<self_update::Release, String> {
     self_update::backends::github::Update::configure()
         .repo_owner(REPO_OWNER)
         .repo_name(REPO_NAME)
@@ -24,21 +24,25 @@ fn latest_release() -> Result<self_update::update::Release, String> {
         .build()
         .map_err(|e| e.to_string())?
         .get_latest_release()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+        .into_vec()
+        .into_iter()
+        .next()
+        .ok_or_else(|| "no published release found".to_string())
 }
 
 pub async fn check() -> Result<Option<UpdateInfo>, String> {
     tokio::task::spawn_blocking(|| {
         let latest = latest_release()?;
         let current = self_update::cargo_crate_version!();
-        let newer = self_update::version::bump_is_greater(current, &latest.version)
+        let newer = self_update::version::bump_is_greater(current, latest.version())
             .map_err(|e| e.to_string())?;
         if !newer {
             return Ok(None);
         }
         Ok(Some(UpdateInfo {
-            version: latest.version,
-            changelog: latest.body.unwrap_or_default(),
+            version: latest.version().to_string(),
+            changelog: latest.body().unwrap_or_default().to_string(),
         }))
     })
     .await
@@ -69,16 +73,15 @@ pub async fn download_and_install() -> Result<bool, String> {
             ));
         }
         tokio::task::spawn_blocking(|| {
-            let tag = format!("v{}", latest_release()?.version);
+            let tag = format!("v{}", latest_release()?.version());
             self_update::backends::github::Update::configure()
                 .repo_owner(REPO_OWNER)
                 .repo_name(REPO_NAME)
                 .target(LINUX_TARGET)
                 .bin_name(BIN_NAME)
                 .current_version(self_update::cargo_crate_version!())
-                .target_version_tag(&tag)
-                .no_confirm(true)
-                .show_output(false)
+                .release_tag(tag)
+                .unattended()
                 .show_download_progress(false)
                 .build()
                 .map_err(|e| e.to_string())?
@@ -144,11 +147,12 @@ async fn windows_update() -> Result<bool, String> {
 
 #[cfg(windows)]
 fn windows_asset_url() -> Result<String, String> {
-    latest_release()?
-        .assets
-        .into_iter()
-        .find(|a| a.name.eq_ignore_ascii_case(WINDOWS_ASSET))
-        .map(|a| a.download_url)
+    let release = latest_release()?;
+    release
+        .assets()
+        .iter()
+        .find(|a| a.name().eq_ignore_ascii_case(WINDOWS_ASSET))
+        .map(|a| a.download_url().to_string())
         .ok_or_else(|| format!("release asset {WINDOWS_ASSET} not found"))
 }
 

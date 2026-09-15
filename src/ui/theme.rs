@@ -1,5 +1,5 @@
 use gpui::{App, Background, linear_color_stop, linear_gradient, rgb, rgba};
-use gpui_component::Theme;
+use gpui_component::{Theme, ThemeTokens};
 
 pub const TEXT: u32 = 0xEEF3F7; // headings / primary text
 pub const SUBTLE: u32 = 0xAEBCCB; // secondary text, title-bar label
@@ -123,5 +123,8 @@ pub fn apply(cx: &mut App) {
     c.title_bar = rgb(TITLEBAR_BG).into();
     c.title_bar_border = rgb(TITLEBAR_BORDER).into();
 
+    t.tokens = ThemeTokens::from(&t.colors);
     t.notification.placement = gpui::Anchor::BottomRight;
+
+    Theme::sync_base(cx);
 }

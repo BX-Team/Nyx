@@ -14,7 +14,7 @@ thiserror = "2"
 url = "2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-dirs = "6"
+dirs = "7"
 
 [target.'cfg(windows)'.dependencies]
 winreg = { version = "0.56", features = ["transactions"] }

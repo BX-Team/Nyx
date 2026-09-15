@@ -19,14 +19,14 @@ impl AssetSource for Assets {
         if let Some(file) = NyxEmbed::get(path) {
             return Ok(Some(file.data));
         }
-        gpui_component_assets::Assets.load(path)
+        gpui_kit_assets::Assets.load(path)
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
         let mut out: Vec<SharedString> = NyxEmbed::iter()
             .filter_map(|p| p.starts_with(path).then(|| p.into()))
             .collect();
-        out.extend(gpui_component_assets::Assets.list(path)?);
+        out.extend(gpui_kit_assets::Assets.list(path)?);
         Ok(out)
     }
 }

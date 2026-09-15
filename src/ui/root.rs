@@ -5,7 +5,7 @@ use gpui::{
     Window, WindowBounds, WindowOptions, div, px, rgb, rgba, size,
 };
 use gpui_component::IndexPath;
-use gpui_component::input::{Input, InputState};
+use gpui_component::input::{Editor, EditorState, InputState, TextareaState};
 use gpui_component::select::{SelectEvent, SelectState};
 use gpui_component::{
     Disableable, Root, StyledExt, TitleBar,
@@ -63,7 +63,7 @@ pub(crate) struct ProviderRow {
 
 pub(crate) struct ProviderViewerState {
     pub(crate) title: String,
-    pub(crate) editor: Entity<InputState>,
+    pub(crate) editor: Entity<EditorState>,
 }
 
 #[derive(Default)]
@@ -74,11 +74,11 @@ pub(crate) struct SubInputs {
     pub(crate) bypass: Option<Entity<InputState>>,
     pub(crate) interval: Option<Entity<InputState>>,
     pub(crate) dns_fakeip_range: Option<Entity<InputState>>,
-    pub(crate) dns_nameserver: Option<Entity<InputState>>,
-    pub(crate) dns_default_ns: Option<Entity<InputState>>,
-    pub(crate) dns_fakeip_filter: Option<Entity<InputState>>,
-    pub(crate) dns_proxy_ns: Option<Entity<InputState>>,
-    pub(crate) dns_direct_ns: Option<Entity<InputState>>,
+    pub(crate) dns_nameserver: Option<Entity<TextareaState>>,
+    pub(crate) dns_default_ns: Option<Entity<TextareaState>>,
+    pub(crate) dns_fakeip_filter: Option<Entity<TextareaState>>,
+    pub(crate) dns_proxy_ns: Option<Entity<TextareaState>>,
+    pub(crate) dns_direct_ns: Option<Entity<TextareaState>>,
     pub(crate) mixed_port: Option<Entity<InputState>>,
     pub(crate) socks_port: Option<Entity<InputState>>,
     pub(crate) http_port: Option<Entity<InputState>>,
@@ -87,13 +87,13 @@ pub(crate) struct SubInputs {
     pub(crate) keep_alive_idle: Option<Entity<InputState>>,
     pub(crate) keep_alive_interval: Option<Entity<InputState>>,
     pub(crate) interface_name: Option<Entity<InputState>>,
-    pub(crate) skip_auth: Option<Entity<InputState>>,
-    pub(crate) lan_allowed: Option<Entity<InputState>>,
-    pub(crate) lan_disallowed: Option<Entity<InputState>>,
-    pub(crate) sniff_force_domain: Option<Entity<InputState>>,
-    pub(crate) sniff_skip_domain: Option<Entity<InputState>>,
-    pub(crate) sniff_skip_dst: Option<Entity<InputState>>,
-    pub(crate) sniff_skip_src: Option<Entity<InputState>>,
+    pub(crate) skip_auth: Option<Entity<TextareaState>>,
+    pub(crate) lan_allowed: Option<Entity<TextareaState>>,
+    pub(crate) lan_disallowed: Option<Entity<TextareaState>>,
+    pub(crate) sniff_force_domain: Option<Entity<TextareaState>>,
+    pub(crate) sniff_skip_domain: Option<Entity<TextareaState>>,
+    pub(crate) sniff_skip_dst: Option<Entity<TextareaState>>,
+    pub(crate) sniff_skip_src: Option<Entity<TextareaState>>,
 }
 
 #[derive(Clone)]
@@ -151,7 +151,7 @@ pub(crate) struct NyxApp {
     pub(crate) rule_providers: Vec<ProviderRow>,
     pub(crate) resources_busy: bool,
     pub(crate) provider_viewer: Option<ProviderViewerState>,
-    pub(crate) editor: Option<Entity<InputState>>,
+    pub(crate) editor: Option<Entity<EditorState>>,
     pub(crate) editor_target: Option<EditorTarget>,
     pub(crate) rule_editor: Option<RuleEditState>,
     pub(crate) import_url: Entity<InputState>,
@@ -975,7 +975,7 @@ impl NyxApp {
                             .border_1()
                             .border_color(rgb(CARD_BORDER))
                             .rounded_lg()
-                            .child(Input::new(&editor).h_full().w_full().disabled(true)),
+                            .child(Editor::new(&editor).h_full().w_full().disabled(true)),
                     ),
             )
             .into_any_element()
@@ -1418,7 +1418,7 @@ impl NyxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let editor = cx.new(|cx| InputState::new(window, cx).code_editor("yaml"));
+        let editor = cx.new(|cx| EditorState::new(window, cx).language("yaml"));
         self.editor = Some(editor.clone());
         self.editor_target = Some(EditorTarget::Profile {
             id: id.clone(),
@@ -1709,7 +1709,7 @@ impl NyxApp {
 
         let body = match editor {
             Some(state) => {
-                let input = Input::new(&state).h_full().w_full().disabled(readonly);
+                let input = Editor::new(&state).h_full().w_full().disabled(readonly);
                 div()
                     .flex_1()
                     .min_h_0()
@@ -1839,8 +1839,7 @@ impl NyxApp {
                 let mk_multi =
                     |window: &mut Window, cx: &mut Context<Self>, val: String, ph: &'static str| {
                         cx.new(|cx| {
-                            InputState::new(window, cx)
-                                .multi_line(true)
+                            TextareaState::new(window, cx)
                                 .auto_grow(2, 6)
                                 .default_value(val)
                                 .placeholder(ph)
@@ -1896,8 +1895,7 @@ impl NyxApp {
                 let mk_multi =
                     |window: &mut Window, cx: &mut Context<Self>, val: String, ph: &'static str| {
                         cx.new(|cx| {
-                            InputState::new(window, cx)
-                                .multi_line(true)
+                            TextareaState::new(window, cx)
                                 .auto_grow(2, 6)
                                 .default_value(val)
                                 .placeholder(ph)
@@ -1935,8 +1933,7 @@ impl NyxApp {
                 let mk_multi =
                     |window: &mut Window, cx: &mut Context<Self>, val: String, ph: &'static str| {
                         cx.new(|cx| {
-                            InputState::new(window, cx)
-                                .multi_line(true)
+                            TextareaState::new(window, cx)
                                 .auto_grow(2, 6)
                                 .default_value(val)
                                 .placeholder(ph)
@@ -2078,7 +2075,7 @@ impl NyxApp {
                 }
             }
             Some(SettingsSub::Dns) => {
-                let lines = |inp: &Option<Entity<InputState>>| -> Vec<String> {
+                let lines = |inp: &Option<Entity<TextareaState>>| -> Vec<String> {
                     inp.as_ref()
                         .map(|e| e.read(cx).value().to_string())
                         .unwrap_or_default()
@@ -2124,7 +2121,7 @@ impl NyxApp {
                     inp.as_ref()
                         .and_then(|e| e.read(cx).value().trim().parse::<u64>().ok())
                 };
-                let lines = |inp: &Option<Entity<InputState>>| -> Vec<String> {
+                let lines = |inp: &Option<Entity<TextareaState>>| -> Vec<String> {
                     inp.as_ref()
                         .map(|e| e.read(cx).value().to_string())
                         .unwrap_or_default()
@@ -2169,7 +2166,7 @@ impl NyxApp {
                 self.patch_core(serde_json::Value::Object(patch), cx);
             }
             Some(SettingsSub::Sniffer) => {
-                let lines = |inp: &Option<Entity<InputState>>| -> Vec<String> {
+                let lines = |inp: &Option<Entity<TextareaState>>| -> Vec<String> {
                     inp.as_ref()
                         .map(|e| e.read(cx).value().to_string())
                         .unwrap_or_default()
@@ -2303,7 +2300,7 @@ impl NyxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let editor = cx.new(|cx| InputState::new(window, cx).code_editor("yaml"));
+        let editor = cx.new(|cx| EditorState::new(window, cx).language("yaml"));
         self.provider_viewer = Some(ProviderViewerState {
             title: name.clone(),
             editor: editor.clone(),

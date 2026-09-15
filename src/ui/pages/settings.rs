@@ -5,7 +5,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, div, px, rgb,
 };
 use gpui_component::button::{Button, ButtonVariants};
-use gpui_component::input::{Input, InputState};
+use gpui_component::input::{Input, InputState, Textarea, TextareaState};
 use gpui_component::select::Select;
 use gpui_component::{
     Disableable, Icon, IconName, Sizable, StyledExt, h_flex, switch::Switch, tooltip::Tooltip,
@@ -1965,11 +1965,11 @@ fn input_row(
 /// Multi-line list card (one entry per line); `enabled` greys the input out.
 fn dns_list_card(
     label: impl Into<SharedString>,
-    input: Option<&Entity<InputState>>,
+    input: Option<&Entity<TextareaState>>,
     enabled: bool,
 ) -> AnyElement {
     let control = match input {
-        Some(state) => Input::new(state)
+        Some(state) => Textarea::new(state)
             .w_full()
             .disabled(!enabled)
             .into_any_element(),

@@ -49,10 +49,12 @@ pub fn register_scheme() {
     let contents = format!(
         "[Desktop Entry]\n\
          Name=Nyx\n\
+         Icon=nyx\n\
          Exec={} %u\n\
          Type=Application\n\
          Terminal=false\n\
          NoDisplay=true\n\
+         StartupWMClass=nyx\n\
          MimeType=x-scheme-handler/nyx;\n",
         exe.to_string_lossy()
     );
