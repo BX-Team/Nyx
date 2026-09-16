@@ -169,5 +169,5 @@ Nyx was based on or inspired by these projects:
 - [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo): A rule-based tunnel in Go.
 - [DINGDANGMAOUP/mihomo-rs](https://github.com/DINGDANGMAOUP/mihomo-rs): A Rust SDK for Mihomo, manages versions, configs and other things.
 - [zed-industries/zed](https://github.com/zed-industries/zed): Home of the [gpui](https://www.gpui.rs/) GPU-accelerated UI framework that Nyx is built on.
-- [longbridge/gpui-component](https://github.com/longbridge/gpui-component): The gpui component library powering Nyx's widgets.
+- [longbridge/gpui-kit](https://github.com/longbridge/gpui-kit): The gpui component library underlying the Nyx design.
 - [zzzgydi/sysproxy-rs](https://github.com/zzzgydi/sysproxy-rs): Vendored and trimmed as `crates/nyx-sysproxy` — reads and writes the OS system proxy on Windows and Linux.
