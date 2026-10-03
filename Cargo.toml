@@ -40,8 +40,8 @@ gpui_platform = { package = "gpui-pre-platform", version = "0.3", features = [
     "wayland",
     "runtime_shaders",
 ] }
-gpui-component = { version = "0.6", features = ["tree-sitter-yaml"] }
-gpui-kit-assets = "0.6"
+gpui-component = { version = "0.7", features = ["tree-sitter-yaml"] }
+gpui-kit-assets = "0.7"
 
 # --- base utilities ---
 log = "0.4"
@@ -101,7 +101,7 @@ windows = { version = "0.62", features = [
 ] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
-tray-icon = "0.25"
+tray-icon = "0.26"
 
 [target.'cfg(not(windows))'.dependencies]
 libc = "0.2"
