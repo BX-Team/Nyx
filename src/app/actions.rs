@@ -1,4 +1,4 @@
-use gpui::{App, AppContext, Global, WindowHandle};
+use gpui::{App, AppContext, Global, Window, WindowHandle};
 use gpui_component::{Root, WindowExt, notification::Notification};
 use serde_json::json;
 
@@ -13,17 +13,18 @@ pub fn set_main_window(handle: WindowHandle<Root>, cx: &mut App) {
     cx.set_global(MainWindow(handle));
 }
 
-/// Toasts on the main window via `update_window`, which avoids locking `Root`.
+pub fn with_main_window(cx: &mut App, f: impl FnOnce(&mut Window, &mut App)) {
+    let Some(handle) = cx.try_global::<MainWindow>().map(|m| m.0) else {
+        return;
+    };
+    let _ = cx.update_window(handle.into(), |_, window, cx| f(window, cx));
+}
+
 pub fn notify(note: Notification, cx: &mut App) {
     if AppState::global(cx).read(cx).onboarding_active {
         return;
     }
-    let Some(handle) = cx.try_global::<MainWindow>().map(|m| m.0) else {
-        return;
-    };
-    let _ = cx.update_window(handle.into(), |_, window, cx| {
-        window.push_notification(note, cx);
-    });
+    with_main_window(cx, |window, cx| window.push_notification(note, cx));
 }
 
 /// Brings the main window up, recreating it if it was closed to the tray.

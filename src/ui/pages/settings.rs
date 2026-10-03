@@ -178,7 +178,9 @@ impl NyxApp {
                     .cursor_pointer()
                     .hover(|s| s.bg(rgb(0x3A1E1A)))
                     .child(t!("pages.settings.reset").to_string())
-                    .on_click(cx.listener(|this, _, _, cx| this.open_reset_confirm(cx))),
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.open_reset_confirm(window, cx)),
+                    ),
             )
             .into_any_element()
     }

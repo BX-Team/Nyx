@@ -52,6 +52,7 @@ Before every commit, the same checks CI runs must pass: `cargo fmt --all --check
 ### gpui gotchas
 - Win32 window calls (`ShowWindow`, hide/show/foreground) must run OUTSIDE any live gpui borrow — schedule them via `App::defer`/`App::spawn`, or they re-enter and panic with "RefCell already borrowed" (see `app/window.rs`, `app/actions.rs`).
 - The window's root view must be `gpui_component::Root` (re-exported `gpui_base::Root`); its plugins mount the dialog/notification layers and the `window_border()` frame, so never add either in a view (see `ui/root.rs`). Edit the theme via `Theme::update` — it re-syncs `tokens` and the Base layer.
+- Modals are kit dialogs, not hand-rolled scrims: open via `NyxApp::open_view_dialog` (builder re-runs every frame, so read live state from `self`) or `open_centered_dialog`, and build with `nyx_dialog(title, body, footer)` — keep title/footer inside it, the centering measures that body. Close with `window.close_dialog`.
 
 ### Linux platform
 - Tray: Linux uses a pure D-Bus StatusNotifierItem via `ksni` (no gtk / appindicator). `tray-icon` is cfg-gated to non-Linux, and the two backends diverge inside `app/tray.rs` — keep new tray logic behind the right `cfg`.

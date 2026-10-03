@@ -1,20 +1,23 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
     App, AppContext, Context, Decorations, Entity, InteractiveElement, IntoElement, ParentElement,
-    PathPromptOptions, Render, ScrollHandle, StatefulInteractiveElement, Styled, Subscription,
-    Window, WindowBounds, WindowOptions, div, px, rgb, rgba, size,
+    PathPromptOptions, Pixels, Render, ScrollHandle, StatefulInteractiveElement, Styled,
+    Subscription, Window, WindowBounds, WindowOptions, div, px, rgb, rgba, size,
 };
 use gpui_component::IndexPath;
 use gpui_component::input::{Editor, EditorState, InputState, TextareaState};
 use gpui_component::select::{SelectEvent, SelectState};
 use gpui_component::{
-    Disableable, Root, StyledExt, TitleBar,
+    Disableable, ElementExt, Root, StyledExt, TitleBar, WindowExt,
     button::{Button, ButtonVariants},
+    dialog::{Dialog, DialogTitle},
     h_flex,
     text::TextView,
     v_flex,
 };
 use rust_i18n::t;
+use std::cell::Cell;
+use std::rc::Rc;
 
 use crate::app::runtime;
 use crate::app::state::{AppState, parse_groups};
@@ -59,11 +62,6 @@ pub(crate) enum SettingsSub {
 pub(crate) struct ProviderRow {
     pub(crate) name: gpui::SharedString,
     pub(crate) subtitle: gpui::SharedString,
-}
-
-pub(crate) struct ProviderViewerState {
-    pub(crate) title: String,
-    pub(crate) editor: Entity<EditorState>,
 }
 
 #[derive(Default)]
@@ -134,7 +132,6 @@ pub(crate) struct NyxApp {
     pub(crate) conns_detail: Option<gpui::SharedString>,
     /// Connections page tab: `false` = active, `true` = recently closed.
     pub(crate) conns_show_closed: bool,
-    pub(crate) conn_detail_item: Option<crate::app::state::ConnItem>,
     pub(crate) logs_scroll: ScrollHandle,
     /// Total log count last rendered — autoscroll fires when it grows.
     pub(crate) logs_seen: std::cell::Cell<usize>,
@@ -150,12 +147,10 @@ pub(crate) struct NyxApp {
     pub(crate) proxy_providers: Vec<ProviderRow>,
     pub(crate) rule_providers: Vec<ProviderRow>,
     pub(crate) resources_busy: bool,
-    pub(crate) provider_viewer: Option<ProviderViewerState>,
     pub(crate) editor: Option<Entity<EditorState>>,
     pub(crate) editor_target: Option<EditorTarget>,
     pub(crate) rule_editor: Option<RuleEditState>,
     pub(crate) import_url: Entity<InputState>,
-    pub(crate) profile_add_open: bool,
     pub(crate) profile_add_local: bool,
     pub(crate) profile_add_name: Entity<InputState>,
     /// Auto-update interval input (hours, remote profiles); empty = off.
@@ -165,7 +160,6 @@ pub(crate) struct NyxApp {
     pub(crate) profile_edit_id: Option<String>,
     pub(crate) profile_add_busy: bool,
     pub(crate) profile_add_error: Option<gpui::SharedString>,
-    pub(crate) mrs_open: bool,
     pub(crate) mrs_input: Option<std::path::PathBuf>,
     pub(crate) mrs_behavior: &'static str,
     pub(crate) connected_since: Option<std::time::Instant>,
@@ -174,8 +168,6 @@ pub(crate) struct NyxApp {
     pub(crate) update_info: Option<backend::updater::UpdateInfo>,
     pub(crate) update_checking: bool,
     pub(crate) update_installing: bool,
-    pub(crate) updater_open: bool,
-    pub(crate) reset_confirm_open: bool,
     /// Guards the one-time silent auto-check after config loads.
     auto_update_checked: bool,
     _state_sub: Subscription,
@@ -317,7 +309,6 @@ impl NyxApp {
             conns_filter,
             conns_detail: None,
             conns_show_closed: false,
-            conn_detail_item: None,
             logs_scroll: ScrollHandle::new(),
             logs_seen: std::cell::Cell::new(0),
             settings_sub: None,
@@ -332,12 +323,10 @@ impl NyxApp {
             proxy_providers: Vec::new(),
             rule_providers: Vec::new(),
             resources_busy: false,
-            provider_viewer: None,
             editor: None,
             editor_target: None,
             rule_editor: None,
             import_url,
-            profile_add_open: false,
             profile_add_local: false,
             profile_add_name,
             profile_interval,
@@ -345,7 +334,6 @@ impl NyxApp {
             profile_edit_id: None,
             profile_add_busy: false,
             profile_add_error: None,
-            mrs_open: false,
             mrs_input: None,
             mrs_behavior: "domain",
             connected_since: None,
@@ -354,8 +342,6 @@ impl NyxApp {
             update_info: None,
             update_checking: false,
             update_installing: false,
-            updater_open: false,
-            reset_confirm_open: false,
             auto_update_checked: false,
             _state_sub: sub,
             _lang_sub: lang_sub,
@@ -381,7 +367,7 @@ impl NyxApp {
                 match outcome {
                     Ok(Some(info)) => {
                         this.update_info = Some(info);
-                        this.updater_open = true;
+                        this.open_updater(cx);
                     }
                     Ok(None) if !silent => crate::app::actions::notify(
                         gpui_component::notification::Notification::info(t!("updater.upToDate")),
@@ -438,24 +424,75 @@ impl NyxApp {
         .detach();
     }
 
-    pub(crate) fn close_updater(&mut self, cx: &mut Context<Self>) {
-        self.updater_open = false;
-        cx.notify();
+    pub(crate) fn open_view_dialog(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        build: fn(&mut Self, Dialog, &mut Window, &mut Context<Self>) -> Dialog,
+    ) {
+        let view = cx.entity();
+        open_centered_dialog(window, cx, move |dialog, window, cx| {
+            view.update(cx, |this, cx| build(this, dialog, window, cx))
+        });
     }
 
-    pub(crate) fn open_reset_confirm(&mut self, cx: &mut Context<Self>) {
-        self.reset_confirm_open = true;
-        cx.notify();
+    fn open_updater(&self, cx: &mut Context<Self>) {
+        let view = cx.entity();
+        crate::app::actions::with_main_window(cx, move |window, cx| {
+            open_centered_dialog(window, cx, move |dialog, window, cx| {
+                view.update(cx, |this, cx| {
+                    this.render_updater_dialog(dialog, window, cx)
+                })
+            });
+        });
     }
 
-    pub(crate) fn close_reset_confirm(&mut self, cx: &mut Context<Self>) {
-        self.reset_confirm_open = false;
-        cx.notify();
+    pub(crate) fn open_reset_confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let view = cx.entity();
+        open_centered_dialog(window, cx, move |dialog, _, _| {
+            let view = view.clone();
+            nyx_dialog(
+                dialog,
+                420.,
+                t!("pages.settings.confirmReset").to_string(),
+                v_flex()
+                    .gap_2()
+                    .text_sm()
+                    .child(
+                        div()
+                            .text_color(rgb(MUTED))
+                            .child(t!("pages.settings.resetWarning").to_string()),
+                    )
+                    .child(
+                        div()
+                            .text_color(rgb(RED_HI))
+                            .child(t!("pages.settings.cannotUndo").to_string()),
+                    ),
+                Some(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("reset-cancel")
+                                .ghost()
+                                .label(t!("common.cancel").to_string())
+                                .on_click(|_, window, cx| window.close_dialog(cx)),
+                        )
+                        .child(
+                            Button::new("reset-confirm")
+                                .danger()
+                                .label(t!("pages.settings.reset").to_string())
+                                .on_click(move |_, window, cx| {
+                                    window.close_dialog(cx);
+                                    view.update(cx, |this, cx| this.confirm_reset(cx));
+                                }),
+                        )
+                        .into_any_element(),
+                ),
+            )
+        });
     }
 
     pub(crate) fn confirm_reset(&mut self, cx: &mut Context<Self>) {
-        self.reset_confirm_open = false;
-        cx.notify();
         cx.spawn(async move |_this, cx| {
             let _ = runtime::spawn(backend::config::reset_app_config()).await;
             cx.update(crate::app::actions::restart_app);
@@ -619,15 +656,9 @@ impl NyxApp {
         .detach();
     }
 
-    pub(crate) fn open_mrs_convert(&mut self, cx: &mut Context<Self>) {
-        self.mrs_open = true;
+    pub(crate) fn open_mrs_convert(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.mrs_input = None;
-        cx.notify();
-    }
-
-    pub(crate) fn close_mrs_convert(&mut self, cx: &mut Context<Self>) {
-        self.mrs_open = false;
-        cx.notify();
+        self.open_view_dialog(window, cx, Self::render_mrs_dialog);
     }
 
     pub(crate) fn mrs_set_behavior(&mut self, behavior: &'static str, cx: &mut Context<Self>) {
@@ -665,8 +696,6 @@ impl NyxApp {
             return;
         };
         let behavior = self.mrs_behavior;
-        self.mrs_open = false;
-        cx.notify();
         cx.spawn(async move |_this, cx| {
             let p = input.to_string_lossy().to_string();
             let res = runtime::spawn(backend::config::convert_mrs_ruleset(
@@ -773,7 +802,12 @@ impl NyxApp {
 }
 
 impl NyxApp {
-    fn render_updater_modal(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_updater_dialog(
+        &mut self,
+        dialog: Dialog,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Dialog {
         let (version, changelog) = self
             .update_info
             .clone()
@@ -786,216 +820,100 @@ impl NyxApp {
             t!("updater.update")
         };
 
-        div()
-            .id("updater-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(rgba(0x000000B0))
-            .occlude()
-            .child(
-                v_flex()
-                    .w(px(440.))
-                    .max_h(px(520.))
-                    .rounded_xl()
-                    .border_1()
-                    .border_color(rgba(STROKE))
-                    .bg(rgb(CARD_BG))
-                    .p_5()
-                    .gap_3()
+        nyx_dialog(
+            dialog,
+            440.,
+            t!("updater.versionReady", version => version).to_string(),
+            div()
+                .id("updater-changelog")
+                .max_h(px(380.))
+                .overflow_y_scroll()
+                .text_sm()
+                .text_color(rgb(MUTED))
+                .child(TextView::markdown("updater-changelog-md", changelog)),
+            Some(
+                h_flex()
+                    .gap_2()
                     .child(
-                        div()
-                            .text_lg()
-                            .font_bold()
-                            .text_color(rgb(TEXT))
-                            .child(t!("updater.versionReady", version => version).to_string()),
+                        Button::new("updater-later")
+                            .ghost()
+                            .label(t!("updater.later").to_string())
+                            .disabled(installing)
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
                     )
                     .child(
-                        div()
-                            .id("updater-changelog")
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .text_sm()
-                            .text_color(rgb(MUTED))
-                            .child(TextView::markdown("updater-changelog-md", changelog)),
+                        Button::new("updater-install")
+                            .primary()
+                            .label(install_label.to_string())
+                            .disabled(installing)
+                            .on_click(cx.listener(|this, _, _, cx| this.install_update(cx))),
                     )
-                    .child(
-                        h_flex()
-                            .justify_end()
-                            .gap_2()
-                            .child(
-                                Button::new("updater-later")
-                                    .ghost()
-                                    .label(t!("updater.later").to_string())
-                                    .disabled(installing)
-                                    .on_click(cx.listener(|this, _, _, cx| this.close_updater(cx))),
-                            )
-                            .child(
-                                Button::new("updater-install")
-                                    .primary()
-                                    .label(install_label.to_string())
-                                    .disabled(installing)
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.install_update(cx)),
-                                    ),
-                            ),
-                    ),
-            )
+                    .into_any_element(),
+            ),
+        )
+        .keyboard(!installing)
+        .overlay_closable(false)
     }
 }
 
-impl NyxApp {
-    fn render_reset_confirm(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        div()
-            .id("reset-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(rgba(0x000000B0))
-            .occlude()
-            .on_click(cx.listener(|this, _, _, cx| this.close_reset_confirm(cx)))
-            .child(
-                v_flex()
-                    .w(px(420.))
-                    .rounded_xl()
-                    .border_1()
-                    .border_color(rgba(STROKE))
-                    .bg(rgb(CARD_BG))
-                    .p_5()
-                    .gap_3()
-                    .id("reset-card")
-                    .occlude()
-                    .child(
-                        div()
-                            .text_lg()
-                            .font_bold()
-                            .text_color(rgb(TEXT))
-                            .child(t!("pages.settings.confirmReset").to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(rgb(MUTED))
-                            .child(t!("pages.settings.resetWarning").to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(rgb(RED_HI))
-                            .child(t!("pages.settings.cannotUndo").to_string()),
-                    )
-                    .child(
-                        h_flex()
-                            .justify_end()
-                            .gap_2()
-                            .child(
-                                Button::new("reset-cancel")
-                                    .ghost()
-                                    .label(t!("common.cancel").to_string())
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.close_reset_confirm(cx)),
-                                    ),
-                            )
-                            .child(
-                                Button::new("reset-confirm")
-                                    .danger()
-                                    .label(t!("pages.settings.reset").to_string())
-                                    .on_click(cx.listener(|this, _, _, cx| this.confirm_reset(cx))),
-                            ),
-                    ),
-            )
-    }
+const DIALOG_PADDING: f32 = 20.;
+
+pub(crate) fn open_centered_dialog(
+    window: &mut Window,
+    cx: &mut App,
+    build: impl Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
+) {
+    let height = Rc::new(Cell::new(None::<Pixels>));
+    let anchor = Rc::new(Cell::new(None::<(Pixels, Pixels)>));
+    window.open_dialog(cx, move |dialog, window, cx| {
+        let measured = height.clone();
+        let top = height.get().map(|body| {
+            let pad = gpui_component::window_paddings(window);
+            let view = window.viewport_size().height - pad.top - pad.bottom;
+            let surface = body + px(DIALOG_PADDING * 2. + 2.);
+            let top = match anchor.get() {
+                Some((top, at_view)) if at_view == view => top,
+                _ => (view - surface) / 2.,
+            };
+            let top = top.min(view - surface - px(16.)).max(px(16.));
+            anchor.set(Some((top, view)));
+            top
+        });
+        build(dialog, window, cx)
+            .when_some(top, |d, top| d.margin_top(top))
+            .on_prepaint(move |bounds, window, _| {
+                if measured.replace(Some(bounds.size.height)) != Some(bounds.size.height) {
+                    window.refresh();
+                }
+            })
+    });
 }
 
-impl NyxApp {
-    fn render_provider_viewer(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let Some(viewer) = self.provider_viewer.as_ref() else {
-            return div().into_any_element();
-        };
-        let title = viewer.title.clone();
-        let editor = viewer.editor.clone();
-        div()
-            .id("provider-viewer-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(rgba(0x000000B0))
-            .occlude()
-            .on_click(cx.listener(|this, _, _, cx| this.close_provider_viewer(cx)))
-            .child(
-                v_flex()
-                    .w(px(720.))
-                    .h(px(560.))
-                    .max_w(px(900.))
-                    .rounded_xl()
-                    .border_1()
-                    .border_color(rgba(STROKE))
-                    .bg(rgb(CARD_BG))
-                    .p_4()
-                    .gap_3()
-                    .id("provider-viewer-card")
-                    .occlude()
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .justify_between()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_base()
-                                    .font_bold()
-                                    .text_color(rgb(TEXT))
-                                    .truncate()
-                                    .child(title),
-                            )
-                            .child(
-                                Button::new("provider-viewer-close")
-                                    .ghost()
-                                    .label(t!("common.close").to_string())
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| {
-                                            this.close_provider_viewer(cx)
-                                        }),
-                                    ),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_h_0()
-                            .border_1()
-                            .border_color(rgb(CARD_BORDER))
-                            .rounded_lg()
-                            .child(Editor::new(&editor).h_full().w_full().disabled(true)),
-                    ),
-            )
-            .into_any_element()
-    }
+pub(crate) fn nyx_dialog(
+    dialog: Dialog,
+    width: f32,
+    title: impl IntoElement,
+    body: impl IntoElement,
+    footer: Option<gpui::AnyElement>,
+) -> Dialog {
+    dialog
+        .w(px(width))
+        .bg(rgb(CARD_BG))
+        .border_color(rgba(STROKE))
+        .rounded_xl()
+        .p(px(DIALOG_PADDING))
+        .close_button(footer.is_none())
+        .child(
+            v_flex()
+                .gap_3()
+                .child(DialogTitle::new().pr_6().text_color(rgb(TEXT)).child(title))
+                .child(body)
+                .children(footer.map(|f| h_flex().justify_end().child(f))),
+        )
 }
 
 impl Render for NyxApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let updater_modal = self.updater_open.then(|| self.render_updater_modal(cx));
-        let reset_modal = self
-            .reset_confirm_open
-            .then(|| self.render_reset_confirm(cx));
-        let provider_viewer_modal = self
-            .provider_viewer
-            .is_some()
-            .then(|| self.render_provider_viewer(cx));
-        let profile_add_modal = self
-            .profile_add_open
-            .then(|| self.render_profile_add_modal(cx));
-        let mrs_modal = self.mrs_open.then(|| self.render_mrs_modal(cx));
         let onboarding = self.onboarding_active().then(|| self.render_onboarding(cx));
 
         let title_bar = (!cfg!(target_os = "linux")
@@ -1014,13 +932,7 @@ impl Render for NyxApp {
                     .child(self.render_rail(cx))
                     .child(self.render_content(window, cx)),
             )
-            // Onboarding card sits below the modals so dialogs open above it.
             .children(onboarding)
-            .children(updater_modal)
-            .children(reset_modal)
-            .children(provider_viewer_modal)
-            .children(profile_add_modal)
-            .children(mrs_modal)
     }
 }
 
@@ -1150,8 +1062,7 @@ impl NyxApp {
             .update(cx, |s, c| s.set_value("", window, c));
         self.profile_add_busy = false;
         self.profile_add_error = None;
-        self.profile_add_open = true;
-        cx.notify();
+        self.open_view_dialog(window, cx, Self::render_profile_add_dialog);
     }
 
     pub(crate) fn open_profile_edit_info(
@@ -1168,8 +1079,7 @@ impl NyxApp {
         self.profile_edit_id = Some(id.clone());
         self.profile_add_busy = false;
         self.profile_add_error = None;
-        self.profile_add_open = true;
-        cx.notify();
+        self.open_view_dialog(window, cx, Self::render_profile_add_dialog);
         cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(item)) = runtime::spawn(backend::config::get_profile_item(id)).await else {
                 return;
@@ -1199,14 +1109,13 @@ impl NyxApp {
         .detach();
     }
 
-    pub(crate) fn close_profile_add(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn close_profile_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.profile_add_busy {
             return;
         }
-        self.profile_add_open = false;
         self.profile_edit_id = None;
         self.profile_add_error = None;
-        cx.notify();
+        window.close_dialog(cx);
     }
 
     pub(crate) fn profile_add_set_local(&mut self, local: bool, cx: &mut Context<Self>) {
@@ -1256,8 +1165,7 @@ impl NyxApp {
         .detach();
     }
 
-    /// Validates + submits the add/edit modal; edit mode updates in place.
-    pub(crate) fn submit_profile_add(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn submit_profile_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let name = self.profile_add_name.read(cx).value().trim().to_string();
         let edit_id = self.profile_edit_id.clone();
         let item = if self.profile_add_local {
@@ -1277,7 +1185,7 @@ impl NyxApp {
                     self.profile_add_busy = true;
                     self.profile_add_error = None;
                     cx.notify();
-                    cx.spawn(async move |this, cx| {
+                    cx.spawn_in(window, async move |this, cx| {
                         let res = runtime::spawn(async move {
                             let mut existing = backend::config::get_profile_item(id).await?;
                             existing["name"] = serde_json::Value::String(name);
@@ -1319,7 +1227,7 @@ impl NyxApp {
         self.profile_add_busy = true;
         self.profile_add_error = None;
         cx.notify();
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let added = runtime::spawn(backend::config::add_profile_item(item)).await;
             let err = match added {
                 Ok(Ok(_)) => None,
@@ -1333,26 +1241,22 @@ impl NyxApp {
 
     async fn finish_profile_add(
         this: gpui::WeakEntity<Self>,
-        cx: &mut gpui::AsyncApp,
+        cx: &mut gpui::AsyncWindowContext,
         err: Option<String>,
     ) {
         if err.is_none() {
             crate::app::bootstrap::refresh_runtime_data(cx).await;
         }
-        let _ = this.update(cx, |this, cx| {
+        let _ = this.update_in(cx, |this, window, cx| {
             this.profile_add_busy = false;
             match err {
-                None => {
-                    this.profile_add_open = false;
-                    this.profile_edit_id = None;
-                    this.profile_add_error = None;
-                }
+                None => this.close_profile_add(window, cx),
                 Some(e) => {
                     log::warn!("[profile] import failed: {e}");
                     this.profile_add_error = Some(e.into());
+                    cx.notify();
                 }
             }
-            cx.notify();
         });
     }
 
@@ -2294,11 +2198,22 @@ impl NyxApp {
         cx: &mut Context<Self>,
     ) {
         let editor = cx.new(|cx| EditorState::new(window, cx).language("yaml"));
-        self.provider_viewer = Some(ProviderViewerState {
-            title: name.clone(),
-            editor: editor.clone(),
+        let title = gpui::SharedString::from(name.clone());
+        let view_editor = editor.clone();
+        open_centered_dialog(window, cx, move |dialog, _, _| {
+            nyx_dialog(
+                dialog,
+                720.,
+                div().truncate().child(title.clone()),
+                div()
+                    .h(px(460.))
+                    .border_1()
+                    .border_color(rgb(CARD_BORDER))
+                    .rounded_lg()
+                    .child(Editor::new(&view_editor).h_full().w_full().disabled(true)),
+                None,
+            )
         });
-        cx.notify();
         cx.spawn_in(window, async move |_this, cx| {
             let content =
                 match runtime::spawn(backend::config::read_provider_content(name, is_rule)).await {
@@ -2311,11 +2226,6 @@ impl NyxApp {
             });
         })
         .detach();
-    }
-
-    pub(crate) fn close_provider_viewer(&mut self, cx: &mut Context<Self>) {
-        self.provider_viewer = None;
-        cx.notify();
     }
 
     pub(crate) fn update_geo(&mut self, cx: &mut Context<Self>) {

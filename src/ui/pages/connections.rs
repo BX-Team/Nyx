@@ -1,18 +1,18 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
     Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, div, img, px, rgb, rgba,
+    StatefulInteractiveElement, Styled, Window, div, img, px, rgb,
 };
 use gpui_component::{
-    Icon, IconName, StyledExt, WindowExt, h_flex, input::Input, notification::Notification,
-    tooltip::Tooltip, v_flex,
+    Icon, IconName, StyledExt, WindowExt, dialog::Dialog, h_flex, input::Input,
+    notification::Notification, tooltip::Tooltip, v_flex,
 };
 use rust_i18n::t;
 
 use crate::app::state::{ConnItem, ConnProcess};
 use crate::ui::root::{
     BLUE, CARD_BG, CARD_BORDER, GREEN, GREEN_HI, MUTED2, MUTED3, NyxApp, PANEL_BG, RED, RED_HI,
-    SUBTLE, TEXT, fmt_bytes,
+    SUBTLE, TEXT, fmt_bytes, nyx_dialog, open_centered_dialog,
 };
 
 /// A small fixed palette for process avatars, picked by name hash.
@@ -42,11 +42,7 @@ impl NyxApp {
             }
             None => self.render_conn_list(cx).into_any_element(),
         };
-        div().relative().size_full().child(content).children(
-            self.conn_detail_item
-                .clone()
-                .map(|c| self.render_conn_popup(c, cx)),
-        )
+        div().relative().size_full().child(content)
     }
 
     fn render_conn_list(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -160,7 +156,6 @@ impl NyxApp {
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.conns_show_closed = closed;
                     this.conns_detail = None;
-                    this.conn_detail_item = None;
                     cx.notify();
                 }))
         };
@@ -467,14 +462,20 @@ impl NyxApp {
             .id(SharedString::from(format!("conn-row-{idx}")))
             .cursor_pointer()
             .hover(|s| s.border_color(rgb(0x2E3A47)))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                this.conn_detail_item = Some(item.clone());
-                cx.notify();
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.open_conn_popup(item.clone(), window, cx)
             }))
     }
 
+    fn open_conn_popup(&mut self, c: ConnItem, window: &mut Window, cx: &mut Context<Self>) {
+        let view = cx.entity();
+        open_centered_dialog(window, cx, move |dialog, _, cx| {
+            view.update(cx, |this, cx| this.render_conn_popup(c.clone(), dialog, cx))
+        });
+    }
+
     /// Per-connection metadata popup; every value is click-to-copy.
-    fn render_conn_popup(&self, c: ConnItem, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_conn_popup(&self, c: ConnItem, dialog: Dialog, cx: &mut Context<Self>) -> Dialog {
         let host_only = strip_port(c.host.as_ref());
         let host_frag = if host_only.chars().any(|ch| ch.is_ascii_alphabetic()) {
             Some(format!("DOMAIN-SUFFIX,{host_only}"))
@@ -588,81 +589,21 @@ impl NyxApp {
             cx,
         );
 
-        div()
-            .id("conn-popup-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(rgba(0x000000B0))
-            // Block all mouse interaction with the list behind the modal.
-            .occlude()
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.conn_detail_item = None;
-                cx.notify();
-            }))
-            .child(
-                v_flex()
-                    .w(px(460.))
-                    .max_h(px(560.))
-                    .rounded_xl()
-                    .border_1()
-                    .border_color(rgb(CARD_BORDER))
-                    .bg(rgb(CARD_BG))
-                    .p_4()
-                    .gap_3()
-                    // Swallow clicks inside the card so they don't dismiss it.
-                    .id("conn-popup-card")
-                    .occlude()
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .justify_between()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_base()
-                                    .font_bold()
-                                    .text_color(rgb(TEXT))
-                                    .truncate()
-                                    .child(c.host.to_string()),
-                            )
-                            .child(
-                                div()
-                                    .id("conn-popup-close")
-                                    .size(px(28.))
-                                    .rounded(px(7.))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .bg(rgb(CARD_BG))
-                                    .border_1()
-                                    .border_color(rgb(CARD_BORDER))
-                                    .text_color(rgb(SUBTLE))
-                                    .cursor_pointer()
-                                    .child(Icon::new(IconName::Close).size(px(14.)))
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.conn_detail_item = None;
-                                        cx.notify();
-                                    })),
-                            ),
-                    )
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_h_0()
-                            .id("conn-popup-scroll")
-                            .overflow_y_scroll()
-                            .gap_3()
-                            .child(routing)
-                            .child(network)
-                            .child(process)
-                            .child(traffic),
-                    ),
-            )
+        nyx_dialog(
+            dialog,
+            460.,
+            div().truncate().child(c.host.to_string()),
+            v_flex()
+                .id("conn-popup-scroll")
+                .max_h(px(480.))
+                .overflow_y_scroll()
+                .gap_3()
+                .child(routing)
+                .child(network)
+                .child(process)
+                .child(traffic),
+            None,
+        )
     }
 
     fn detail_section(

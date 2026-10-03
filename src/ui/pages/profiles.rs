@@ -1,11 +1,12 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
     Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
+    StatefulInteractiveElement, Styled, Window, div, px, rgb,
 };
 use gpui_component::{
     Disableable, Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants},
+    dialog::Dialog,
     h_flex,
     input::Input,
     menu::{DropdownMenu, PopupMenuItem},
@@ -18,6 +19,7 @@ use crate::app::state::ProfileItem;
 use crate::ui::root::{
     ACTIVE_CARD_BG, ACTIVE_CARD_BORDER, BLUE, CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER,
     DIVIDER, GREEN, MUTED, MUTED2, NyxApp, RED, SUBTLE, TEXT, brand_gradient, fmt_bytes,
+    nyx_dialog,
 };
 
 /// Days until `expire` (unix ts), or a localized "never" when unset.
@@ -302,10 +304,12 @@ impl NyxApp {
         )
     }
 
-    pub(crate) fn render_profile_add_modal(
-        &self,
+    pub(crate) fn render_profile_add_dialog(
+        &mut self,
+        dialog: Dialog,
+        _: &mut Window,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
+    ) -> Dialog {
         let local = self.profile_add_local;
         let editing = self.profile_edit_id.is_some();
         let busy = self.profile_add_busy;
@@ -371,82 +375,67 @@ impl NyxApp {
                 .into_any_element()
         };
 
-        div()
-            .id("profadd-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(rgba(0x000000B0))
-            .child(
-                v_flex()
-                    .w(px(440.))
-                    .rounded_xl()
-                    .border_1()
-                    .border_color(rgb(CARD_BORDER))
-                    .bg(rgb(CARD_BG))
-                    .p_5()
-                    .gap_3()
+        nyx_dialog(
+            dialog,
+            440.,
+            if editing {
+                t!("pages.profiles.editTitle").to_string()
+            } else {
+                t!("pages.profiles.addTitle").to_string()
+            },
+            v_flex()
+                .gap_3()
+                .child(toggle)
+                .child(source)
+                .child(
+                    field_label(&t!("pages.profiles.nameLabel"))
+                        .child(Input::new(&self.profile_add_name)),
+                )
+                .when(!local, |this| {
+                    this.child(
+                        field_label(&t!("pages.profiles.intervalLabel"))
+                            .child(Input::new(&self.profile_interval)),
+                    )
+                })
+                .when_some(error, |this, e| {
+                    this.child(div().text_xs().text_color(rgb(RED)).child(format!(
+                        "{}: {}",
+                        t!("pages.profiles.importFailed"),
+                        e
+                    )))
+                }),
+            Some(
+                h_flex()
+                    .justify_end()
+                    .gap_2()
                     .child(
-                        div()
-                            .text_lg()
-                            .font_bold()
-                            .text_color(rgb(TEXT))
-                            .child(if editing {
-                                t!("pages.profiles.editTitle").to_string()
+                        Button::new("profadd-cancel")
+                            .ghost()
+                            .label(t!("common.cancel").to_string())
+                            .disabled(busy)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.close_profile_add(window, cx)
+                            })),
+                    )
+                    .child(
+                        Button::new("profadd-import")
+                            .primary()
+                            .label(if editing {
+                                t!("common.save").to_string()
                             } else {
-                                t!("pages.profiles.addTitle").to_string()
-                            }),
+                                t!("pages.profiles.add").to_string()
+                            })
+                            .loading(busy)
+                            .disabled(!can_submit || busy)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.submit_profile_add(window, cx)
+                            })),
                     )
-                    .child(toggle)
-                    .child(source)
-                    .child(
-                        field_label(&t!("pages.profiles.nameLabel"))
-                            .child(Input::new(&self.profile_add_name)),
-                    )
-                    .when(!local, |this| {
-                        this.child(
-                            field_label(&t!("pages.profiles.intervalLabel"))
-                                .child(Input::new(&self.profile_interval)),
-                        )
-                    })
-                    .when_some(error, |this, e| {
-                        this.child(div().text_xs().text_color(rgb(RED)).child(format!(
-                            "{}: {}",
-                            t!("pages.profiles.importFailed"),
-                            e
-                        )))
-                    })
-                    .child(
-                        h_flex()
-                            .justify_end()
-                            .gap_2()
-                            .child(
-                                Button::new("profadd-cancel")
-                                    .ghost()
-                                    .label(t!("common.cancel").to_string())
-                                    .disabled(busy)
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.close_profile_add(cx)),
-                                    ),
-                            )
-                            .child(
-                                Button::new("profadd-import")
-                                    .primary()
-                                    .label(if editing {
-                                        t!("common.save").to_string()
-                                    } else {
-                                        t!("pages.profiles.add").to_string()
-                                    })
-                                    .loading(busy)
-                                    .disabled(!can_submit || busy)
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.submit_profile_add(cx)),
-                                    ),
-                            ),
-                    ),
-            )
+                    .into_any_element(),
+            ),
+        )
+        .keyboard(!busy)
+        .overlay_closable(false)
     }
 }
 

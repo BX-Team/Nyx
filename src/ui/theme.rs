@@ -91,6 +91,7 @@ pub fn apply(cx: &mut App) {
         c.ring = rgb(GREEN).into();
         c.popover = rgb(CONTROL_BG).into();
         c.popover_foreground = rgb(TEXT).into();
+        c.overlay = rgba(0x000000B0).into();
 
         c.secondary = rgb(CONTROL_BG).into();
         c.secondary_foreground = rgb(TEXT).into();

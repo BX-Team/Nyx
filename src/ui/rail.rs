@@ -183,7 +183,6 @@ impl NyxApp {
             this.recording_shortcut = None;
             this.conns_detail = None;
             this.conns_show_closed = false;
-            this.conn_detail_item = None;
             this.proxies_group = None;
             this.route = route;
             cx.notify();

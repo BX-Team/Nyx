@@ -1,11 +1,12 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
     Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
+    StatefulInteractiveElement, Styled, Window, div, px, rgb,
 };
 use gpui_component::{
-    Disableable, Icon, IconName, Sizable, StyledExt,
+    Disableable, Icon, IconName, Sizable, StyledExt, WindowExt,
     button::{Button, ButtonVariants},
+    dialog::Dialog,
     h_flex,
     input::Input,
     select::Select,
@@ -17,7 +18,7 @@ use rust_i18n::t;
 use crate::app::state::Rule;
 use crate::ui::root::{
     CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, DIVIDER, GREEN, GREEN_HI, MUTED2, MUTED3,
-    MUTED4, NyxApp, RED, RED_HI, SUBTLE, TEXT,
+    MUTED4, NyxApp, RED, RED_HI, SUBTLE, TEXT, nyx_dialog,
 };
 
 /// Rule types offered by the smart editor's type picker (mihomo rule set).
@@ -177,54 +178,34 @@ impl NyxApp {
             _ => "Rules",
         };
 
-        let header = h_flex()
-            .items_center()
-            .justify_between()
-            .px(px(22.))
-            .pt(px(18.))
-            .pb(px(14.))
-            .child(
-                v_flex()
-                    .gap_0p5()
-                    .child(
-                        div()
-                            .text_xl()
-                            .font_bold()
-                            .text_color(rgb(TEXT))
-                            .child(t!("sider.rules").to_string()),
-                    )
-                    .child(div().text_xs().text_color(rgb(MUTED4)).child(
-                        t!("pages.rules.summary", n => count, mode => mode_label).to_string(),
-                    )),
-            )
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .id("rules-convert")
-                            .size(px(32.))
-                            .rounded(px(8.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .bg(rgb(CARD_BG))
-                            .border_1()
-                            .border_color(rgb(CARD_BORDER))
-                            .text_color(rgb(SUBTLE))
-                            .cursor_pointer()
-                            .tooltip(|window, cx| {
-                                Tooltip::new(t!("pages.rules.convertMrs").to_string())
-                                    .build(window, cx)
-                            })
-                            .child(Icon::empty().path("icons/refresh.svg").size(px(15.)))
-                            .on_click(cx.listener(|this, _, _, cx| this.open_mrs_convert(cx))),
-                    )
-                    .when(has_current, |this| {
-                        this.child(
+        let header =
+            h_flex()
+                .items_center()
+                .justify_between()
+                .px(px(22.))
+                .pt(px(18.))
+                .pb(px(14.))
+                .child(
+                    v_flex()
+                        .gap_0p5()
+                        .child(
                             div()
-                                .id("rules-edit")
+                                .text_xl()
+                                .font_bold()
+                                .text_color(rgb(TEXT))
+                                .child(t!("sider.rules").to_string()),
+                        )
+                        .child(div().text_xs().text_color(rgb(MUTED4)).child(
+                            t!("pages.rules.summary", n => count, mode => mode_label).to_string(),
+                        )),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            div()
+                                .id("rules-convert")
                                 .size(px(32.))
                                 .rounded(px(8.))
                                 .flex()
@@ -236,16 +217,39 @@ impl NyxApp {
                                 .text_color(rgb(SUBTLE))
                                 .cursor_pointer()
                                 .tooltip(|window, cx| {
-                                    Tooltip::new(t!("pages.rules.edit").to_string())
+                                    Tooltip::new(t!("pages.rules.convertMrs").to_string())
                                         .build(window, cx)
                                 })
-                                .child(Icon::empty().path("icons/square-pen.svg").size(px(15.)))
+                                .child(Icon::empty().path("icons/refresh.svg").size(px(15.)))
                                 .on_click(cx.listener(|this, _, window, cx| {
-                                    this.open_rule_editor(window, cx)
+                                    this.open_mrs_convert(window, cx)
                                 })),
                         )
-                    }),
-            );
+                        .when(has_current, |this| {
+                            this.child(
+                                div()
+                                    .id("rules-edit")
+                                    .size(px(32.))
+                                    .rounded(px(8.))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .bg(rgb(CARD_BG))
+                                    .border_1()
+                                    .border_color(rgb(CARD_BORDER))
+                                    .text_color(rgb(SUBTLE))
+                                    .cursor_pointer()
+                                    .tooltip(|window, cx| {
+                                        Tooltip::new(t!("pages.rules.edit").to_string())
+                                            .build(window, cx)
+                                    })
+                                    .child(Icon::empty().path("icons/square-pen.svg").size(px(15.)))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_rule_editor(window, cx)
+                                    })),
+                            )
+                        }),
+                );
 
         let table = v_flex()
             .flex_1()
@@ -269,7 +273,12 @@ impl NyxApp {
         v_flex().size_full().child(header).child(table)
     }
 
-    pub(crate) fn render_mrs_modal(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    pub(crate) fn render_mrs_dialog(
+        &mut self,
+        dialog: Dialog,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Dialog {
         let input_name = self
             .mrs_input
             .as_ref()
@@ -295,92 +304,75 @@ impl NyxApp {
                     .on_click(cx.listener(move |this, _, _, cx| this.mrs_set_behavior(key, cx)))
             };
 
-        div()
-            .id("mrs-scrim")
-            .absolute()
-            .inset_0()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(rgba(0x000000B0))
-            .child(
-                v_flex()
-                    .w(px(440.))
-                    .rounded_xl()
-                    .border_1()
-                    .border_color(rgb(CARD_BORDER))
-                    .bg(rgb(CARD_BG))
-                    .p_5()
-                    .gap_3()
+        nyx_dialog(
+            dialog,
+            440.,
+            t!("pages.rules.convertMrs").to_string(),
+            v_flex()
+                .gap_3()
+                .child(
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("mrs-pick")
+                                .small()
+                                .icon(IconName::FolderOpen)
+                                .label(t!("pages.rules.convertPick").to_string())
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.mrs_pick_input(window, cx)
+                                })),
+                        )
+                        .when_some(input_name, |this, name| {
+                            this.child(div().text_xs().text_color(rgb(GREEN)).child(name))
+                        }),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(MUTED2))
+                        .child(t!("pages.rules.convertBehavior").to_string()),
+                )
+                .child(
+                    h_flex()
+                        .p(px(3.))
+                        .gap(px(2.))
+                        .rounded(px(9.))
+                        .bg(rgb(CONTROL_BG))
+                        .border_1()
+                        .border_color(rgb(CONTROL_BORDER))
+                        .child(behavior_pill("domain", "domain", behavior == "domain", cx))
+                        .child(behavior_pill("ipcidr", "ipcidr", behavior == "ipcidr", cx))
+                        .child(behavior_pill(
+                            "classical",
+                            "classical",
+                            behavior == "classical",
+                            cx,
+                        )),
+                ),
+            Some(
+                h_flex()
+                    .justify_end()
+                    .gap_2()
                     .child(
-                        div()
-                            .text_lg()
-                            .font_bold()
-                            .text_color(rgb(TEXT))
-                            .child(t!("pages.rules.convertMrs").to_string()),
+                        Button::new("mrs-cancel")
+                            .ghost()
+                            .label(t!("common.cancel").to_string())
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
                     )
                     .child(
-                        v_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("mrs-pick")
-                                    .small()
-                                    .icon(IconName::FolderOpen)
-                                    .label(t!("pages.rules.convertPick").to_string())
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.mrs_pick_input(window, cx)
-                                    })),
-                            )
-                            .when_some(input_name, |this, name| {
-                                this.child(div().text_xs().text_color(rgb(GREEN)).child(name))
-                            }),
+                        Button::new("mrs-go")
+                            .primary()
+                            .label(t!("pages.rules.convertDo").to_string())
+                            .disabled(self.mrs_input.is_none())
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                window.close_dialog(cx);
+                                this.submit_mrs_convert(cx)
+                            })),
                     )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(rgb(MUTED2))
-                            .child(t!("pages.rules.convertBehavior").to_string()),
-                    )
-                    .child(
-                        h_flex()
-                            .p(px(3.))
-                            .gap(px(2.))
-                            .rounded(px(9.))
-                            .bg(rgb(CONTROL_BG))
-                            .border_1()
-                            .border_color(rgb(CONTROL_BORDER))
-                            .child(behavior_pill("domain", "domain", behavior == "domain", cx))
-                            .child(behavior_pill("ipcidr", "ipcidr", behavior == "ipcidr", cx))
-                            .child(behavior_pill(
-                                "classical",
-                                "classical",
-                                behavior == "classical",
-                                cx,
-                            )),
-                    )
-                    .child(
-                        h_flex()
-                            .justify_end()
-                            .gap_2()
-                            .child(
-                                Button::new("mrs-cancel")
-                                    .ghost()
-                                    .label(t!("common.cancel").to_string())
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.close_mrs_convert(cx)),
-                                    ),
-                            )
-                            .child(
-                                Button::new("mrs-go")
-                                    .primary()
-                                    .label(t!("pages.rules.convertDo").to_string())
-                                    .disabled(self.mrs_input.is_none())
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.submit_mrs_convert(cx)),
-                                    ),
-                            ),
-                    ),
-            )
+                    .into_any_element(),
+            ),
+        )
+        .overlay_closable(false)
     }
 
     pub(crate) fn render_rule_editor(
