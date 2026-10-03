@@ -12,7 +12,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     h_flex,
     text::TextView,
-    v_flex, window_border,
+    v_flex,
 };
 use rust_i18n::t;
 
@@ -984,9 +984,6 @@ impl NyxApp {
 
 impl Render for NyxApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // The top-level view must render `Root`'s overlay layers, or toasts never appear.
-        let dialog_layer = Root::render_dialog_layer(window, cx);
-        let notification_layer = Root::render_notification_layer(window, cx);
         let updater_modal = self.updater_open.then(|| self.render_updater_modal(cx));
         let reset_modal = self
             .reset_confirm_open
@@ -1005,29 +1002,25 @@ impl Render for NyxApp {
             || matches!(window.window_decorations(), Decorations::Client { .. }))
         .then(|| self.render_title_bar());
 
-        window_border().child(
-            v_flex()
-                .size_full()
-                .bg(rgb(TITLEBAR_BG))
-                .children(title_bar)
-                .child(
-                    h_flex()
-                        .flex_1()
-                        .min_h_0()
-                        .bg(content_bg())
-                        .child(self.render_rail(cx))
-                        .child(self.render_content(window, cx)),
-                )
-                // Onboarding card sits below the modals so dialogs open above it.
-                .children(onboarding)
-                .children(updater_modal)
-                .children(reset_modal)
-                .children(provider_viewer_modal)
-                .children(profile_add_modal)
-                .children(mrs_modal)
-                .children(dialog_layer)
-                .children(notification_layer),
-        )
+        v_flex()
+            .size_full()
+            .bg(rgb(TITLEBAR_BG))
+            .children(title_bar)
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .bg(content_bg())
+                    .child(self.render_rail(cx))
+                    .child(self.render_content(window, cx)),
+            )
+            // Onboarding card sits below the modals so dialogs open above it.
+            .children(onboarding)
+            .children(updater_modal)
+            .children(reset_modal)
+            .children(provider_viewer_modal)
+            .children(profile_add_modal)
+            .children(mrs_modal)
     }
 }
 

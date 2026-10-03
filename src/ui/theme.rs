@@ -1,5 +1,5 @@
 use gpui::{App, Background, linear_color_stop, linear_gradient, rgb, rgba};
-use gpui_component::{Theme, ThemeTokens};
+use gpui_component::Theme;
 
 pub const TEXT: u32 = 0xEEF3F7; // headings / primary text
 pub const SUBTLE: u32 = 0xAEBCCB; // secondary text, title-bar label
@@ -77,54 +77,52 @@ pub fn brand_gradient() -> Background {
 /// Overrides the gpui-component palette to match Nyx. Call once after
 /// `Theme::change(Dark, …)`.
 pub fn apply(cx: &mut App) {
-    let t = Theme::global_mut(cx);
-    let c = &mut t.colors;
+    Theme::update(cx, |t| {
+        let c = &mut t.colors;
 
-    c.background = rgb(WINDOW_BG).into();
-    c.foreground = rgb(TEXT).into();
-    c.border = rgb(CARD_BORDER).into();
-    c.muted = rgb(CARD_BG).into();
-    c.muted_foreground = rgb(MUTED).into();
-    c.accent = rgba(OVERLAY_SOFT).into();
-    c.accent_foreground = rgb(TEXT).into();
-    c.input = rgb(CONTROL_BORDER).into();
-    c.ring = rgb(GREEN).into();
-    c.popover = rgb(CONTROL_BG).into();
-    c.popover_foreground = rgb(TEXT).into();
+        c.background = rgb(WINDOW_BG).into();
+        c.foreground = rgb(TEXT).into();
+        c.border = rgb(CARD_BORDER).into();
+        c.muted = rgb(CARD_BG).into();
+        c.muted_foreground = rgb(MUTED).into();
+        c.accent = rgba(OVERLAY_SOFT).into();
+        c.accent_foreground = rgb(TEXT).into();
+        c.input = rgb(CONTROL_BORDER).into();
+        c.ring = rgb(GREEN).into();
+        c.popover = rgb(CONTROL_BG).into();
+        c.popover_foreground = rgb(TEXT).into();
 
-    c.secondary = rgb(CONTROL_BG).into();
-    c.secondary_foreground = rgb(TEXT).into();
-    c.secondary_hover = rgba(OVERLAY_SOFT).into();
-    c.secondary_active = rgba(OVERLAY_SOFT).into();
+        c.secondary = rgb(CONTROL_BG).into();
+        c.secondary_foreground = rgb(TEXT).into();
+        c.secondary_hover = rgba(OVERLAY_SOFT).into();
+        c.secondary_active = rgba(OVERLAY_SOFT).into();
 
-    c.primary = rgb(GREEN).into();
-    c.primary_foreground = rgb(0x0B1014).into();
-    c.primary_hover = rgb(GREEN_HI).into();
-    c.primary_active = rgb(GREEN_LO).into();
+        c.primary = rgb(GREEN).into();
+        c.primary_foreground = rgb(0x0B1014).into();
+        c.primary_hover = rgb(GREEN_HI).into();
+        c.primary_active = rgb(GREEN_LO).into();
 
-    c.button_primary = rgb(GREEN).into();
-    c.button_primary_foreground = rgb(0x0B1014).into();
-    c.button_primary_hover = rgb(GREEN_HI).into();
-    c.button_primary_active = rgb(GREEN_LO).into();
+        c.button_primary = rgb(GREEN).into();
+        c.button_primary_foreground = rgb(0x0B1014).into();
+        c.button_primary_hover = rgb(GREEN_HI).into();
+        c.button_primary_active = rgb(GREEN_LO).into();
 
-    c.success = rgb(GREEN).into();
-    c.success_foreground = rgb(0x0B1014).into();
-    c.danger = rgb(RED).into();
-    c.warning = rgb(AMBER).into();
+        c.success = rgb(GREEN).into();
+        c.success_foreground = rgb(0x0B1014).into();
+        c.danger = rgb(RED).into();
+        c.warning = rgb(AMBER).into();
 
-    c.sidebar = rgb(RAIL_BG).into();
-    c.sidebar_foreground = rgb(TEXT).into();
-    c.sidebar_border = rgb(RAIL_BORDER).into();
-    c.sidebar_accent = rgba(GREEN_TINT).into();
-    c.sidebar_accent_foreground = rgb(GREEN_HI).into();
-    c.sidebar_primary = rgb(GREEN).into();
-    c.sidebar_primary_foreground = rgb(TEXT).into();
+        c.sidebar = rgb(RAIL_BG).into();
+        c.sidebar_foreground = rgb(TEXT).into();
+        c.sidebar_border = rgb(RAIL_BORDER).into();
+        c.sidebar_accent = rgba(GREEN_TINT).into();
+        c.sidebar_accent_foreground = rgb(GREEN_HI).into();
+        c.sidebar_primary = rgb(GREEN).into();
+        c.sidebar_primary_foreground = rgb(TEXT).into();
 
-    c.title_bar = rgb(TITLEBAR_BG).into();
-    c.title_bar_border = rgb(TITLEBAR_BORDER).into();
+        c.title_bar = rgb(TITLEBAR_BG).into();
+        c.title_bar_border = rgb(TITLEBAR_BORDER).into();
 
-    t.tokens = ThemeTokens::from(&t.colors);
-    t.notification.placement = gpui::Anchor::BottomRight;
-
-    Theme::sync_base(cx);
+        t.notification.placement = gpui::Anchor::BottomRight;
+    });
 }
