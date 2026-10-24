@@ -40,8 +40,8 @@ gpui_platform = { package = "gpui-pre-platform", version = "0.3", features = [
     "wayland",
     "runtime_shaders",
 ] }
-gpui-component = { version = "0.7", features = ["tree-sitter-yaml"] }
-gpui-kit-assets = "0.7"
+gpui-component = { version = "0.8", features = ["tree-sitter-yaml"] }
+gpui-kit-assets = "0.8"
 
 # --- base utilities ---
 log = "0.4"
@@ -61,7 +61,7 @@ tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.13", features = ["json", "stream"] }
 mihomo-rs = "2.2"
 once_cell = "1"
-parking_lot = "0.12"
+parking_lot = "0.13"
 rust-embed = "8"
 url = "2"
 futures-util = "0.3"
@@ -72,7 +72,7 @@ nyx-sysproxy = { path = "crates/nyx-sysproxy" }
 nyx-service = { path = "crates/nyx-service" }
 
 # --- system integration ---
-global-hotkey = "0.8"
+global-hotkey = "0.9"
 auto-launch = "0.6"
 png = "0.18"
 
