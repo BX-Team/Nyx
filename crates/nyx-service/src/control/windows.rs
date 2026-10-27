@@ -4,7 +4,8 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::windows::named_pipe::ClientOptions;
 use windows_service::service::{
-    ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType, ServiceState, ServiceType,
+    ServiceAccess, ServiceAction, ServiceActionType, ServiceErrorControl, ServiceFailureActions,
+    ServiceFailureResetPeriod, ServiceInfo, ServiceStartType, ServiceState, ServiceType,
 };
 use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 
@@ -12,25 +13,65 @@ use crate::control::Status;
 use crate::host::windows::PIPE_NAME;
 use crate::protocol::{CoreSpec, PROTOCOL_VERSION, Request, Response};
 use crate::{
-    ARG_CONTROL, ARG_HOST, ARG_INSTALL, ARG_OWNER, ARG_UNINSTALL, SERVICE_DISPLAY_NAME,
-    SERVICE_NAME, is_elevated,
+    ARG_CONTROL, ARG_HOST, ARG_INSTALL, ARG_OWNER, ARG_UNINSTALL, HELPER_FAILURE,
+    SERVICE_DISPLAY_NAME, SERVICE_NAME, is_elevated, logging,
 };
 
 const ERR_NO_SERVICE: i32 = 1060;
 const CONNECT_GRACE: Duration = Duration::from_secs(10);
 const STATE_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long a host the SCM reports running gets to answer, e.g. right after a recovery restart.
+const SETTLE_GRACE: Duration = Duration::from_secs(3);
 
 pub async fn status() -> Result<Status, String> {
     let Some(state) = query_state()? else {
         return Ok(Status::NotInstalled);
     };
+    let current = std::env::current_exe().map_err(|e| e.to_string())?;
+    if let Some(registered) = service_exe()
+        && !same_path(&registered, &current)
+    {
+        return Ok(Status::Stale {
+            reason: format!(
+                "the service points at {}, this build runs from {}",
+                registered.display(),
+                current.display()
+            ),
+        });
+    }
     if state != ServiceState::Running {
         return Ok(Status::Stopped);
     }
-    match ping().await {
+    match ping_within(SETTLE_GRACE).await {
         Ok(_) => Ok(Status::Running),
         Err(reason) => Ok(Status::Stale { reason }),
     }
+}
+
+/// The executable the service is registered with, cut out of its command line.
+fn service_exe() -> Option<std::path::PathBuf> {
+    let manager = open_manager(ServiceManagerAccess::CONNECT).ok()?;
+    let service = manager
+        .open_service(SERVICE_NAME, ServiceAccess::QUERY_CONFIG)
+        .ok()?;
+    let line = service.query_config().ok()?.executable_path;
+    let line = line.to_string_lossy();
+    let line = line.trim();
+    let exe = match line.strip_prefix('"') {
+        Some(rest) => rest.split('"').next().unwrap_or(rest),
+        None => line.split(" --").next().unwrap_or(line),
+    };
+    Some(std::path::PathBuf::from(exe.trim()))
+}
+
+fn same_path(a: &std::path::Path, b: &std::path::Path) -> bool {
+    let canon = |p: &std::path::Path| {
+        std::fs::canonicalize(p)
+            .unwrap_or_else(|_| p.to_path_buf())
+            .to_string_lossy()
+            .to_lowercase()
+    };
+    canon(a) == canon(b)
 }
 
 pub async fn install() -> Result<(), String> {
@@ -136,7 +177,9 @@ pub async fn start_core(spec: &CoreSpec) -> Result<u32, String> {
     match status().await? {
         Status::NotInstalled => return Err("the Nyx service is not installed".into()),
         Status::Running => {}
-        _ => install().await?,
+        // Registered for this exe, just not running: starting it is enough.
+        Status::Stopped => start_service().await?,
+        Status::Stale { .. } => install().await?,
     }
     match request(&Request::StartCore(spec.clone()), CONNECT_GRACE).await? {
         Response::Started { pid } => Ok(pid),
@@ -158,7 +201,11 @@ pub async fn stop_core() -> Result<(), String> {
 
 /// `Ok(core_pid)` — `None` means the host is up but no core is running.
 pub async fn ping() -> Result<Option<u32>, String> {
-    match request(&Request::Ping, Duration::ZERO).await? {
+    ping_within(Duration::ZERO).await
+}
+
+async fn ping_within(grace: Duration) -> Result<Option<u32>, String> {
+    match request(&Request::Ping, grace).await? {
         Response::Pong {
             protocol_version,
             core_pid,
@@ -178,25 +225,53 @@ pub fn install_here() -> Result<(), String> {
         open_manager(ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE)?;
     let info = service_info();
 
-    match manager.open_service(
-        SERVICE_NAME,
-        ServiceAccess::CHANGE_CONFIG | ServiceAccess::START | ServiceAccess::QUERY_STATUS,
-    ) {
+    let access = ServiceAccess::CHANGE_CONFIG
+        | ServiceAccess::START
+        | ServiceAccess::STOP
+        | ServiceAccess::QUERY_STATUS;
+    let service = match manager.open_service(SERVICE_NAME, access) {
         Ok(service) => {
             service
                 .change_config(&info)
                 .map_err(|e| format!("failed to reconfigure service: {e}"))?;
-            start_if_stopped(&service)
+            // A host from the previous build keeps running the old exe until restarted.
+            if let Ok(status) = service.query_status()
+                && status.current_state != ServiceState::Stopped
+            {
+                let _ = service.stop();
+                wait_for_stopped_blocking(&service);
+            }
+            service
         }
         Err(e) if is_missing_service(&e) => {
             let service = manager
-                .create_service(&info, ServiceAccess::START | ServiceAccess::QUERY_STATUS)
+                .create_service(&info, access)
                 .map_err(|e| format!("failed to create service: {e}"))?;
             let _ = service.set_description("Runs the mihomo core for Nyx");
-            start_if_stopped(&service)
+            service
         }
-        Err(e) => Err(format!("failed to open service: {e}")),
+        Err(e) => return Err(format!("failed to open service: {e}")),
+    };
+    set_recovery(&service);
+    start_if_stopped(&service)
+}
+
+/// Brings a crashed host back like systemd's `Restart=always` does on Linux.
+fn set_recovery(service: &windows_service::service::Service) {
+    let restart = ServiceAction {
+        action_type: ServiceActionType::Restart,
+        delay: Duration::from_secs(2),
+    };
+    let actions = ServiceFailureActions {
+        reset_period: ServiceFailureResetPeriod::After(Duration::from_secs(24 * 60 * 60)),
+        reboot_msg: None,
+        command: None,
+        actions: Some(vec![restart.clone(), restart.clone(), restart]),
+    };
+    if let Err(e) = service.update_failure_actions(actions) {
+        logging::log(&format!("cannot set the service recovery actions: {e}"));
     }
+    let _ = service.set_failure_actions_on_non_crash_failures(true);
 }
 
 pub fn uninstall_here() -> Result<(), String> {
@@ -323,40 +398,126 @@ async fn request(req: &Request, connect_grace: Duration) -> Result<Response, Str
 
 fn elevate(args: &[&str]) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let arg_list = args
-        .iter()
-        .map(|a| format!("'{}'", a.replace('\'', "''")))
-        .collect::<Vec<_>>()
-        .join(",");
-    let script = format!(
-        "$p = Start-Process -FilePath '{}' -ArgumentList {} -Verb RunAs -WindowStyle Hidden -PassThru -Wait; exit $p.ExitCode",
-        exe.display().to_string().replace('\'', "''"),
-        arg_list
-    );
-
-    use std::os::windows::process::CommandExt;
-    let out = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            &script,
-        ])
-        .creation_flags(0x08000000)
-        .output()
-        .map_err(|e| format!("failed to request elevation: {e}"))?;
-
-    if out.status.success() {
-        return Ok(());
+    let code = run_elevated(&exe, args, true)?;
+    match code {
+        Some(0) | None => Ok(()),
+        // The helper runs hidden, so its own message only reaches the service log.
+        Some(code) if code == HELPER_FAILURE as u32 => Err(format!(
+            "the administrator helper failed — see the log in {}",
+            logging::log_dir().display()
+        )),
+        Some(code) => Err(format!("the administrator helper exited with code {code}")),
     }
-    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-    Err(if stderr.is_empty() {
-        "the elevation prompt was cancelled".to_string()
-    } else {
-        stderr
-    })
+}
+
+/// Starts `exe` through the UAC prompt; with `wait`, returns its exit code once it ends.
+pub(crate) fn run_elevated(
+    exe: &std::path::Path,
+    args: &[&str],
+    wait: bool,
+) -> Result<Option<u32>, String> {
+    use windows::Win32::Foundation::{CloseHandle, ERROR_CANCELLED};
+    use windows::Win32::System::Threading::{GetExitCodeProcess, INFINITE, WaitForSingleObject};
+    use windows::Win32::UI::Shell::{SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW};
+    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+    use windows::core::PCWSTR;
+
+    let wide = |s: &std::ffi::OsStr| {
+        use std::os::windows::ffi::OsStrExt;
+        s.encode_wide().chain(Some(0)).collect::<Vec<u16>>()
+    };
+    let verb = wide("runas".as_ref());
+    let file = wide(exe.as_os_str());
+    let params = wide(
+        args.iter()
+            .map(|a| quote_arg(a))
+            .collect::<Vec<_>>()
+            .join(" ")
+            .as_ref(),
+    );
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_NOCLOSEPROCESS,
+        lpVerb: PCWSTR(verb.as_ptr()),
+        lpFile: PCWSTR(file.as_ptr()),
+        lpParameters: PCWSTR(params.as_ptr()),
+        nShow: SW_HIDE.0,
+        ..Default::default()
+    };
+    if let Err(e) = unsafe { ShellExecuteExW(&mut info) } {
+        return Err(if e.code() == ERROR_CANCELLED.to_hresult() {
+            "the administrator prompt was cancelled".to_string()
+        } else {
+            format!("cannot request administrator rights: {e}")
+        });
+    }
+    let process = info.hProcess;
+    if process.is_invalid() {
+        return Ok(None);
+    }
+    let mut code = None;
+    if wait {
+        let mut exit = 0u32;
+        unsafe {
+            WaitForSingleObject(process, INFINITE);
+            if GetExitCodeProcess(process, &mut exit).is_ok() {
+                code = Some(exit);
+            }
+        }
+    }
+    unsafe {
+        let _ = CloseHandle(process);
+    }
+    Ok(code)
+}
+
+/// One argument quoted the way `CommandLineToArgvW` reads it back.
+fn quote_arg(arg: &str) -> String {
+    if !arg.is_empty() && !arg.contains([' ', '\t', '"']) {
+        return arg.to_string();
+    }
+    let mut out = String::from('"');
+    let mut slashes = 0;
+    for c in arg.chars() {
+        match c {
+            '\\' => slashes += 1,
+            '"' => {
+                out.push_str(&"\\".repeat(slashes * 2 + 1));
+                out.push('"');
+                slashes = 0;
+            }
+            _ => {
+                out.push_str(&"\\".repeat(slashes));
+                out.push(c);
+                slashes = 0;
+            }
+        }
+    }
+    out.push_str(&"\\".repeat(slashes * 2));
+    out.push('"');
+    out
+}
+
+/// Stops the service and waits for it, so its exe can be overwritten; fine if it is missing.
+pub(crate) fn stop_for_update() -> bool {
+    let Ok(manager) = open_manager(ServiceManagerAccess::CONNECT) else {
+        return false;
+    };
+    let Ok(service) = manager.open_service(
+        SERVICE_NAME,
+        ServiceAccess::STOP | ServiceAccess::QUERY_STATUS,
+    ) else {
+        return false;
+    };
+    let running = service
+        .query_status()
+        .map(|s| s.current_state != ServiceState::Stopped)
+        .unwrap_or(false);
+    if running {
+        let _ = service.stop();
+        wait_for_stopped_blocking(&service);
+    }
+    running
 }
 
 /// SID of the current user, used to lock the IPC pipe to them.

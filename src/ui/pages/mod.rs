@@ -8,6 +8,68 @@ mod settings;
 
 pub(crate) use rules::{RULE_TYPES, rule_example};
 
+use gpui::{App, Div, FontWeight, ParentElement, SharedString, Stateful, Styled, div, px};
+use moonglass::theme::ActiveTheme;
+use moonglass::{h_flex, v_flex};
+
+/// A screen's top row: its title and a muted note; callers append tabs and buttons.
+pub(crate) fn header(title: impl Into<SharedString>, meta: Option<SharedString>, cx: &App) -> Div {
+    let c = cx.theme().colors;
+    h_flex()
+        .flex_none()
+        .gap(px(12.))
+        .px(px(18.))
+        .py(px(14.))
+        .border_b_1()
+        .border_color(c.border)
+        .child(
+            h_flex()
+                .flex_1()
+                .min_w_0()
+                .gap(px(6.))
+                .items_baseline()
+                .text_size(px(17.))
+                .child(
+                    div()
+                        .font_weight(FontWeight::BOLD)
+                        .truncate()
+                        .child(title.into()),
+                )
+                .children(meta.map(|m| div().flex_none().text_color(c.muted).child(m))),
+        )
+}
+
+/// The scrolling body under a [`header`].
+pub(crate) fn body(id: &'static str) -> Stateful<Div> {
+    use gpui::{InteractiveElement, StatefulInteractiveElement};
+    v_flex()
+        .id(id)
+        .flex_1()
+        .min_h_0()
+        .overflow_y_scroll()
+        .p(px(18.))
+        .gap(px(14.))
+}
+
+/// Up/down traffic in the bar's monospace style.
+pub(crate) fn updown(up: u64, down: u64, cx: &App) -> Div {
+    h_flex()
+        .flex_none()
+        .gap(px(10.))
+        .font_family(cx.theme().mono.clone())
+        .text_size(px(12.))
+        .child(
+            div()
+                .text_color(crate::ui::theme::down_color(cx))
+                .child(format!("↓ {}", crate::ui::root::fmt_bytes(down))),
+        )
+        .child(
+            div()
+                .text_color(crate::ui::theme::up_color(cx))
+                .child(format!("↑ {}", crate::ui::root::fmt_bytes(up))),
+        )
+}
+
 /// A [`gpui::Keystroke`] as a `global-hotkey` accelerator (`Ctrl+Shift+KeyT`).
 pub(crate) fn keystroke_to_accel(ks: &gpui::Keystroke) -> Option<String> {
     let code = key_to_code(&ks.key)?;

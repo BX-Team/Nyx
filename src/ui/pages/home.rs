@@ -1,42 +1,18 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, px, rgb, rgba,
+    AnyElement, Context, InteractiveElement, IntoElement, ParentElement,
+    StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
-use gpui_component::{
-    Icon, IconName, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
-    h_flex, v_flex,
+use moonglass::theme::ActiveTheme;
+use moonglass::{
+    Button, ButtonSize, IconName, Section, Tone, W_SEMIBOLD, caption, h_flex, icon, meter,
+    placeholder, v_flex,
 };
 use rust_i18n::t;
 use serde_json::Value;
 
-use crate::ui::root::{
-    CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, GOOD, GREEN, MUTED, NyxApp, PANEL_BG, RED,
-    RED_HI, STROKE, SUBTLE, TEXT, fmt_bytes, power_on_bg,
-};
-
-/// Names the cause when the core refused to start, instead of leaving the
-/// power button silently dead.
-fn render_core_failure(key: &'static str, detail: SharedString) -> impl IntoElement {
-    v_flex()
-        .mx_1()
-        .mb_2()
-        .p_3()
-        .gap_1()
-        .rounded(px(8.))
-        .bg(rgba((RED << 8) | 0x1A))
-        .border_1()
-        .border_color(rgb(RED))
-        .child(
-            div()
-                .text_sm()
-                .font_semibold()
-                .text_color(rgb(RED_HI))
-                .child(t!(key).to_string()),
-        )
-        .child(div().text_xs().text_color(rgb(MUTED)).child(detail))
-}
+use crate::ui::pages::{body, header, updown};
+use crate::ui::root::{NyxApp, Route, delay_color, fmt_bytes, fmt_speed};
 
 struct SubStats {
     has_traffic: bool,
@@ -118,520 +94,289 @@ fn support_link(item: &Option<Value>) -> Option<(String, bool)> {
     Some((url, is_telegram))
 }
 
-fn fmt_elapsed(secs: u64) -> String {
-    let h = secs / 3600;
-    let m = (secs % 3600) / 60;
-    let s = secs % 60;
-    format!("{:02}:{:02}:{:02}", h, m, s)
-}
-
 impl NyxApp {
-    pub(crate) fn render_home(
-        &self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
+    pub(crate) fn render_home(&self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let st = self.state.read(cx);
         if st.profiles.is_empty() {
-            return self.render_home_empty(cx).into_any_element();
+            return self.render_home_empty(cx);
         }
-        let connected = st.tun_enabled || st.app_flag("sysProxy.enable");
-        let mode = crate::app::actions::connection_mode(cx);
-        let total_up = st.total_up;
-        let total_down = st.total_down;
-        let profile_name = st
-            .current_profile_name
-            .clone()
-            .unwrap_or_else(|| SharedString::from("—"));
-        let current_proxy = st
-            .groups
-            .iter()
-            .find(|g| !g.now.is_empty())
-            .map(|g| (g.now.to_string(), g.kind.to_string()));
+        let c = cx.theme().colors;
+        let mono = cx.theme().mono.clone();
+        let profile_name = st.current_profile_name.clone();
+        let current = st.groups.iter().find(|g| !g.now.is_empty()).map(|g| {
+            let delay = g.all.iter().find(|n| n.name == g.now).and_then(|n| n.delay);
+            (
+                g.name.to_string(),
+                g.kind.to_string(),
+                g.now.to_string(),
+                delay,
+            )
+        });
+        let (total_up, total_down) = (st.total_up, st.total_down);
+        let (up_speed, down_speed) = (st.up_speed, st.down_speed);
+        let history: Vec<u64> = st.history.iter().map(|(u, d)| u + d).collect();
         let stats = sub_stats(&st.current_profile_item);
-        let stats_open = self.stats_open;
-
-        let elapsed = self
-            .connected_since
-            .map(|t| t.elapsed().as_secs())
-            .unwrap_or(0);
-        let status = if connected {
-            t!("pages.home.connected").to_string()
-        } else {
-            t!("pages.home.disconnected").to_string()
-        };
-
         let support = support_link(&st.current_profile_item);
         let failure = st
             .core_status
             .failed()
             .map(|(kind, detail)| (crate::app::state::failure_key(kind), detail.clone()));
 
-        let main = v_flex()
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .child(self.render_topbar(&profile_name, connected, &status, mode, support, cx))
-            .children(failure.map(|(key, detail)| render_core_failure(key, detail)))
+        let support_btn = support.map(|(url, is_telegram)| {
+            Button::new("home-support")
+                .ghost()
+                .icon(if is_telegram {
+                    IconName::Custom("icons/telegram.svg")
+                } else {
+                    IconName::ExternalLink
+                })
+                .tooltip(if is_telegram {
+                    t!("tooltips.telegram").to_string()
+                } else {
+                    t!("tooltips.support").to_string()
+                })
+                .on_click(cx.listener(move |_, _, _, cx| cx.open_url(&url)))
+        });
+        let head = header(t!("sider.home").to_string(), profile_name, cx)
+            .children(support_btn)
             .child(
-                v_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .items_center()
-                    .justify_center()
-                    .gap_4()
-                    .child(
-                        div()
-                            .text_xl()
-                            .font_bold()
-                            .text_color(rgb(TEXT))
-                            .child(status.to_uppercase()),
-                    )
-                    .child(self.render_power_button(connected, cx))
-                    .when(connected, |this| {
-                        this.child(
-                            div()
-                                .text_lg()
-                                .font_bold()
-                                .text_color(rgb(TEXT))
-                                .child(fmt_elapsed(elapsed)),
-                        )
-                        .child(render_speeds(total_up, total_down))
-                    }),
-            )
-            .child(render_proxy_card(current_proxy, cx));
+                Button::new("home-refresh")
+                    .ghost()
+                    .icon(IconName::Refresh)
+                    .tooltip(t!("tooltips.refresh").to_string())
+                    .on_click(cx.listener(|this, _, _, cx| this.refresh_subscription(cx))),
+            );
 
-        h_flex()
+        let failure = failure.map(|(key, detail)| {
+            Section::new().row(
+                h_flex()
+                    .gap(px(12.))
+                    .px(px(18.))
+                    .py(px(14.))
+                    .items_start()
+                    .child(icon(IconName::Alert, moonglass::theme::danger()).mt(px(2.)))
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(4.))
+                            .child(
+                                div()
+                                    .font_weight(W_SEMIBOLD)
+                                    .text_color(moonglass::theme::danger())
+                                    .child(t!(key).to_string()),
+                            )
+                            .child(div().text_color(c.muted).child(detail)),
+                    ),
+            )
+        });
+
+        let node_row = {
+            let (group, kind, node, delay) = current.unwrap_or_default();
+            h_flex()
+                .id("home-node")
+                .gap(px(16.))
+                .px(px(18.))
+                .py(px(14.))
+                .cursor_pointer()
+                .hover(|s| s.bg(c.row))
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .child(
+                            div()
+                                .font_weight(W_SEMIBOLD)
+                                .text_size(px(14.))
+                                .child(t!("pages.home.currentNode").to_string()),
+                        )
+                        .child(div().mt(px(4.)).text_color(c.muted).truncate().child(
+                            if group.is_empty() {
+                                "—".to_string()
+                            } else {
+                                format!("{group} · {kind}")
+                            },
+                        )),
+                )
+                .child(div().max_w(px(320.)).truncate().text_color(c.text2).child(
+                    crate::ui::flags::render_line(if node.is_empty() { "—" } else { &node }),
+                ))
+                .child(
+                    div()
+                        .w(px(64.))
+                        .flex_none()
+                        .text_right()
+                        .font_family(mono.clone())
+                        .text_size(px(12.))
+                        .text_color(delay_color(delay, cx))
+                        .child(delay.map(|d| format!("{d} ms")).unwrap_or_default()),
+                )
+                .child(icon(IconName::ChevronRight, c.muted))
+                .on_click(
+                    cx.listener(|this, _, window, cx| this.navigate(Route::Proxies, window, cx)),
+                )
+        };
+
+        let peak = history.iter().copied().max().unwrap_or(0).max(1);
+        let bars = h_flex()
+            .h(px(64.))
+            .w_full()
+            .items_end()
+            .gap(px(2.))
+            .children(history.iter().map(|v| {
+                let f = (*v as f32 / peak as f32).max(0.03);
+                div()
+                    .flex_1()
+                    .h(relative(f))
+                    .rounded_t(px(2.))
+                    .bg(c.accent.opacity(0.35 + 0.65 * f))
+            }));
+        let traffic = Section::new().row(
+            v_flex()
+                .gap(px(10.))
+                .px(px(18.))
+                .py(px(14.))
+                .child(
+                    h_flex()
+                        .gap(px(12.))
+                        .child(
+                            div()
+                                .flex_1()
+                                .font_weight(W_SEMIBOLD)
+                                .text_size(px(14.))
+                                .child(t!("pages.home.traffic").to_string()),
+                        )
+                        .child(
+                            div()
+                                .font_family(mono.clone())
+                                .text_size(px(12.))
+                                .text_color(c.muted)
+                                .child(format!(
+                                    "↓ {} ↑ {}",
+                                    fmt_speed(down_speed),
+                                    fmt_speed(up_speed)
+                                )),
+                        ),
+                )
+                .child(bars)
+                .child(
+                    h_flex()
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_color(c.muted)
+                                .child(t!("pages.home.sessionTotal").to_string()),
+                        )
+                        .child(updown(total_up, total_down, cx)),
+                ),
+        );
+
+        let subscription = stats.has_traffic.then(|| {
+            let fraction = if stats.total > 0 {
+                stats.used as f32 / stats.total as f32
+            } else {
+                0.
+            };
+            let tone = if fraction >= 0.9 {
+                Tone::Warn
+            } else {
+                Tone::Accent
+            };
+            let expiry = match (&stats.expire_label, stats.days) {
+                (Some(date), Some(days)) => {
+                    t!("pages.home.expiresIn", date => date, n => days).to_string()
+                }
+                _ => t!("pages.home.never").to_string(),
+            };
+            let remaining = if stats.total > 0 {
+                fmt_bytes(stats.remaining)
+            } else {
+                "∞".to_string()
+            };
+            Section::new().row(
+                v_flex()
+                    .gap(px(10.))
+                    .px(px(18.))
+                    .py(px(14.))
+                    .child(
+                        h_flex()
+                            .gap(px(12.))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .font_weight(W_SEMIBOLD)
+                                    .text_size(px(14.))
+                                    .child(t!("pages.home.subscription").to_string()),
+                            )
+                            .child(
+                                div()
+                                    .font_family(mono.clone())
+                                    .text_size(px(12.))
+                                    .text_color(c.muted)
+                                    .child(expiry),
+                            ),
+                    )
+                    .when(stats.total > 0, |col| col.child(meter(fraction, tone, cx)))
+                    .child(
+                        h_flex()
+                            .font_family(mono.clone())
+                            .text_size(px(12.))
+                            .text_color(c.muted)
+                            .child(div().flex_1().child(if stats.total > 0 {
+                                format!("{} / {}", fmt_bytes(stats.used), fmt_bytes(stats.total))
+                            } else {
+                                fmt_bytes(stats.used)
+                            }))
+                            .child(t!("pages.home.remainingValue", value => remaining).to_string()),
+                    ),
+            )
+        });
+
+        let news = (!stats.announce.is_empty()).then(|| {
+            stats.announce.iter().fold(Section::new(), |section, line| {
+                section.row(
+                    div()
+                        .px(px(18.))
+                        .py(px(10.))
+                        .text_color(c.text2)
+                        .child(line.clone()),
+                )
+            })
+        });
+
+        v_flex()
             .size_full()
-            .p_5()
-            .gap_4()
-            .child(main)
-            .when(
-                stats_open && (stats.has_traffic || !stats.announce.is_empty()),
-                |this| this.child(render_stats(&stats)),
+            .child(head)
+            .child(
+                body("home-scroll")
+                    .children(failure)
+                    .child(Section::new().row(node_row))
+                    .child(traffic)
+                    .children(subscription)
+                    .when_some(news, |col, news| {
+                        col.child(caption(t!("pages.home.subscriptionNews").to_string(), cx))
+                            .child(news)
+                    }),
             )
             .into_any_element()
     }
 
-    fn render_home_empty(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        v_flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_4()
-            .p_5()
-            .child(
-                div()
-                    .size(px(72.))
-                    .rounded_full()
-                    .bg(rgb(CARD_BG))
-                    .border_1()
-                    .border_color(rgb(CARD_BORDER))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(Icon::new(IconName::Folder).large().text_color(rgb(MUTED))),
-            )
-            .child(
-                div()
-                    .text_xl()
-                    .font_bold()
-                    .text_color(rgb(TEXT))
-                    .child(t!("pages.home.emptyTitle").to_string()),
-            )
-            .child(
-                div()
-                    .max_w(px(360.))
-                    .text_sm()
-                    .text_center()
-                    .text_color(rgb(MUTED))
-                    .child(t!("pages.home.emptyBody").to_string()),
-            )
-            .child(
-                Button::new("home-empty-add")
-                    .primary()
-                    .icon(IconName::Plus)
-                    .label(t!("pages.home.emptyCta").to_string())
-                    .on_click(cx.listener(|this, _, window, cx| this.open_profile_add(window, cx))),
-            )
-    }
-
-    fn render_mode_switch(&self, mode: &str, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        h_flex()
-            .gap(px(2.))
-            .p(px(2.))
-            .rounded(px(8.))
-            .bg(rgb(CONTROL_BG))
-            .border_1()
-            .border_color(rgb(CONTROL_BORDER))
-            .children(
-                [
-                    (
-                        crate::app::actions::MODE_TUN,
-                        t!("pages.home.modeTun").to_string(),
-                    ),
-                    (
-                        crate::app::actions::MODE_SYSPROXY,
-                        t!("pages.home.modeSysProxy").to_string(),
-                    ),
-                ]
-                .into_iter()
-                .map(|(value, label)| {
-                    let on = mode == value;
-                    div()
-                        .id(SharedString::from(format!("home-mode-{value}")))
-                        .px(px(10.))
-                        .py(px(3.))
-                        .rounded(px(6.))
-                        .text_xs()
-                        .cursor_pointer()
-                        .when(on, |t| t.bg(rgb(GREEN)).text_color(rgb(0x0B1014)))
-                        .when(!on, |t| t.text_color(rgb(SUBTLE)))
-                        .child(label)
-                        .on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                this.select_connection_mode(value, cx)
-                            }),
-                        )
-                }),
-            )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn render_topbar(
-        &self,
-        profile: &str,
-        connected: bool,
-        status: &str,
-        mode: &str,
-        support: Option<(String, bool)>,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
-        let dot = if connected { GOOD } else { MUTED };
-        let support_btn = support.map(|(url, is_telegram)| {
-            let icon = if is_telegram {
-                Icon::empty().path("icons/telegram.svg")
-            } else {
-                Icon::new(IconName::Globe)
-            };
-            let tip = if is_telegram {
-                t!("tooltips.telegram")
-            } else {
-                t!("tooltips.support")
-            };
-            Button::new("home-support")
-                .ghost()
-                .small()
-                .icon(icon)
-                .tooltip(tip.to_string())
-                .on_click(cx.listener(move |_, _, _, cx| cx.open_url(&url)))
-        });
-        h_flex()
-            .w_full()
-            .items_center()
-            .justify_between()
-            .pb_2()
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .font_bold()
-                            .text_color(rgb(TEXT))
-                            .child(profile.to_string()),
-                    )
-                    .child(div().size_2().rounded_full().bg(rgb(dot)))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(rgb(MUTED))
-                            .child(status.to_string()),
-                    ),
-            )
-            .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(self.render_mode_switch(mode, cx))
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .children(support_btn)
-                            .child(
-                                Button::new("home-refresh")
-                                    .ghost()
-                                    .small()
-                                    .icon(Icon::empty().path("icons/refresh.svg"))
-                                    .tooltip(t!("tooltips.refresh").to_string())
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.refresh_subscription(cx)),
-                                    ),
-                            )
-                            .child(
-                                Button::new("home-stats-toggle")
-                                    .ghost()
-                                    .small()
-                                    .icon(IconName::ChevronRight)
-                                    .tooltip(t!("tooltips.toggleStats").to_string())
-                                    .on_click(cx.listener(|this, _, _, cx| this.toggle_stats(cx))),
-                            ),
-                    ),
-            )
-    }
-
-    fn render_power_button(
-        &self,
-        connected: bool,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
-        let icon_color = if connected { 0x06140C } else { MUTED };
-        let inner = if connected {
-            div().size(px(116.)).rounded_full().bg(power_on_bg())
-        } else {
-            div()
-                .size(px(116.))
-                .rounded_full()
-                .bg(rgb(CARD_BG))
-                .border_1()
-                .border_color(rgb(CARD_BORDER))
-        };
-        let icon = if connected {
-            IconName::Pause
-        } else {
-            IconName::Play
-        };
-        div()
-            .id("power-button")
-            .size(px(116.))
-            .rounded_full()
-            .cursor_pointer()
-            .child(
-                inner
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(Icon::new(icon).large().text_color(rgb(icon_color))),
-            )
-            .on_click(cx.listener(|this, _, _, cx| this.toggle_connection(cx)))
-    }
-}
-
-fn render_speeds(up: u64, down: u64) -> impl IntoElement {
-    h_flex()
-        .gap_4()
-        .items_center()
-        .child(
-            h_flex()
-                .gap_1p5()
-                .items_center()
-                .child(Icon::new(IconName::ArrowUp).small().text_color(rgb(GREEN)))
-                .child(div().text_sm().text_color(rgb(MUTED)).child(fmt_bytes(up))),
+    fn render_home_empty(&self, cx: &mut Context<Self>) -> AnyElement {
+        placeholder(
+            IconName::Folder,
+            t!("pages.home.emptyTitle").into(),
+            t!("pages.home.emptyBody").into(),
+            cx,
         )
-        .child(div().w(px(1.)).h(px(12.)).bg(rgba(STROKE)))
         .child(
-            h_flex()
-                .gap_1p5()
-                .items_center()
-                .child(
-                    Icon::new(IconName::ArrowDown)
-                        .small()
-                        .text_color(rgb(GREEN)),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(rgb(MUTED))
-                        .child(fmt_bytes(down)),
-                ),
+            Button::new("home-empty-add")
+                .primary()
+                .size(ButtonSize::Md)
+                .icon(IconName::Plus)
+                .label(t!("pages.home.emptyCta").to_string())
+                .mt(px(8.))
+                .on_click(cx.listener(|this, _, window, cx| this.open_profile_add(window, cx))),
         )
-}
-
-fn render_proxy_card(
-    current: Option<(String, String)>,
-    cx: &mut Context<NyxApp>,
-) -> impl IntoElement + use<> {
-    let (name, kind) = current.unwrap_or_else(|| ("—".to_string(), String::new()));
-    div().flex().justify_center().child(
-        div()
-            .id("home-proxy-card")
-            .w(px(320.))
-            .rounded_xl()
-            .border_1()
-            .border_color(rgba(STROKE))
-            .bg(rgb(CARD_BG))
-            .cursor_pointer()
-            .pl_3()
-            .pr_2()
-            .py_2()
-            .child(
-                h_flex()
-                    .items_center()
-                    .justify_between()
-                    .gap_2()
-                    .child(
-                        v_flex()
-                            .min_w_0()
-                            .gap_0p5()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_medium()
-                                    .text_color(rgb(TEXT))
-                                    .truncate()
-                                    .child(crate::ui::flags::render_name(&name)),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(rgb(MUTED))
-                                    .truncate()
-                                    .child(kind.to_uppercase()),
-                            ),
-                    )
-                    .child(Icon::new(IconName::ChevronRight).text_color(rgb(MUTED))),
-            )
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.route = crate::ui::root::Route::Proxies;
-                cx.notify();
-            })),
-    )
-}
-
-fn section_header(text: &str) -> impl IntoElement + use<> {
-    div()
-        .text_xs()
-        .font_semibold()
-        .text_color(rgb(MUTED))
-        .child(text.to_uppercase())
-}
-
-fn stat_tile() -> gpui::Div {
-    v_flex()
-        .gap_1()
-        .rounded_lg()
-        .border_1()
-        .border_color(rgba(STROKE))
-        .bg(rgb(PANEL_BG))
-        .p_3()
-}
-
-fn render_stats(stats: &SubStats) -> impl IntoElement + use<> {
-    let mut col = v_flex().gap_3();
-
-    if stats.has_traffic {
-        let remaining = if stats.total > 0 {
-            fmt_bytes(stats.remaining)
-        } else {
-            "∞".to_string()
-        };
-        let used_total = if stats.total > 0 {
-            format!("{} / {}", fmt_bytes(stats.used), fmt_bytes(stats.total))
-        } else {
-            String::new()
-        };
-        let days = stats
-            .days
-            .map(|d| d.to_string())
-            .unwrap_or_else(|| "∞".to_string());
-        let expire = stats
-            .expire_label
-            .clone()
-            .unwrap_or_else(|| t!("pages.home.never").to_string());
-
-        col = col
-            .child(section_header(&t!("pages.home.statistics")))
-            .child(
-                stat_tile()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(rgb(MUTED))
-                            .child(t!("pages.home.trafficRemaining").to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_xl()
-                            .font_bold()
-                            .text_color(rgb(TEXT))
-                            .child(remaining),
-                    )
-                    .when(!used_total.is_empty(), |this| {
-                        this.child(div().text_xs().text_color(rgb(MUTED)).child(used_total))
-                    }),
-            )
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        stat_tile()
-                            .flex_1()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(rgb(MUTED))
-                                    .child(t!("pages.home.daysRemaining").to_string()),
-                            )
-                            .child(
-                                div()
-                                    .text_base()
-                                    .font_bold()
-                                    .text_color(rgb(TEXT))
-                                    .child(days),
-                            ),
-                    )
-                    .child(
-                        stat_tile()
-                            .flex_1()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(rgb(MUTED))
-                                    .child(t!("pages.home.expires").to_string()),
-                            )
-                            .child(
-                                div()
-                                    .text_base()
-                                    .font_bold()
-                                    .text_color(rgb(TEXT))
-                                    .truncate()
-                                    .child(expire),
-                            ),
-                    ),
-            );
+        .into_any_element()
     }
-
-    if !stats.announce.is_empty() {
-        col = col
-            .child(section_header(&t!("pages.home.subscriptionNews")))
-            .child(
-                v_flex()
-                    .gap_1p5()
-                    .children(stats.announce.iter().map(|line| {
-                        h_flex()
-                            .w_full()
-                            .gap_2()
-                            .items_start()
-                            .child(div().flex_shrink_0().text_color(rgb(MUTED)).child("·"))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .text_sm()
-                                    .text_color(rgb(TEXT))
-                                    .child(line.clone()),
-                            )
-                    })),
-            );
-    }
-
-    v_flex()
-        .w(px(280.))
-        .h_full()
-        .rounded_xl()
-        .border_1()
-        .border_color(rgba(STROKE))
-        .bg(rgb(CARD_BG))
-        .p_3()
-        .child(col)
 }

@@ -44,6 +44,8 @@ pub async fn spawn(spec: &StartSpec) -> Result<u32, CoreError> {
         )
     })?;
     let pid = child.id();
+    #[cfg(windows)]
+    tie_to_app(&child);
     *CHILD.lock() = Some(child);
     write_pid(pid).await;
 
@@ -115,14 +117,56 @@ async fn wait_for_exit(child: &mut Child) {
 
 #[cfg(windows)]
 fn terminate(pid: u32) {
-    use std::os::windows::process::CommandExt;
-    let _ = std::process::Command::new("taskkill")
-        .args(["/PID", &pid.to_string(), "/F"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000)
-        .output();
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE, TerminateProcess};
+    unsafe {
+        if let Ok(process) = OpenProcess(PROCESS_TERMINATE, false, pid) {
+            let _ = TerminateProcess(process, 1);
+            let _ = CloseHandle(process);
+        }
+    }
+}
+
+/// A job that ends the core when the app's last handle to it closes, even if the app is killed.
+#[cfg(windows)]
+struct KillJob(windows::Win32::Foundation::HANDLE);
+
+// The handle is only passed to Win32 calls that are safe from any thread.
+#[cfg(windows)]
+unsafe impl Send for KillJob {}
+#[cfg(windows)]
+unsafe impl Sync for KillJob {}
+
+#[cfg(windows)]
+static JOB: Lazy<Option<KillJob>> = Lazy::new(|| unsafe {
+    use windows::Win32::System::JobObjects::{
+        CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JobObjectExtendedLimitInformation, SetInformationJobObject,
+    };
+    let job = CreateJobObjectW(None, windows::core::PCWSTR::null()).ok()?;
+    let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    SetInformationJobObject(
+        job,
+        JobObjectExtendedLimitInformation,
+        &info as *const _ as *const std::ffi::c_void,
+        std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+    )
+    .ok()?;
+    Some(KillJob(job))
+});
+
+#[cfg(windows)]
+fn tie_to_app(child: &Child) {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::System::JobObjects::AssignProcessToJobObject;
+    let Some(job) = JOB.as_ref() else {
+        return;
+    };
+    let handle = windows::Win32::Foundation::HANDLE(child.as_raw_handle());
+    if let Err(e) = unsafe { AssignProcessToJobObject(job.0, handle) } {
+        log::warn!("[core] cannot tie the core to the app: {e}");
+    }
 }
 
 #[cfg(not(windows))]
@@ -138,7 +182,34 @@ fn owned_by_us(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+fn owned_by_us(pid: u32) -> bool {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        QueryFullProcessImageNameW,
+    };
+    unsafe {
+        let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
+            return false;
+        };
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(
+            process,
+            PROCESS_NAME_WIN32,
+            windows::core::PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        )
+        .is_ok();
+        let _ = CloseHandle(process);
+        ok && String::from_utf16_lossy(&buf[..len as usize])
+            .to_lowercase()
+            .contains("mihomo")
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn owned_by_us(_pid: u32) -> bool {
     true
 }

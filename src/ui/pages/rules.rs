@@ -1,25 +1,18 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, px, rgb,
+    AnyElement, App, Context, Hsla, IntoElement, ParentElement, SharedString, Styled, Window, div,
+    px,
 };
-use gpui_component::{
-    Disableable, Icon, IconName, Sizable, StyledExt, WindowExt,
-    button::{Button, ButtonVariants},
-    dialog::Dialog,
-    h_flex,
-    input::Input,
-    select::Select,
-    tooltip::Tooltip,
-    v_flex,
+use moonglass::theme::ActiveTheme;
+use moonglass::{
+    Button, ButtonSize, Dropdown, IconName, MenuItem, Section, Tabs, TextField, Tone, caption,
+    chip, h_flex, v_flex,
 };
 use rust_i18n::t;
 
 use crate::app::state::Rule;
-use crate::ui::root::{
-    CARD_BG, CARD_BORDER, CONTROL_BG, CONTROL_BORDER, DIVIDER, GREEN, GREEN_HI, MUTED2, MUTED3,
-    MUTED4, NyxApp, RED, RED_HI, SUBTLE, TEXT, nyx_dialog,
-};
+use crate::ui::pages::{body, header};
+use crate::ui::root::{NyxApp, nyx_dialog};
 
 /// Rule types offered by the smart editor's type picker (mihomo rule set).
 pub(crate) const RULE_TYPES: &[&str] = &[
@@ -145,293 +138,284 @@ fn policy_of(r: &Rule) -> Policy {
     }
 }
 
-fn type_color(p: Policy) -> u32 {
+fn policy_color(p: Policy, cx: &App) -> Hsla {
+    let c = cx.theme().colors;
     match p {
-        Policy::Match => MUTED3,
-        Policy::Reject => 0xD99070,
-        Policy::Direct => 0x5FB6A0,
-        Policy::Proxy => 0x8493DF,
-    }
-}
-
-fn policy_colors(p: Policy) -> (u32, u32) {
-    match p {
-        Policy::Direct => (0x8493A1, SUBTLE),
-        Policy::Reject => (RED, RED_HI),
-        _ => (GREEN, GREEN_HI),
+        Policy::Match => c.muted,
+        Policy::Reject => moonglass::theme::danger(),
+        Policy::Direct => c.text2,
+        Policy::Proxy => c.accent,
     }
 }
 
 const COL_TYPE: f32 = 170.;
-const COL_POLICY: f32 = 150.;
+const COL_POLICY: f32 = 170.;
+
+/// One rule as three columns: its type, what it matches, and where it sends traffic.
+fn rule_cells(r: &Rule, dim: bool, cx: &App) -> Vec<AnyElement> {
+    let c = cx.theme().colors;
+    let mono = cx.theme().mono.clone();
+    let policy = policy_of(r);
+    let value = if r.payload.is_empty() {
+        r.proxy.to_string()
+    } else {
+        r.payload.to_string()
+    };
+    vec![
+        div()
+            .w(px(COL_TYPE))
+            .flex_none()
+            .truncate()
+            .font_family(mono.clone())
+            .text_size(px(12.))
+            .text_color(policy_color(policy, cx))
+            .child(r.kind.to_string())
+            .into_any_element(),
+        div()
+            .flex_1()
+            .min_w_0()
+            .truncate()
+            .text_color(if dim { c.muted } else { c.text })
+            .child(value)
+            .into_any_element(),
+        h_flex()
+            .w(px(COL_POLICY))
+            .flex_none()
+            .gap(px(8.))
+            .child(
+                div()
+                    .size(px(6.))
+                    .flex_none()
+                    .rounded(px(3.))
+                    .bg(policy_color(policy, cx)),
+            )
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .text_color(c.text2)
+                    .child(r.proxy.to_string()),
+            )
+            .into_any_element(),
+    ]
+}
 
 impl NyxApp {
-    pub(crate) fn render_rules(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    pub(crate) fn render_rules(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let c = cx.theme().colors;
         let st = self.state.read(cx);
         let rules = st.rules.clone();
-        let mode = st.mode.clone();
         let has_current = st.profiles.iter().any(|p| p.is_current);
-        let count = rules.len();
-        let mode_label = match mode.as_ref() {
+        let mode_label = match st.mode.as_ref() {
             "global" => "Global",
             "direct" => "Direct",
             _ => "Rules",
         };
+        let head = header(
+            t!("sider.rules").to_string(),
+            Some(t!("pages.rules.summary", n => rules.len(), mode => mode_label).into()),
+            cx,
+        )
+        .child(
+            Button::new("rules-convert")
+                .ghost()
+                .icon(IconName::FileText)
+                .tooltip(t!("pages.rules.convertMrs").to_string())
+                .on_click(cx.listener(|this, _, window, cx| this.open_mrs_convert(window, cx))),
+        )
+        .when(has_current, |row| {
+            row.child(
+                Button::new("rules-edit")
+                    .outline()
+                    .icon(IconName::Pencil)
+                    .label(t!("pages.rules.edit").to_string())
+                    .on_click(cx.listener(|this, _, window, cx| this.open_rule_editor(window, cx))),
+            )
+        });
 
-        let header =
-            h_flex()
-                .items_center()
-                .justify_between()
-                .px(px(22.))
-                .pt(px(18.))
-                .pb(px(14.))
-                .child(
-                    v_flex()
-                        .gap_0p5()
-                        .child(
-                            div()
-                                .text_xl()
-                                .font_bold()
-                                .text_color(rgb(TEXT))
-                                .child(t!("sider.rules").to_string()),
-                        )
-                        .child(div().text_xs().text_color(rgb(MUTED4)).child(
-                            t!("pages.rules.summary", n => count, mode => mode_label).to_string(),
-                        )),
-                )
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            div()
-                                .id("rules-convert")
-                                .size(px(32.))
-                                .rounded(px(8.))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .bg(rgb(CARD_BG))
-                                .border_1()
-                                .border_color(rgb(CARD_BORDER))
-                                .text_color(rgb(SUBTLE))
-                                .cursor_pointer()
-                                .tooltip(|window, cx| {
-                                    Tooltip::new(t!("pages.rules.convertMrs").to_string())
-                                        .build(window, cx)
-                                })
-                                .child(Icon::empty().path("icons/refresh.svg").size(px(15.)))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.open_mrs_convert(window, cx)
-                                })),
-                        )
-                        .when(has_current, |this| {
-                            this.child(
-                                div()
-                                    .id("rules-edit")
-                                    .size(px(32.))
-                                    .rounded(px(8.))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .bg(rgb(CARD_BG))
-                                    .border_1()
-                                    .border_color(rgb(CARD_BORDER))
-                                    .text_color(rgb(SUBTLE))
-                                    .cursor_pointer()
-                                    .tooltip(|window, cx| {
-                                        Tooltip::new(t!("pages.rules.edit").to_string())
-                                            .build(window, cx)
-                                    })
-                                    .child(Icon::empty().path("icons/square-pen.svg").size(px(15.)))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.open_rule_editor(window, cx)
-                                    })),
-                            )
-                        }),
-                );
-
-        let table = v_flex()
-            .flex_1()
-            .min_h_0()
-            .mx(px(22.))
-            .mb(px(18.))
-            .rounded(px(13.))
-            .bg(rgb(CARD_BG))
-            .border_1()
-            .border_color(rgb(CARD_BORDER))
-            .child(table_head())
+        let head_row = h_flex()
+            .gap(px(12.))
+            .px(px(18.))
+            .py(px(8.))
+            .font_family(cx.theme().mono.clone())
+            .text_size(px(11.))
+            .text_color(c.muted)
             .child(
-                v_flex()
+                div()
+                    .w(px(COL_TYPE))
+                    .flex_none()
+                    .child(t!("pages.rules.colType").to_uppercase()),
+            )
+            .child(
+                div()
                     .flex_1()
-                    .min_h_0()
-                    .id("rules-scroll")
-                    .overflow_y_scroll()
-                    .children(rules.into_iter().take(800).map(rule_row)),
+                    .child(t!("pages.rules.colValue").to_uppercase()),
+            )
+            .child(
+                div()
+                    .w(px(COL_POLICY))
+                    .flex_none()
+                    .child(t!("pages.rules.colPolicy").to_uppercase()),
             );
-
-        v_flex().size_full().child(header).child(table)
+        let table = rules
+            .iter()
+            .take(800)
+            .fold(Section::new().row(head_row), |section, r| {
+                section.row(
+                    h_flex()
+                        .gap(px(12.))
+                        .px(px(18.))
+                        .h(px(36.))
+                        .children(rule_cells(r, false, cx)),
+                )
+            });
+        v_flex()
+            .size_full()
+            .child(head)
+            .child(body("rules-scroll").child(table))
     }
 
     pub(crate) fn render_mrs_dialog(
         &mut self,
-        dialog: Dialog,
         _: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Dialog {
+    ) -> AnyElement {
+        let c = cx.theme().colors;
         let input_name = self
             .mrs_input
             .as_ref()
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().into_owned());
-        let behavior = self.mrs_behavior;
-
-        let behavior_pill =
-            |key: &'static str, label: &str, active: bool, cx: &mut Context<Self>| {
-                div()
-                    .id(SharedString::from(format!("mrs-bh-{key}")))
-                    .flex_1()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .py(px(5.))
-                    .rounded(px(6.))
-                    .text_xs()
-                    .cursor_pointer()
-                    .when(active, |this| this.bg(rgb(GREEN)).text_color(rgb(0x0B1014)))
-                    .when(!active, |this| this.text_color(rgb(SUBTLE)))
-                    .child(label.to_string())
-                    .on_click(cx.listener(move |this, _, _, cx| this.mrs_set_behavior(key, cx)))
-            };
-
+        const BEHAVIORS: [&str; 3] = ["domain", "ipcidr", "classical"];
+        let selected = BEHAVIORS
+            .iter()
+            .position(|b| *b == self.mrs_behavior)
+            .unwrap_or(0);
+        let view = cx.entity().downgrade();
         nyx_dialog(
-            dialog,
-            440.,
             t!("pages.rules.convertMrs").to_string(),
             v_flex()
-                .gap_3()
+                .gap(px(12.))
                 .child(
-                    v_flex()
-                        .gap_2()
+                    h_flex()
+                        .gap(px(10.))
                         .child(
                             Button::new("mrs-pick")
-                                .small()
-                                .icon(IconName::FolderOpen)
+                                .outline()
+                                .icon(IconName::Folder)
                                 .label(t!("pages.rules.convertPick").to_string())
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.mrs_pick_input(window, cx)
                                 })),
                         )
-                        .when_some(input_name, |this, name| {
-                            this.child(div().text_xs().text_color(rgb(GREEN)).child(name))
+                        .when_some(input_name, |row, name| {
+                            row.child(div().min_w_0().truncate().text_color(c.ok).child(name))
                         }),
                 )
                 .child(
                     div()
-                        .text_xs()
-                        .text_color(rgb(MUTED2))
+                        .text_size(px(12.))
+                        .text_color(c.muted)
                         .child(t!("pages.rules.convertBehavior").to_string()),
                 )
                 .child(
                     h_flex()
-                        .p(px(3.))
-                        .gap(px(2.))
-                        .rounded(px(9.))
-                        .bg(rgb(CONTROL_BG))
+                        .p(px(2.))
+                        .rounded(px(8.))
                         .border_1()
-                        .border_color(rgb(CONTROL_BORDER))
-                        .child(behavior_pill("domain", "domain", behavior == "domain", cx))
-                        .child(behavior_pill("ipcidr", "ipcidr", behavior == "ipcidr", cx))
-                        .child(behavior_pill(
-                            "classical",
-                            "classical",
-                            behavior == "classical",
-                            cx,
-                        )),
+                        .border_color(c.border)
+                        .bg(c.bg)
+                        .child(
+                            Tabs::new(
+                                "mrs-behavior",
+                                BEHAVIORS.iter().map(|b| SharedString::from(*b)).collect(),
+                                selected,
+                                move |ix, _, cx| {
+                                    let _ = view.update(cx, |this, cx| {
+                                        this.mrs_set_behavior(BEHAVIORS[ix], cx)
+                                    });
+                                },
+                            )
+                            .fill(),
+                        ),
                 ),
             Some(
                 h_flex()
-                    .justify_end()
-                    .gap_2()
+                    .gap(px(8.))
                     .child(
                         Button::new("mrs-cancel")
                             .ghost()
+                            .size(ButtonSize::Md)
                             .label(t!("common.cancel").to_string())
-                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                            .on_click(cx.listener(|this, _, _, cx| this.close_dialog(cx))),
                     )
                     .child(
                         Button::new("mrs-go")
                             .primary()
+                            .size(ButtonSize::Md)
                             .label(t!("pages.rules.convertDo").to_string())
                             .disabled(self.mrs_input.is_none())
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                window.close_dialog(cx);
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.close_dialog(cx);
                                 this.submit_mrs_convert(cx)
                             })),
                     )
                     .into_any_element(),
             ),
+            cx,
         )
-        .overlay_closable(false)
     }
 
     pub(crate) fn render_rule_editor(
         &self,
         _window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
+    ) -> AnyElement {
         let Some(re) = self.rule_editor.as_ref() else {
             return div().into_any_element();
         };
+        let c = cx.theme().colors;
         let base: Vec<Rule> = self.state.read(cx).rules.clone();
         let delete: std::collections::HashSet<String> = re.delete.iter().cloned().collect();
-        let to_append = re.to_append;
         let prepend = re.prepend.clone();
         let append = re.append.clone();
         let custom_count = prepend.len() + append.len();
 
-        let header = h_flex()
-            .items_center()
-            .justify_between()
+        let head = h_flex()
+            .flex_none()
+            .gap(px(12.))
+            .px(px(18.))
+            .py(px(14.))
+            .border_b_1()
+            .border_color(c.border)
+            .child(
+                Button::new("rule-ed-back")
+                    .ghost()
+                    .icon(IconName::ArrowLeft)
+                    .tooltip(t!("common.back").to_string())
+                    .on_click(cx.listener(|this, _, _, cx| this.close_rule_editor(cx))),
+            )
             .child(
                 h_flex()
-                    .gap_3()
-                    .items_center()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(6.))
+                    .items_baseline()
+                    .text_size(px(17.))
                     .child(
                         div()
-                            .id("rule-ed-back")
-                            .size(px(32.))
-                            .rounded(px(8.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .bg(rgb(CARD_BG))
-                            .border_1()
-                            .border_color(rgb(CARD_BORDER))
-                            .text_color(rgb(SUBTLE))
-                            .cursor_pointer()
-                            .tooltip(|window, cx| {
-                                Tooltip::new(t!("common.back").to_string()).build(window, cx)
-                            })
-                            .child(Icon::new(IconName::ChevronLeft).size(px(16.)))
-                            .on_click(cx.listener(|this, _, _, cx| this.close_rule_editor(cx))),
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .child(t!("pages.rules.editorTitle").to_string()),
                     )
                     .child(
-                        v_flex()
-                            .gap_0p5()
-                            .child(
-                                div()
-                                    .text_lg()
-                                    .font_bold()
-                                    .text_color(rgb(TEXT))
-                                    .child(t!("pages.rules.editorTitle").to_string()),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(rgb(MUTED4))
-                                    .child(re.profile_name.clone()),
-                            ),
+                        div()
+                            .truncate()
+                            .text_color(c.muted)
+                            .child(re.profile_name.clone()),
                     ),
             )
             .child(
@@ -441,102 +425,107 @@ impl NyxApp {
                     .on_click(cx.listener(|this, _, _, cx| this.save_rule_editor(cx))),
             );
 
-        let pos_pill = |label: String, append: bool, on: bool, cx: &mut Context<Self>| {
-            div()
-                .id(SharedString::from(format!("rule-pos-{label}")))
-                .px(px(11.))
-                .py(px(5.))
-                .rounded(px(6.))
-                .text_xs()
-                .cursor_pointer()
-                .when(on, |t| t.bg(rgb(GREEN)).text_color(rgb(0x0B1014)))
-                .when(!on, |t| t.text_color(rgb(SUBTLE)))
-                .child(label)
-                .on_click(
-                    cx.listener(move |this, _, _, cx| this.rule_editor_set_append(append, cx)),
-                )
-        };
-        let pos_seg = h_flex()
-            .p(px(3.))
-            .gap(px(2.))
-            .rounded(px(9.))
-            .bg(rgb(CONTROL_BG))
+        let view = cx.entity().downgrade();
+        let types: Vec<MenuItem> = RULE_TYPES.iter().map(|t| MenuItem::new(*t, *t)).collect();
+        let policies: Vec<MenuItem> = re
+            .policies
+            .iter()
+            .map(|p| MenuItem::new(p.clone(), p.clone()))
+            .collect();
+        let type_dropdown = Dropdown::new("rule-type", types, Some(re.kind.clone()), {
+            let view = view.clone();
+            move |kind, window, cx| {
+                let _ = view.update(cx, |this, cx| this.rule_editor_set_kind(kind, window, cx));
+            }
+        })
+        .width(px(180.));
+        let policy_dropdown = Dropdown::new("rule-policy", policies, Some(re.policy.clone()), {
+            let view = view.clone();
+            move |policy, _, cx| {
+                let _ = view.update(cx, |this, cx| this.rule_editor_set_policy(policy, cx));
+            }
+        })
+        .searchable(&re.policy_search)
+        .width(px(220.));
+        let position = h_flex()
+            .flex_none()
+            .p(px(2.))
+            .rounded(px(8.))
             .border_1()
-            .border_color(rgb(CONTROL_BORDER))
-            .child(pos_pill(
-                t!("pages.rules.top").to_string(),
-                false,
-                !to_append,
-                cx,
-            ))
-            .child(pos_pill(
-                t!("pages.rules.bottom").to_string(),
-                true,
-                to_append,
-                cx,
+            .border_color(c.border)
+            .bg(c.bg)
+            .child(Tabs::new(
+                "rule-position",
+                vec![
+                    t!("pages.rules.top").into(),
+                    t!("pages.rules.bottom").into(),
+                ],
+                usize::from(re.to_append),
+                move |ix, _, cx| {
+                    let _ = view.update(cx, |this, cx| this.rule_editor_set_append(ix == 1, cx));
+                },
             ));
+        let form = Section::new().row(
+            v_flex()
+                .gap(px(10.))
+                .px(px(14.))
+                .py(px(12.))
+                .child(
+                    h_flex()
+                        .gap(px(8.))
+                        .child(type_dropdown)
+                        .child(TextField::new(&re.payload).flex_1().min_w(px(120.))),
+                )
+                .child(
+                    h_flex()
+                        .gap(px(8.))
+                        .child(policy_dropdown)
+                        .child(position)
+                        .child(div().flex_1())
+                        .child(
+                            Button::new("rule-ed-add")
+                                .primary()
+                                .icon(IconName::Plus)
+                                .label(t!("pages.rules.addRule").to_string())
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.rule_editor_add(window, cx)
+                                })),
+                        ),
+                ),
+        );
 
-        let form = h_flex()
-            .gap_2()
-            .items_center()
-            .p(px(12.))
-            .rounded(px(12.))
-            .bg(rgb(CARD_BG))
-            .border_1()
-            .border_color(rgb(CARD_BORDER))
-            .child(
-                div()
-                    .w(px(168.))
-                    .child(Select::new(&re.type_select).small()),
-            )
-            .child(Input::new(&re.payload).flex_1())
-            .child(
-                div()
-                    .w(px(160.))
-                    .child(Select::new(&re.policy_select).small()),
-            )
-            .child(pos_seg)
-            .child(
-                Button::new("rule-ed-add")
-                    .primary()
-                    .icon(IconName::Plus)
-                    .label(t!("pages.rules.addRule").to_string())
-                    .on_click(cx.listener(|this, _, window, cx| this.rule_editor_add(window, cx))),
-            );
-
-        let mut list = v_flex()
-            .flex_1()
-            .min_h_0()
-            .id("rule-ed-scroll")
-            .overflow_y_scroll()
-            .gap_2();
-
+        let mut list = body("rule-ed-scroll").child(form);
         if custom_count > 0 {
-            list = list.child(section_label(&t!("pages.rules.customRules"), custom_count));
-            for (i, r) in prepend.iter().enumerate() {
-                list = list.child(self.rule_custom_row(r.clone(), false, i, cx));
-            }
-            for (i, r) in append.iter().enumerate() {
-                list = list.child(self.rule_custom_row(r.clone(), true, i, cx));
-            }
+            let custom = prepend
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (false, i, r.clone()))
+                .chain(append.iter().enumerate().map(|(i, r)| (true, i, r.clone())))
+                .fold(Section::new(), |section, (is_append, i, rule)| {
+                    section.row(self.rule_custom_row(rule, is_append, i, cx))
+                });
+            list = list
+                .child(caption(
+                    format!("{} ({custom_count})", t!("pages.rules.customRules")),
+                    cx,
+                ))
+                .child(custom);
         }
-
-        list = list.child(section_label(
-            &t!("pages.rules.subscriptionRules"),
-            base.len(),
-        ));
-        for r in base.iter() {
+        let subscription = base.iter().fold(Section::new(), |section, r| {
             let s = rule_to_string(r);
             let deleted = delete.contains(&s);
-            list = list.child(self.rule_base_row(r, s, deleted, cx));
-        }
+            section.row(self.rule_base_row(r, s, deleted, cx))
+        });
+        list = list
+            .child(caption(
+                format!("{} ({})", t!("pages.rules.subscriptionRules"), base.len()),
+                cx,
+            ))
+            .child(subscription);
 
         v_flex()
             .size_full()
-            .p_4()
-            .gap_3()
-            .child(header)
-            .child(form)
+            .child(head)
             .child(list)
             .into_any_element()
     }
@@ -547,59 +536,37 @@ impl NyxApp {
         append: bool,
         idx: usize,
         cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
+    ) -> AnyElement {
         let badge = if append {
             t!("pages.rules.bottom")
         } else {
             t!("pages.rules.top")
         };
         h_flex()
-            .items_center()
-            .gap_3()
-            .px(px(14.))
-            .py(px(10.))
-            .rounded(px(10.))
-            .bg(rgb(CARD_BG))
-            .border_1()
-            .border_color(rgb(CARD_BORDER))
-            .child(
-                div()
-                    .flex_none()
-                    .px(px(6.))
-                    .py(px(1.))
-                    .rounded(px(5.))
-                    .bg(rgb(0x163024))
-                    .text_color(rgb(GREEN_HI))
-                    .text_xs()
-                    .child(badge.to_string().to_uppercase()),
-            )
+            .gap(px(12.))
+            .px(px(18.))
+            .h(px(38.))
+            .child(chip(badge.to_uppercase(), Tone::Accent, cx))
             .child(
                 div()
                     .flex_1()
                     .min_w_0()
-                    .text_xs()
-                    .text_color(rgb(TEXT))
                     .truncate()
+                    .font_family(cx.theme().mono.clone())
+                    .text_size(px(12.))
                     .child(rule),
             )
             .child(
-                div()
-                    .id(SharedString::from(format!(
-                        "rule-rm-{}-{idx}",
-                        if append { "a" } else { "p" }
-                    )))
-                    .size(px(26.))
-                    .rounded(px(7.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_color(rgb(MUTED3))
-                    .cursor_pointer()
-                    .hover(|s| s.text_color(rgb(RED_HI)))
-                    .child(Icon::empty().path("icons/trash-2.svg").size(px(14.)))
-                    .on_click(
-                        cx.listener(move |this, _, _, cx| this.rule_editor_remove(append, idx, cx)),
-                    ),
+                Button::new(SharedString::from(format!(
+                    "rule-rm-{}-{idx}",
+                    if append { "a" } else { "p" }
+                )))
+                .ghost()
+                .size(ButtonSize::Xs)
+                .icon(IconName::Trash)
+                .on_click(
+                    cx.listener(move |this, _, _, cx| this.rule_editor_remove(append, idx, cx)),
+                ),
             )
             .into_any_element()
     }
@@ -610,172 +577,26 @@ impl NyxApp {
         rule_str: String,
         deleted: bool,
         cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
-        let policy = policy_of(r);
-        let value = if r.payload.is_empty() {
-            r.proxy.to_string()
-        } else {
-            r.payload.to_string()
-        };
-        let hover = if deleted { GREEN_HI } else { RED_HI };
-        let icon = if deleted {
-            Icon::new(IconName::Undo2).size(px(14.))
-        } else {
-            Icon::empty().path("icons/trash-2.svg").size(px(14.))
-        };
+    ) -> AnyElement {
         h_flex()
-            .items_center()
-            .gap_3()
-            .px(px(14.))
-            .py(px(9.))
-            .rounded(px(10.))
-            .bg(rgb(CARD_BG))
-            .border_1()
-            .border_color(rgb(CARD_BORDER))
-            .when(deleted, |this| this.opacity(0.45))
+            .gap(px(12.))
+            .px(px(18.))
+            .h(px(38.))
+            .when(deleted, |row| row.opacity(0.45))
+            .children(rule_cells(r, deleted, cx))
             .child(
-                div()
-                    .w(px(150.))
-                    .flex_none()
-                    .text_xs()
-                    .text_color(rgb(type_color(policy)))
-                    .truncate()
-                    .child(r.kind.to_string()),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .text_xs()
-                    .text_color(rgb(if deleted { MUTED2 } else { TEXT }))
-                    .truncate()
-                    .child(value),
-            )
-            .child(
-                div()
-                    .w(px(120.))
-                    .flex_none()
-                    .text_xs()
-                    .text_color(rgb(MUTED2))
-                    .truncate()
-                    .child(r.proxy.to_string()),
-            )
-            .child(
-                div()
-                    .id(SharedString::from(format!("rule-del-{rule_str}")))
-                    .size(px(26.))
-                    .rounded(px(7.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .text_color(rgb(MUTED3))
-                    .cursor_pointer()
-                    .hover(move |s| s.text_color(rgb(hover)))
-                    .child(icon)
+                Button::new(SharedString::from(format!("rule-del-{rule_str}")))
+                    .ghost()
+                    .size(ButtonSize::Xs)
+                    .icon(if deleted {
+                        IconName::Undo
+                    } else {
+                        IconName::Trash
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.rule_editor_toggle_delete(rule_str.clone(), cx)
                     })),
             )
             .into_any_element()
     }
-}
-
-fn section_label(label: &str, count: usize) -> impl IntoElement + use<> {
-    h_flex()
-        .items_center()
-        .gap_2()
-        .pt(px(6.))
-        .child(
-            div()
-                .text_xs()
-                .font_semibold()
-                .text_color(rgb(MUTED3))
-                .child(label.to_string().to_uppercase()),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(rgb(MUTED4))
-                .child(format!("({count})")),
-        )
-}
-
-fn table_head() -> impl IntoElement {
-    h_flex()
-        .px(px(18.))
-        .py(px(11.))
-        .gap_3()
-        .border_b_1()
-        .border_color(rgb(DIVIDER))
-        .text_color(rgb(MUTED3))
-        .text_xs()
-        .child(
-            div()
-                .w(px(COL_TYPE))
-                .flex_none()
-                .child(t!("pages.rules.colType").to_string().to_uppercase()),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .child(t!("pages.rules.colValue").to_string().to_uppercase()),
-        )
-        .child(
-            div()
-                .w(px(COL_POLICY))
-                .flex_none()
-                .child(t!("pages.rules.colPolicy").to_string().to_uppercase()),
-        )
-}
-
-fn rule_row(r: Rule) -> impl IntoElement {
-    let policy = policy_of(&r);
-    let (dot, text) = policy_colors(policy);
-    let value = if r.payload.is_empty() {
-        r.proxy.to_string()
-    } else {
-        r.payload.to_string()
-    };
-
-    h_flex()
-        .px(px(18.))
-        .py(px(11.))
-        .gap_3()
-        .items_center()
-        .border_b_1()
-        .border_color(rgb(0x161E27))
-        .child(
-            div()
-                .w(px(COL_TYPE))
-                .flex_none()
-                .text_xs()
-                .text_color(rgb(type_color(policy)))
-                .truncate()
-                .child(r.kind.to_string()),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .text_xs()
-                .text_color(rgb(TEXT))
-                .truncate()
-                .child(value),
-        )
-        .child(
-            h_flex()
-                .w(px(COL_POLICY))
-                .flex_none()
-                .gap_2()
-                .items_center()
-                .child(div().size(px(6.)).rounded_full().bg(rgb(dot)))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(rgb(text))
-                        .truncate()
-                        .child(r.proxy.to_string()),
-                ),
-        )
 }

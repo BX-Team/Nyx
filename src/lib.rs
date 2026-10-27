@@ -12,9 +12,12 @@ pub fn run() {
         std::process::exit(code);
     }
 
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .format_timestamp_millis()
-        .init();
+    // Graphics driver probing and the tray's D-Bus chatter log at info on healthy systems.
+    env_logger::Builder::from_env(
+        env_logger::Env::new().filter_or("NYX_LOG", "warn,wgpu_hal=off,zbus=error"),
+    )
+    .format_timestamp_millis()
+    .init();
     log::info!("Nyx starting up (gpui)");
 
     // A second launch forwards its `nyx://` deep link to the running instance and exits.
@@ -23,16 +26,17 @@ pub fn run() {
         return;
     };
 
-    let app = gpui_platform::application().with_assets(app::assets::Assets);
+    let app = gpui::application().with_assets(app::assets::Assets);
 
     backend::startup::migrate_data_dir();
     let silent = backend::config::app_config_bool("silentStart");
 
     app.run(move |cx| {
-        gpui_component::init(cx);
-        gpui_component::Theme::change(gpui_component::ThemeMode::Dark, None, cx);
-        ui::theme::apply(cx);
+        gpui::init(cx);
+        ui::theme::init(cx);
+        ui::init_keys(cx);
         app::state::AppState::init(cx);
+        ui::set_labels(cx);
         // Closing the window hides Nyx to the tray; the tray keeps the process alive.
         #[cfg(not(windows))]
         cx.set_quit_mode(gpui::QuitMode::Explicit);

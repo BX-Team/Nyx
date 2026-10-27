@@ -43,7 +43,7 @@ async fn run_due(cx: &mut AsyncApp) {
             t!("pages.profiles.autoUpdated"),
             updated.join(", ")
         );
-        crate::app::actions::notify(gpui_component::notification::Notification::info(msg), cx);
+        crate::app::actions::notify(moonglass::toast::ToastKind::Info, msg, cx);
     });
 }
 
@@ -54,17 +54,15 @@ fn quota_check(cx: &mut AsyncApp) {
         for p in &profiles {
             if p.total > 0 && (p.used as u128) * 100 >= (p.total as u128) * 90 {
                 crate::app::actions::notify(
-                    gpui_component::notification::Notification::warning(
-                        t!("pages.profiles.quotaWarn", name => p.name.clone()).to_string(),
-                    ),
+                    moonglass::toast::ToastKind::Warning,
+                    t!("pages.profiles.quotaWarn", name => p.name.clone()).to_string(),
                     cx,
                 );
             }
             if p.expire > now && p.expire - now < EXPIRY_WARN_SECS {
                 crate::app::actions::notify(
-                    gpui_component::notification::Notification::warning(
-                        t!("pages.profiles.expiryWarn", name => p.name.clone()).to_string(),
-                    ),
+                    moonglass::toast::ToastKind::Warning,
+                    t!("pages.profiles.expiryWarn", name => p.name.clone()).to_string(),
                     cx,
                 );
             }

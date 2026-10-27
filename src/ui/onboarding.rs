@@ -1,20 +1,16 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, px, rgb, rgba,
+    Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Styled, Window, div, hsla,
+    px,
 };
-use gpui_component::{
-    StyledExt,
-    button::{Button, ButtonVariants},
-    h_flex, v_flex,
-};
+use moonglass::theme::ActiveTheme;
+use moonglass::{Button, ButtonSize, IconName, h_flex, icon, v_flex};
 use rust_i18n::t;
 use serde_json::json;
 
 use crate::app::runtime;
 use crate::backend;
-use crate::ui::root::{
-    BLUE, CARD_BG, CARD_BORDER, GREEN, NyxApp, Route, SUBTLE, SettingsSub, TEXT, brand_gradient,
-};
+use crate::ui::root::{NyxApp, Route, SettingsSub};
 
 const LAST_STEP: u8 = 3;
 
@@ -32,8 +28,9 @@ impl NyxApp {
         let next = step + 1;
         self.onboarding_step = Some(next);
         match next {
-            1 => self.route = Route::Profiles,
+            1 => self.route = Route::Home,
             2 => {
+                self.prev_route = Route::Home;
                 self.route = Route::Settings;
                 self.open_settings_sub(SettingsSub::Mihomo, window, cx);
             }
@@ -85,82 +82,86 @@ impl NyxApp {
             t!("onboarding.next")
         };
 
-        let dots = h_flex().gap_1p5().children((0..=LAST_STEP).map(|i| {
+        let c = cx.theme().colors;
+        let dots = h_flex().gap(px(6.)).children((0..=LAST_STEP).map(|i| {
             div()
                 .size(px(7.))
-                .rounded_full()
-                .when(i == step, |d| d.bg(brand_gradient()))
-                .when(i != step, |d| d.bg(rgb(CARD_BORDER)))
+                .rounded(px(4.))
+                .bg(if i == step { c.accent } else { c.border })
         }));
 
         let card = v_flex()
             .w(px(430.))
-            .rounded_xl()
+            .rounded(px(12.))
             .border_1()
-            .border_color(rgb(CARD_BORDER))
-            .bg(rgb(CARD_BG))
-            .p_6()
-            .gap_3()
+            .border_color(c.border)
+            .bg(c.panel)
+            .shadow(vec![gpui::base::box_shadow(
+                0.,
+                20.,
+                50.,
+                0.,
+                hsla(0., 0., 0., 0.5),
+            )])
+            .p(px(24.))
+            .gap(px(12.))
             .child(
-                div().text_xs().text_color(rgb(BLUE)).child(
-                    t!("onboarding.step", n => step + 1, total => LAST_STEP + 1).to_string(),
-                ),
+                div()
+                    .font_family(cx.theme().mono.clone())
+                    .text_size(px(11.))
+                    .text_color(c.muted)
+                    .child(
+                        t!("onboarding.step", n => step + 1, total => LAST_STEP + 1).to_uppercase(),
+                    ),
             )
             .child(
                 div()
-                    .text_xl()
-                    .font_bold()
-                    .text_color(rgb(TEXT))
+                    .text_size(px(20.))
+                    .font_weight(FontWeight::BOLD)
                     .child(title.to_string()),
             )
             .child(
                 div()
-                    .text_sm()
-                    .text_color(rgb(SUBTLE))
+                    .text_color(c.text2)
+                    .line_height(gpui::relative(1.5))
                     .child(body.to_string()),
             )
             .when_some(hint, |this, h| {
                 this.child(
                     h_flex()
-                        .gap_2()
-                        .items_center()
-                        .mt_1()
-                        .px(px(11.))
+                        .gap(px(8.))
+                        .mt(px(4.))
+                        .px(px(12.))
                         .py(px(8.))
-                        .rounded(px(9.))
-                        .bg(rgba(0x35C46715))
+                        .rounded(px(8.))
+                        .bg(c.accent.opacity(0.1))
                         .border_1()
-                        .border_color(rgba(0x35C46740))
-                        .child(div().text_sm().text_color(rgb(GREEN)).child("→"))
-                        .child(div().text_xs().text_color(rgb(GREEN)).child(h.to_string())),
+                        .border_color(c.accent.opacity(0.3))
+                        .child(icon(IconName::ChevronRight, c.accent))
+                        .child(div().text_color(c.accent).child(h.to_string())),
                 )
             })
             .child(
-                h_flex()
-                    .mt_2()
-                    .items_center()
-                    .justify_between()
-                    .child(dots)
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                Button::new("onb-skip")
-                                    .ghost()
-                                    .label(t!("onboarding.skip").to_string())
-                                    .on_click(
-                                        cx.listener(|this, _, _, cx| this.onboarding_finish(cx)),
-                                    ),
-                            )
-                            .child(
-                                Button::new("onb-next")
-                                    .primary()
-                                    .label(primary_label.to_string())
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.onboarding_advance(window, cx)
-                                    })),
-                            ),
-                    ),
+                h_flex().mt(px(8.)).justify_between().child(dots).child(
+                    h_flex()
+                        .gap(px(8.))
+                        .child(
+                            Button::new("onb-skip")
+                                .ghost()
+                                .size(ButtonSize::Md)
+                                .label(t!("onboarding.skip").to_string())
+                                .on_click(cx.listener(|this, _, _, cx| this.onboarding_finish(cx))),
+                        )
+                        .child(
+                            Button::new("onb-next")
+                                .primary()
+                                .size(ButtonSize::Md)
+                                .label(primary_label.to_string())
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.onboarding_advance(window, cx)
+                                })),
+                        ),
+                ),
             );
 
         // Action steps float bottom-right with no scrim, keeping the UI clickable.
@@ -172,13 +173,13 @@ impl NyxApp {
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(rgba(0x000000C0))
+                .bg(hsla(0., 0., 0., 0.6))
                 .child(card)
                 .into_any_element()
         } else {
             div()
                 .absolute()
-                .bottom(px(20.))
+                .bottom(px(96.))
                 .right(px(20.))
                 .child(card)
                 .into_any_element()

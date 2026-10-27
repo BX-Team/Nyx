@@ -23,6 +23,8 @@ pub enum FailureKind {
     ConfigInvalid,
     ServiceUnavailable,
     Timeout,
+    /// A core from an earlier run still holds the controller and Nyx cannot stop it.
+    Orphaned,
     Other,
 }
 
@@ -138,6 +140,7 @@ pub async fn restart() -> Result<(), CoreError> {
 async fn start_locked() -> Result<(), CoreError> {
     let backend = choose_backend().await?;
     let spec = spec::build().await?;
+    take_over_leftover(&spec).await?;
     log::info!(
         "[core] starting via {backend:?}: binary={:?} config={:?} controller={}",
         spec.binary,
@@ -174,6 +177,57 @@ async fn start_locked() -> Result<(), CoreError> {
     }
     log::info!("[core] ready at {}", spec.controller);
     Ok(())
+}
+
+/// A core that answers before we start one was left by an earlier run, e.g. after the app was
+/// killed. Stop it through whoever may own it; if it survives, at least take TUN away from it,
+/// so it cannot route traffic while the app shows it disconnected.
+async fn take_over_leftover(spec: &spec::StartSpec) -> Result<(), CoreError> {
+    if !api_responds(&spec.controller).await {
+        return Ok(());
+    }
+    log::warn!(
+        "[core] a core already answers on {}, stopping it",
+        spec.controller
+    );
+    stop_locked().await;
+    for _ in 0..10 {
+        if !api_responds(&spec.controller).await {
+            return Ok(());
+        }
+        tokio::time::sleep(READY_POLL).await;
+    }
+    let dropped = drop_tun(&spec.controller, spec.secret.as_deref()).await;
+    log::warn!("[core] the leftover core survived; TUN dropped: {dropped}");
+    Err(CoreError::new(
+        FailureKind::Orphaned,
+        format!(
+            "a mihomo core from an earlier run still answers on {} and could not be stopped — \
+             end mihomo in the task manager or restart the computer",
+            spec.controller
+        ),
+    ))
+}
+
+async fn drop_tun(url: &str, secret: Option<&str>) -> bool {
+    let Ok(client) = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(2))
+        .build()
+    else {
+        return false;
+    };
+    let mut request = client
+        .patch(format!("{url}/configs"))
+        .json(&serde_json::json!({ "tun": { "enable": false } }));
+    if let Some(secret) = secret.filter(|s| !s.is_empty()) {
+        request = request.bearer_auth(secret);
+    }
+    request
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
 }
 
 /// The host reports everything as one string; a core that came up and died is a

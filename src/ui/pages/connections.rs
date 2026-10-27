@@ -1,35 +1,27 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, img, px, rgb,
+    AnyElement, ClipboardItem, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, img, px,
 };
-use gpui_component::{
-    Icon, IconName, StyledExt, WindowExt, dialog::Dialog, h_flex, input::Input,
-    notification::Notification, tooltip::Tooltip, v_flex,
+use moonglass::theme::ActiveTheme;
+use moonglass::toast::ToastKind;
+use moonglass::{
+    Button, ButtonSize, IconName, Section, Tabs, TextField, Tone, caption, chip, h_flex, icon,
+    placeholder, v_flex,
 };
 use rust_i18n::t;
 
 use crate::app::state::{ConnItem, ConnProcess};
-use crate::ui::root::{
-    BLUE, CARD_BG, CARD_BORDER, GREEN, GREEN_HI, MUTED2, MUTED3, NyxApp, PANEL_BG, RED, RED_HI,
-    SUBTLE, TEXT, fmt_bytes, nyx_dialog, open_centered_dialog,
-};
-
-/// A small fixed palette for process avatars, picked by name hash.
-const AVATARS: &[u32] = &[
-    0xD97757, 0xE8602C, 0x5865F2, 0x37AEE2, 0x1F7A4D, 0x8B5CF6, 0x4B5563,
-];
-
-fn avatar_color(name: &str) -> u32 {
-    let h = name
-        .bytes()
-        .fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
-    AVATARS[(h as usize) % AVATARS.len()]
-}
+use crate::ui::pages::{body, header, updown};
+use crate::ui::root::{NyxApp, fmt_bytes, nyx_dialog};
 
 impl NyxApp {
-    pub(crate) fn render_connections(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let content = match self.conns_detail.clone() {
+    pub(crate) fn render_connections(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        match self.conns_detail.clone() {
             Some(name) => {
                 let st = self.state.read(cx);
                 let list = if self.conns_show_closed {
@@ -40,15 +32,18 @@ impl NyxApp {
                 let proc = list.iter().find(|p| p.name == name).cloned();
                 self.render_conn_detail(name, proc, cx).into_any_element()
             }
-            None => self.render_conn_list(cx).into_any_element(),
-        };
-        div().relative().size_full().child(content)
+            None => self.render_conn_list(window, cx).into_any_element(),
+        }
     }
 
-    fn render_conn_list(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn render_conn_list(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let c = cx.theme().colors;
         let st = self.state.read(cx);
-        let total_up = st.total_up;
-        let total_down = st.total_down;
+        let (total_up, total_down) = (st.total_up, st.total_down);
         let show_closed = self.conns_show_closed;
         let filter = self.conns_filter.read(cx).value().trim().to_lowercase();
         let source = if show_closed {
@@ -63,257 +58,128 @@ impl NyxApp {
             .collect();
         let count = procs.len();
 
-        let header = h_flex()
-            .items_center()
-            .justify_between()
-            .px(px(22.))
-            .pt(px(18.))
-            .pb(px(14.))
-            .child(
-                div()
-                    .text_xl()
-                    .font_bold()
-                    .text_color(rgb(TEXT))
-                    .child(t!("sider.connection").to_string()),
+        let view = cx.entity().downgrade();
+        let head = header(
+            t!("sider.connection").to_string(),
+            Some(count.to_string().into()),
+            cx,
+        )
+        .child(
+            h_flex()
+                .flex_none()
+                .p(px(2.))
+                .rounded(px(8.))
+                .border_1()
+                .border_color(c.border)
+                .bg(c.bg)
+                .child(Tabs::new(
+                    "conns-tabs",
+                    vec![
+                        t!("pages.connections.active").into(),
+                        t!("pages.connections.closed").into(),
+                    ],
+                    usize::from(show_closed),
+                    move |ix, _, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.conns_show_closed = ix == 1;
+                            this.conns_detail = None;
+                            cx.notify();
+                        });
+                    },
+                )),
+        )
+        .child(updown(total_up, total_down, cx))
+        .when(!show_closed && count > 0, |row| {
+            row.child(
+                Button::new("conns-restart")
+                    .ghost()
+                    .icon(IconName::Refresh)
+                    .tooltip(t!("tooltips.restartConnections").to_string())
+                    .on_click(cx.listener(|this, _, _, cx| this.restart_connections(cx))),
             )
             .child(
-                h_flex()
-                    .gap_3()
-                    .items_center()
-                    .child(updown(GREEN_HI, "↑", &fmt_bytes(total_up)))
-                    .child(updown(BLUE, "↓", &fmt_bytes(total_down)))
-                    .when(!show_closed && count > 0, |this| {
-                        this.child(
-                            div()
-                                .id("conns-restart")
-                                .size(px(30.))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded(px(8.))
-                                .bg(rgb(CARD_BG))
-                                .border_1()
-                                .border_color(rgb(CARD_BORDER))
-                                .text_color(rgb(SUBTLE))
-                                .cursor_pointer()
-                                .hover(|s| s.bg(rgb(PANEL_BG)))
-                                .tooltip(|window, cx| {
-                                    Tooltip::new(t!("tooltips.restartConnections").to_string())
-                                        .build(window, cx)
-                                })
-                                .child(Icon::empty().path("icons/refresh.svg").size(px(14.)))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.restart_connections(cx);
-                                })),
-                        )
-                    })
-                    .when(!show_closed && count > 0, |this| {
-                        this.child(
-                            div()
-                                .id("conns-close-all")
-                                .h(px(30.))
-                                .px(px(12.))
-                                .flex()
-                                .items_center()
-                                .gap_1p5()
-                                .rounded(px(8.))
-                                .bg(rgb(0x2A1614))
-                                .border_1()
-                                .border_color(rgb(RED))
-                                .text_xs()
-                                .text_color(rgb(RED_HI))
-                                .cursor_pointer()
-                                .hover(|s| s.bg(rgb(0x3A1E1A)))
-                                .tooltip(|window, cx| {
-                                    Tooltip::new(t!("pages.connections.closeAll").to_string())
-                                        .build(window, cx)
-                                })
-                                .child(Icon::empty().path("icons/trash-2.svg").size(px(13.)))
-                                .child(t!("pages.connections.closeAll").to_string())
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.close_all_connections(cx);
-                                    cx.notify();
-                                })),
-                        )
-                    }),
-            );
+                Button::new("conns-close-all")
+                    .danger()
+                    .icon(IconName::Trash)
+                    .label(t!("pages.connections.closeAll").to_string())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.close_all_connections(cx);
+                        cx.notify();
+                    })),
+            )
+        });
 
-        let tab_pill = |label: String, closed: bool, on: bool, cx: &mut Context<Self>| {
-            div()
-                .id(SharedString::from(if closed {
-                    "conns-tab-closed"
-                } else {
-                    "conns-tab-active"
-                }))
-                .px(px(12.))
-                .py(px(5.))
-                .rounded(px(6.))
-                .text_xs()
-                .cursor_pointer()
-                .when(on, |t| t.bg(rgb(GREEN)).text_color(rgb(0x0B1014)))
-                .when(!on, |t| t.text_color(rgb(SUBTLE)))
-                .child(label)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.conns_show_closed = closed;
-                    this.conns_detail = None;
-                    cx.notify();
-                }))
-        };
-        let tabs = h_flex()
-            .p(px(3.))
-            .gap(px(2.))
-            .rounded(px(9.))
-            .bg(rgb(CARD_BG))
-            .border_1()
-            .border_color(rgb(CARD_BORDER))
-            .child(tab_pill(
-                t!("pages.connections.active").to_string(),
-                false,
-                !show_closed,
+        let filter_field = TextField::new(&self.conns_filter)
+            .leading(IconName::Search)
+            .clearable();
+        let list = if procs.is_empty() {
+            placeholder(
+                IconName::Network,
+                t!("pages.connections.empty").into(),
+                SharedString::default(),
                 cx,
-            ))
-            .child(tab_pill(
-                t!("pages.connections.closed").to_string(),
-                true,
-                show_closed,
-                cx,
-            ));
-
-        let toolbar = h_flex()
-            .items_center()
-            .gap_3()
-            .px(px(22.))
-            .pb(px(14.))
-            .child(tabs)
-            .child(count_badge(count))
-            .child(
-                div().flex_1().child(
-                    Input::new(&self.conns_filter).cleanable(true).prefix(
-                        Icon::new(IconName::Search)
-                            .size(px(14.))
-                            .text_color(rgb(MUTED3)),
-                    ),
-                ),
-            );
-
-        let body = if procs.is_empty() {
-            v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .child(
-                    div()
-                        .text_color(rgb(MUTED2))
-                        .child(t!("pages.connections.empty").to_string()),
-                )
-                .into_any_element()
+            )
+            .into_any_element()
         } else {
-            v_flex()
-                .flex_1()
-                .min_h_0()
-                .px(px(22.))
-                .pb(px(18.))
-                .gap_2()
-                .id("conns-scroll")
-                .overflow_y_scroll()
-                .children(procs.into_iter().map(|p| self.conn_card(p, cx)))
+            procs
+                .into_iter()
+                .fold(Section::new(), |section, p| {
+                    section.row(self.conn_row(p, cx))
+                })
                 .into_any_element()
         };
-
         v_flex()
             .size_full()
-            .child(header)
-            .child(toolbar)
-            .child(body)
+            .child(head)
+            .child(body("conns-scroll").child(filter_field).child(list))
     }
 
-    fn conn_card(&self, p: ConnProcess, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let letter = p
-            .name
-            .chars()
-            .next()
-            .unwrap_or('?')
-            .to_uppercase()
-            .to_string();
+    fn conn_row(&self, p: ConnProcess, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let c = cx.theme().colors;
         let name = p.name.clone();
-        // Prefer the real executable icon; fall back to a colored letter tile.
+        // Prefer the real executable icon; fall back to the name's initials.
         let avatar = match crate::app::app_icon::for_path(p.process_path.as_ref()) {
-            Some(icon) => img(icon)
-                .size(px(38.))
+            Some(path) => img(path)
+                .size(px(28.))
                 .flex_none()
-                .rounded(px(10.))
+                .rounded(px(6.))
                 .into_any_element(),
-            None => div()
-                .size(px(38.))
-                .flex_none()
-                .rounded(px(10.))
-                .bg(rgb(avatar_color(p.name.as_ref())))
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_color(rgb(0xFFFFFF))
-                .font_bold()
-                .text_sm()
-                .child(letter)
+            None => moonglass::tile(crate::ui::bar::initials(&p.name), 28., 6., cx)
+                .text_color(c.accent)
+                .text_size(px(11.))
                 .into_any_element(),
         };
+        let ids: Vec<String> = p.conns.iter().map(|c| c.id.to_string()).collect();
         h_flex()
             .id(SharedString::from(format!("conn-{name}")))
-            .items_center()
-            .gap_3()
-            .p(px(12.))
-            .rounded(px(13.))
-            .bg(rgb(CARD_BG))
-            .border_1()
-            .border_color(rgb(CARD_BORDER))
+            .gap(px(12.))
+            .px(px(18.))
+            .h(px(48.))
             .cursor_pointer()
-            .hover(|s| s.border_color(rgb(0x2E3A47)))
+            .hover(|s| s.bg(c.row))
             .child(avatar)
             .child(
-                v_flex()
+                h_flex()
                     .flex_1()
                     .min_w_0()
-                    .gap_1()
+                    .gap(px(8.))
                     .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_semibold()
-                                    .text_color(rgb(TEXT))
-                                    .truncate()
-                                    .child(p.name.to_string()),
-                            )
-                            .child(count_badge(p.count)),
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(p.name.to_string()),
                     )
-                    .child(
-                        h_flex()
-                            .gap_3()
-                            .child(updown(GREEN_HI, "↑", &fmt_bytes(p.up)))
-                            .child(updown(BLUE, "↓", &fmt_bytes(p.down))),
-                    ),
+                    .child(chip(p.count.to_string(), Tone::Muted, cx)),
             )
-            .when(!self.conns_show_closed, |this| {
-                let ids: Vec<String> = p.conns.iter().map(|c| c.id.to_string()).collect();
-                this.child(
-                    div()
-                        .id(SharedString::from(format!("conn-close-{}", p.name)))
-                        .size(px(28.))
-                        .flex_none()
-                        .rounded(px(7.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_color(rgb(MUTED3))
-                        .cursor_pointer()
-                        .hover(|s| s.text_color(rgb(RED_HI)))
-                        .tooltip(|window, cx| {
-                            Tooltip::new(t!("pages.connections.close").to_string())
-                                .build(window, cx)
-                        })
-                        .child(Icon::empty().path("icons/trash-2.svg").size(px(14.)))
+            .child(updown(p.up, p.down, cx))
+            .when(!self.conns_show_closed, |row| {
+                row.child(
+                    Button::new(SharedString::from(format!("conn-close-{}", p.name)))
+                        .ghost()
+                        .size(ButtonSize::Xs)
+                        .icon(IconName::Close)
+                        .tooltip(t!("pages.connections.close").to_string())
                         .on_click(cx.listener(move |this, _, _, cx| {
                             cx.stop_propagation();
                             this.close_connections(ids.clone(), cx);
@@ -321,11 +187,7 @@ impl NyxApp {
                         })),
                 )
             })
-            .child(
-                Icon::new(IconName::ChevronRight)
-                    .size(px(16.))
-                    .text_color(rgb(MUTED3)),
-            )
+            .child(icon(IconName::ChevronRight, c.muted))
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.conns_detail = Some(name.clone());
                 cx.notify();
@@ -338,485 +200,296 @@ impl NyxApp {
         proc: Option<ConnProcess>,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
+        let c = cx.theme().colors;
         let conns = proc.as_ref().map(|p| p.conns.clone()).unwrap_or_default();
         let (up, down) = proc.as_ref().map(|p| (p.up, p.down)).unwrap_or((0, 0));
         let count = conns.len();
         let ids: Vec<String> = conns.iter().map(|c| c.id.to_string()).collect();
 
-        let header = h_flex()
-            .items_center()
-            .justify_between()
-            .px(px(22.))
-            .pt(px(18.))
-            .pb(px(14.))
+        let head = h_flex()
+            .flex_none()
+            .gap(px(12.))
+            .px(px(18.))
+            .py(px(14.))
+            .border_b_1()
+            .border_color(c.border)
             .child(
-                h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(
-                        div()
-                            .id("conn-back")
-                            .size(px(30.))
-                            .rounded(px(8.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .bg(rgb(CARD_BG))
-                            .border_1()
-                            .border_color(rgb(CARD_BORDER))
-                            .text_color(rgb(SUBTLE))
-                            .cursor_pointer()
-                            .tooltip(|window, cx| {
-                                Tooltip::new(t!("common.back").to_string()).build(window, cx)
-                            })
-                            .child(Icon::new(IconName::ChevronLeft).size(px(16.)))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.conns_detail = None;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        div()
-                            .text_xl()
-                            .font_bold()
-                            .text_color(rgb(TEXT))
-                            .truncate()
-                            .child(name.to_string()),
-                    )
-                    .child(count_badge(count)),
+                Button::new("conn-back")
+                    .ghost()
+                    .icon(IconName::ArrowLeft)
+                    .tooltip(t!("common.back").to_string())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.conns_detail = None;
+                        cx.notify();
+                    })),
             )
             .child(
                 h_flex()
-                    .gap_3()
-                    .items_center()
-                    .child(updown(GREEN_HI, "↑", &fmt_bytes(up)))
-                    .child(updown(BLUE, "↓", &fmt_bytes(down)))
-                    .when(!self.conns_show_closed && count > 0, |this| {
-                        let ids = ids.clone();
-                        this.child(
-                            div()
-                                .id("conn-detail-close-all")
-                                .h(px(30.))
-                                .px(px(12.))
-                                .flex()
-                                .items_center()
-                                .gap_1p5()
-                                .rounded(px(8.))
-                                .bg(rgb(0x2A1614))
-                                .border_1()
-                                .border_color(rgb(RED))
-                                .text_xs()
-                                .text_color(rgb(RED_HI))
-                                .cursor_pointer()
-                                .hover(|s| s.bg(rgb(0x3A1E1A)))
-                                .child(Icon::empty().path("icons/trash-2.svg").size(px(13.)))
-                                .child(t!("pages.connections.closeAll").to_string())
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.close_connections(ids.clone(), cx);
-                                    cx.notify();
-                                })),
-                        )
-                    }),
-            );
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(6.))
+                    .items_baseline()
+                    .text_size(px(17.))
+                    .child(
+                        div()
+                            .truncate()
+                            .font_weight(FontWeight::BOLD)
+                            .child(name.to_string()),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_color(c.muted)
+                            .child(count.to_string()),
+                    ),
+            )
+            .child(updown(up, down, cx))
+            .when(!self.conns_show_closed && count > 0, |row| {
+                row.child(
+                    Button::new("conn-detail-close-all")
+                        .danger()
+                        .icon(IconName::Trash)
+                        .label(t!("pages.connections.closeAll").to_string())
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.close_connections(ids.clone(), cx);
+                            cx.notify();
+                        })),
+                )
+            });
 
-        let body = if conns.is_empty() {
-            v_flex()
-                .flex_1()
-                .items_center()
-                .justify_center()
-                .child(
-                    div()
-                        .text_color(rgb(MUTED2))
-                        .child(t!("pages.connections.empty").to_string()),
-                )
-                .into_any_element()
+        let list = if conns.is_empty() {
+            placeholder(
+                IconName::Network,
+                t!("pages.connections.empty").into(),
+                SharedString::default(),
+                cx,
+            )
+            .into_any_element()
         } else {
-            v_flex()
-                .flex_1()
-                .min_h_0()
-                .px(px(22.))
-                .pb(px(18.))
-                .gap_2()
-                .id("conn-detail-scroll")
-                .overflow_y_scroll()
-                .children(
-                    conns
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, c)| self.conn_detail_row(i, c, cx)),
-                )
+            conns
+                .into_iter()
+                .enumerate()
+                .fold(Section::new(), |section, (i, item)| {
+                    section.row(self.conn_detail_row(i, item, cx))
+                })
                 .into_any_element()
         };
-
-        v_flex().size_full().child(header).child(body)
+        v_flex()
+            .size_full()
+            .child(head)
+            .child(body("conn-detail-scroll").child(list))
     }
 
     fn conn_detail_row(
         &self,
         idx: usize,
-        c: ConnItem,
+        item: ConnItem,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
-        let item = c.clone();
-        conn_detail_row_inner(c)
-            .id(SharedString::from(format!("conn-row-{idx}")))
+        let c = cx.theme().colors;
+        let meta = [item.chains.to_string(), item.rule.to_string()]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" · ");
+        let popup = item.clone();
+        h_flex()
+            .id(("conn-row", idx))
+            .gap(px(12.))
+            .px(px(18.))
+            .py(px(10.))
             .cursor_pointer()
-            .hover(|s| s.border_color(rgb(0x2E3A47)))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                this.open_conn_popup(item.clone(), window, cx)
-            }))
+            .hover(|s| s.bg(c.row))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap(px(3.))
+                    .child(
+                        h_flex()
+                            .gap(px(8.))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(item.host.to_string()),
+                            )
+                            .when(!item.network.is_empty(), |row| {
+                                row.child(chip(item.network.to_string(), Tone::Muted, cx))
+                            }),
+                    )
+                    .when(!meta.is_empty(), |col| {
+                        col.child(
+                            div()
+                                .truncate()
+                                .text_size(px(12.))
+                                .text_color(c.muted)
+                                .child(meta),
+                        )
+                    }),
+            )
+            .child(updown(item.up, item.down, cx))
+            .on_click(cx.listener(move |this, _, _, cx| this.open_conn_popup(popup.clone(), cx)))
     }
 
-    fn open_conn_popup(&mut self, c: ConnItem, window: &mut Window, cx: &mut Context<Self>) {
-        let view = cx.entity();
-        open_centered_dialog(window, cx, move |dialog, _, cx| {
-            view.update(cx, |this, cx| this.render_conn_popup(c.clone(), dialog, cx))
-        });
+    fn open_conn_popup(&mut self, item: ConnItem, cx: &mut Context<Self>) {
+        self.open_dialog(
+            480.,
+            true,
+            move |this, _, cx| this.render_conn_popup(item.clone(), cx),
+            cx,
+        );
     }
 
     /// Per-connection metadata popup; every value is click-to-copy.
-    fn render_conn_popup(&self, c: ConnItem, dialog: Dialog, cx: &mut Context<Self>) -> Dialog {
+    fn render_conn_popup(&self, c: ConnItem, cx: &mut Context<Self>) -> AnyElement {
         let host_only = strip_port(c.host.as_ref());
-        let host_frag = if host_only.chars().any(|ch| ch.is_ascii_alphabetic()) {
-            Some(format!("DOMAIN-SUFFIX,{host_only}"))
-        } else {
-            None
-        };
+        let host_frag = host_only
+            .chars()
+            .any(|ch| ch.is_ascii_alphabetic())
+            .then(|| format!("DOMAIN-SUFFIX,{host_only}"));
         let asn_frag = c
             .dest_asn
             .split_whitespace()
             .next()
             .filter(|s| !s.is_empty())
             .map(|s| format!("IP-ASN,{s}"));
-
-        let routing = self.detail_section(
-            "routing",
-            t!("pages.connections.detail.routing").to_string(),
-            vec![
-                kv(
-                    t!("pages.connections.detail.rule"),
-                    c.rule.to_string(),
-                    None,
-                ),
-                kv(
-                    t!("pages.connections.detail.chain"),
-                    c.chains.to_string(),
-                    None,
-                ),
-                kv(
-                    t!("pages.connections.detail.type"),
-                    c.network.to_string(),
-                    None,
-                ),
-            ],
-            cx,
-        );
-        let network = self.detail_section(
-            "network",
-            t!("pages.connections.detail.network").to_string(),
-            vec![
-                kv(
-                    t!("pages.connections.detail.host"),
-                    c.host.to_string(),
-                    host_frag,
-                ),
-                kv(
-                    t!("pages.connections.detail.destIp"),
-                    c.dest_ip.to_string(),
-                    ip_cidr_frag("IP-CIDR", c.dest_ip.as_ref()),
-                ),
-                kv(
-                    t!("pages.connections.detail.destPort"),
-                    c.dest_port.to_string(),
-                    port_frag("DST-PORT", c.dest_port.as_ref()),
-                ),
-                kv(
-                    t!("pages.connections.detail.geoip"),
-                    c.dest_geoip.to_string(),
-                    None,
-                ),
-                kv(
-                    t!("pages.connections.detail.asn"),
-                    c.dest_asn.to_string(),
-                    asn_frag,
-                ),
-                kv(
-                    t!("pages.connections.detail.srcIp"),
-                    c.src_ip.to_string(),
-                    ip_cidr_frag("SRC-IP-CIDR", c.src_ip.as_ref()),
-                ),
-                kv(
-                    t!("pages.connections.detail.srcPort"),
-                    c.src_port.to_string(),
-                    port_frag("SRC-PORT", c.src_port.as_ref()),
-                ),
-            ],
-            cx,
-        );
-        let process = self.detail_section(
-            "process",
-            t!("pages.connections.detail.process").to_string(),
-            vec![
-                kv(
-                    t!("pages.connections.detail.processName"),
-                    c.process.to_string(),
-                    (!c.process.is_empty()).then(|| format!("PROCESS-NAME,{}", c.process)),
-                ),
-                kv(
-                    t!("pages.connections.detail.processPath"),
-                    c.process_path.to_string(),
-                    None,
-                ),
-                kv(
-                    t!("pages.connections.detail.dnsMode"),
-                    c.dns_mode.to_string(),
-                    None,
-                ),
-            ],
-            cx,
-        );
-        let traffic = self.detail_section(
-            "traffic",
-            t!("pages.connections.detail.traffic").to_string(),
-            vec![
-                kv(t!("pages.connections.detail.upload"), fmt_bytes(c.up), None),
-                kv(
-                    t!("pages.connections.detail.download"),
-                    fmt_bytes(c.down),
-                    None,
-                ),
-            ],
-            cx,
-        );
-
-        nyx_dialog(
-            dialog,
-            460.,
-            div().truncate().child(c.host.to_string()),
-            v_flex()
-                .id("conn-popup-scroll")
-                .max_h(px(480.))
-                .overflow_y_scroll()
-                .gap_3()
-                .child(routing)
-                .child(network)
-                .child(process)
-                .child(traffic),
-            None,
-        )
-    }
-
-    fn detail_section(
-        &self,
-        key: &'static str,
-        title: String,
-        rows: Vec<Kv>,
-        cx: &mut Context<Self>,
-    ) -> gpui::AnyElement {
-        let rows: Vec<Kv> = rows
-            .into_iter()
-            .filter(|r| !r.value.trim().is_empty())
-            .collect();
-        if rows.is_empty() {
-            return div().into_any_element();
-        }
-        v_flex()
-            .gap_1()
-            .child(
-                div()
-                    .text_xs()
-                    .font_semibold()
-                    .text_color(rgb(MUTED3))
-                    .child(title.to_uppercase()),
-            )
-            .child(
-                v_flex()
-                    .rounded(px(10.))
-                    .bg(rgb(PANEL_BG))
-                    .border_1()
-                    .border_color(rgb(CARD_BORDER))
-                    .px(px(12.))
-                    .children(
-                        rows.into_iter()
-                            .enumerate()
-                            .map(|(i, r)| self.kv_row(key, i, r, cx)),
+        let d = |key: &str| t!(format!("pages.connections.detail.{key}")).to_string();
+        let sections = [
+            (
+                "routing",
+                d("routing"),
+                vec![
+                    kv(d("rule"), c.rule.to_string(), None),
+                    kv(d("chain"), c.chains.to_string(), None),
+                    kv(d("type"), c.network.to_string(), None),
+                ],
+            ),
+            (
+                "network",
+                d("network"),
+                vec![
+                    kv(d("host"), c.host.to_string(), host_frag),
+                    kv(
+                        d("destIp"),
+                        c.dest_ip.to_string(),
+                        ip_cidr_frag("IP-CIDR", c.dest_ip.as_ref()),
                     ),
-            )
-            .into_any_element()
-    }
-
-    fn kv_row(
-        &self,
-        key: &'static str,
-        idx: usize,
-        row: Kv,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
-        let Kv { label, value, frag } = row;
-        let copy_value = value.clone();
-        let value_id = SharedString::from(format!("kv-{key}-{idx}"));
-        let frag_id = SharedString::from(format!("kvf-{key}-{idx}"));
-
-        h_flex()
-            .items_start()
-            .gap_3()
-            .py(px(6.))
-            .child(
-                div()
-                    .flex_none()
-                    .w(px(108.))
-                    .text_xs()
-                    .text_color(rgb(MUTED3))
-                    .child(label),
-            )
-            .child(
-                h_flex()
-                    .flex_1()
-                    .min_w_0()
-                    .items_start()
-                    .justify_between()
-                    .gap_2()
-                    .child(
-                        div()
-                            .id(value_id)
-                            .flex_1()
-                            .min_w_0()
-                            .text_xs()
-                            .text_color(rgb(TEXT))
-                            .cursor_pointer()
-                            .hover(|s| s.text_color(rgb(GREEN_HI)))
-                            .tooltip(|window, cx| {
-                                Tooltip::new(t!("common.copy").to_string()).build(window, cx)
-                            })
-                            .child(value)
-                            .on_click(cx.listener(move |_this, _, window, cx| {
-                                cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                                    copy_value.clone(),
-                                ));
-                                window
-                                    .push_notification(Notification::info(t!("common.copied")), cx);
-                            })),
-                    )
-                    .when_some(frag, |this, frag| {
-                        let chip = frag.split(',').next().unwrap_or("").to_string();
-                        this.child(
-                            div()
-                                .id(frag_id)
-                                .flex_none()
-                                .px(px(6.))
-                                .py(px(1.))
-                                .rounded(px(5.))
-                                .bg(rgb(0x1A2530))
-                                .text_color(rgb(SUBTLE))
-                                .text_xs()
-                                .cursor_pointer()
-                                .hover(|s| s.text_color(rgb(GREEN_HI)))
-                                .tooltip(|window, cx| {
-                                    Tooltip::new(
-                                        t!("pages.connections.detail.copyRule").to_string(),
-                                    )
-                                    .build(window, cx)
-                                })
-                                .child(chip)
-                                .on_click(cx.listener(move |_this, _, window, cx| {
-                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                                        frag.clone(),
-                                    ));
-                                    window.push_notification(
-                                        Notification::info(t!("common.copied")),
-                                        cx,
-                                    );
-                                })),
-                        )
-                    }),
-            )
+                    kv(
+                        d("destPort"),
+                        c.dest_port.to_string(),
+                        port_frag("DST-PORT", c.dest_port.as_ref()),
+                    ),
+                    kv(d("geoip"), c.dest_geoip.to_string(), None),
+                    kv(d("asn"), c.dest_asn.to_string(), asn_frag),
+                    kv(
+                        d("srcIp"),
+                        c.src_ip.to_string(),
+                        ip_cidr_frag("SRC-IP-CIDR", c.src_ip.as_ref()),
+                    ),
+                    kv(
+                        d("srcPort"),
+                        c.src_port.to_string(),
+                        port_frag("SRC-PORT", c.src_port.as_ref()),
+                    ),
+                ],
+            ),
+            (
+                "process",
+                d("process"),
+                vec![
+                    kv(
+                        d("processName"),
+                        c.process.to_string(),
+                        (!c.process.is_empty()).then(|| format!("PROCESS-NAME,{}", c.process)),
+                    ),
+                    kv(d("processPath"), c.process_path.to_string(), None),
+                    kv(d("dnsMode"), c.dns_mode.to_string(), None),
+                ],
+            ),
+            (
+                "traffic",
+                d("traffic"),
+                vec![
+                    kv(d("upload"), fmt_bytes(c.up), None),
+                    kv(d("download"), fmt_bytes(c.down), None),
+                ],
+            ),
+        ];
+        let mut col = v_flex()
+            .id("conn-popup-scroll")
+            .max_h(px(480.))
+            .overflow_y_scroll()
+            .gap(px(6.));
+        for (key, title, rows) in sections {
+            let rows: Vec<Kv> = rows
+                .into_iter()
+                .filter(|r| !r.value.trim().is_empty())
+                .collect();
+            if rows.is_empty() {
+                continue;
+            }
+            let section = rows
+                .into_iter()
+                .enumerate()
+                .fold(Section::new(), |section, (i, row)| {
+                    section.row(kv_row(key, i, row, cx))
+                });
+            col = col.child(caption(title, cx)).child(section);
+        }
+        nyx_dialog(c.host.to_string(), col, None, cx)
     }
 }
 
-fn conn_detail_row_inner(c: ConnItem) -> gpui::Div {
-    v_flex()
-        .gap_1p5()
-        .p(px(12.))
-        .rounded(px(12.))
-        .bg(rgb(CARD_BG))
-        .border_1()
-        .border_color(rgb(CARD_BORDER))
+fn copy(text: String, cx: &mut gpui::App) {
+    cx.write_to_clipboard(ClipboardItem::new_string(text));
+    crate::app::actions::notify(ToastKind::Success, t!("common.copied").to_string(), cx);
+}
+
+fn kv_row(key: &'static str, idx: usize, row: Kv, cx: &gpui::App) -> AnyElement {
+    let c = cx.theme().colors;
+    let Kv { label, value, frag } = row;
+    let copy_value = value.clone();
+    h_flex()
+        .items_start()
+        .gap(px(12.))
+        .px(px(14.))
+        .py(px(8.))
         .child(
-            h_flex()
-                .items_center()
-                .justify_between()
-                .gap_2()
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .text_sm()
-                        .font_semibold()
-                        .text_color(rgb(TEXT))
-                        .truncate()
-                        .child(c.host.to_string()),
-                )
-                .when(!c.network.is_empty(), |this| {
-                    this.child(
-                        div()
-                            .flex_none()
-                            .px(px(6.))
-                            .py(px(1.))
-                            .rounded(px(5.))
-                            .bg(rgb(0x1A2530))
-                            .text_color(rgb(SUBTLE))
-                            .text_xs()
-                            .child(c.network.to_string()),
-                    )
-                }),
+            div()
+                .flex_none()
+                .w(px(110.))
+                .text_size(px(12.))
+                .text_color(c.muted)
+                .child(label),
         )
-        .when(!c.chains.is_empty(), |this| {
-            this.child(
+        .child(
+            div()
+                .id(SharedString::from(format!("kv-{key}-{idx}")))
+                .flex_1()
+                .min_w_0()
+                .cursor_pointer()
+                .hover(|s| s.text_color(c.accent))
+                .tooltip(moonglass::tooltip(t!("common.copy").into()))
+                .child(value)
+                .on_click(move |_, _, cx| copy(copy_value.clone(), cx)),
+        )
+        .when_some(frag, |row, frag| {
+            let label = frag.split(',').next().unwrap_or("").to_string();
+            row.child(
                 div()
-                    .text_xs()
-                    .text_color(rgb(MUTED2))
-                    .truncate()
-                    .child(c.chains.to_string()),
+                    .id(SharedString::from(format!("kvf-{key}-{idx}")))
+                    .flex_none()
+                    .cursor_pointer()
+                    .tooltip(moonglass::tooltip(
+                        t!("pages.connections.detail.copyRule").into(),
+                    ))
+                    .child(chip(label, Tone::Accent, cx))
+                    .on_click(move |_, _, cx| copy(frag.clone(), cx)),
             )
         })
-        .child(
-            h_flex()
-                .items_center()
-                .justify_between()
-                .gap_2()
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .text_xs()
-                        .text_color(rgb(MUTED3))
-                        .truncate()
-                        .child(c.rule.to_string()),
-                )
-                .child(
-                    h_flex()
-                        .gap_3()
-                        .flex_none()
-                        .child(updown(GREEN_HI, "↑", &fmt_bytes(c.up)))
-                        .child(updown(BLUE, "↓", &fmt_bytes(c.down))),
-                ),
-        )
-}
-
-fn count_badge(n: usize) -> impl IntoElement {
-    div()
-        .px(px(6.))
-        .py(px(1.))
-        .rounded(px(50.))
-        .bg(rgb(0x1F7A4D))
-        .text_color(rgb(0xD6F7E6))
-        .text_xs()
-        .child(n.to_string())
-}
-
-fn updown(color: u32, arrow: &str, value: &str) -> impl IntoElement + use<> {
-    let s: SharedString = format!("{arrow} {value}").into();
-    div().text_xs().text_color(rgb(color)).child(s)
+        .into_any_element()
 }
 
 /// A detail-popup row: label, value, and the rule fragment its chip copies.

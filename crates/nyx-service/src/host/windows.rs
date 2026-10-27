@@ -194,3 +194,47 @@ fn owner_sid_arg() -> Option<String> {
     }
     None
 }
+
+/// A job that ends every process in it once the host's handle to it closes.
+struct KillJob(windows::Win32::Foundation::HANDLE);
+
+// The handle is only passed to Win32 calls that are safe from any thread.
+unsafe impl Send for KillJob {}
+unsafe impl Sync for KillJob {}
+
+static JOB: std::sync::OnceLock<Option<KillJob>> = std::sync::OnceLock::new();
+
+/// Ties the core to this host, so a crashed host does not leave it holding the ports.
+pub fn adopt(child: &tokio::process::Child) {
+    use windows::Win32::System::JobObjects::AssignProcessToJobObject;
+    let Some(job) = JOB.get_or_init(create_job) else {
+        return;
+    };
+    let Some(handle) = child.raw_handle() else {
+        return;
+    };
+    let handle = windows::Win32::Foundation::HANDLE(handle);
+    if let Err(e) = unsafe { AssignProcessToJobObject(job.0, handle) } {
+        logging::log(&format!("cannot tie the core to the host: {e}"));
+    }
+}
+
+fn create_job() -> Option<KillJob> {
+    use windows::Win32::System::JobObjects::{
+        CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JobObjectExtendedLimitInformation, SetInformationJobObject,
+    };
+    unsafe {
+        let job = CreateJobObjectW(None, windows::core::PCWSTR::null()).ok()?;
+        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        )
+        .ok()?;
+        Some(KillJob(job))
+    }
+}

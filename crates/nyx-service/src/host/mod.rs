@@ -72,6 +72,8 @@ impl CoreManager {
             .spawn()
             .map_err(|e| format!("failed to spawn {}: {e}", spec.binary.display()))?;
         let pid = child.id().unwrap_or(0);
+        #[cfg(windows)]
+        windows::adopt(&child);
 
         tokio::time::sleep(SETTLE).await;
         if let Ok(Some(status)) = child.try_wait() {

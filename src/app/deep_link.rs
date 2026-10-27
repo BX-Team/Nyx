@@ -3,7 +3,7 @@ use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use gpui::{App, AsyncApp};
-use gpui_component::notification::Notification;
+use moonglass::toast::ToastKind;
 
 use crate::app::{actions, bootstrap, runtime};
 use crate::backend;
@@ -191,12 +191,12 @@ fn install_config(params: HashMap<String, String>, cx: &mut App) {
             Ok(Ok(id)) => {
                 let _ = runtime::spawn(backend::config::change_current_profile(id)).await;
                 bootstrap::refresh_runtime_data(cx).await;
-                cx.update(|cx| actions::notify(Notification::success("Profile installed"), cx));
+                cx.update(|cx| actions::notify(ToastKind::Success, "Profile installed", cx));
             }
             Ok(Err(e)) => {
                 log::error!("[deep-link] install-config failed: {e}");
                 cx.update(|cx| {
-                    actions::notify(Notification::error(format!("Install failed: {e}")), cx)
+                    actions::notify(ToastKind::Error, format!("Install failed: {e}"), cx)
                 });
             }
             Err(_) => log::error!("[deep-link] install task cancelled"),

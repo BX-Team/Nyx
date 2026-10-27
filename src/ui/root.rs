@@ -1,35 +1,34 @@
+use gpui::base::input::{EditorState, InputEvent, InputState, TextareaState};
 use gpui::prelude::FluentBuilder;
 use gpui::{
-    App, AppContext, Context, Decorations, Entity, InteractiveElement, IntoElement, ParentElement,
-    PathPromptOptions, Pixels, Render, ScrollHandle, StatefulInteractiveElement, Styled,
-    Subscription, Window, WindowBounds, WindowOptions, div, px, rgb, rgba, size,
+    AnyElement, App, AppContext, Context, Entity, FocusHandle, FontWeight, InteractiveElement,
+    IntoElement, ParentElement, PathPromptOptions, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Window, WindowBounds, WindowOptions, div, px,
+    size,
 };
-use gpui_component::IndexPath;
-use gpui_component::input::{Editor, EditorState, InputState, TextareaState};
-use gpui_component::select::{SelectEvent, SelectState};
-use gpui_component::{
-    Disableable, ElementExt, Root, StyledExt, TitleBar, WindowExt,
-    button::{Button, ButtonVariants},
-    dialog::{Dialog, DialogTitle},
-    h_flex,
-    text::TextView,
-    v_flex,
-};
+use moonglass::theme::ActiveTheme;
+use moonglass::toast::ToastKind;
+use moonglass::{Button, ButtonSize, IconName, TitleBar, UiText, W_SEMIBOLD, h_flex, v_flex};
 use rust_i18n::t;
-use std::cell::Cell;
 use std::rc::Rc;
 
 use crate::app::runtime;
 use crate::app::state::{AppState, parse_groups};
 use crate::backend;
 
-// Color tokens live in `ui::theme`; re-exported so pages import them from here.
-pub(crate) use crate::ui::theme::*;
+pub(crate) use crate::ui::theme::delay_color;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+gpui::actions!(nyx, [Back]);
+
+const KEY_CONTEXT: &str = "Nyx";
+
+pub fn init_keys(cx: &mut App) {
+    cx.bind_keys([gpui::KeyBinding::new("escape", Back, Some(KEY_CONTEXT))]);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Route {
     Home,
-    Profiles,
     Proxies,
     Rules,
     Connections,
@@ -47,6 +46,7 @@ pub(crate) enum LogFilter {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SettingsSub {
+    General,
     Tun,
     SysProxy,
     Dns,
@@ -56,6 +56,7 @@ pub(crate) enum SettingsSub {
     Appearance,
     Advanced,
     Shortcuts,
+    About,
 }
 
 #[derive(Clone)]
@@ -94,6 +95,52 @@ pub(crate) struct SubInputs {
     pub(crate) sniff_skip_src: Option<Entity<TextareaState>>,
 }
 
+impl SubInputs {
+    fn fields(&self) -> Vec<Entity<InputState>> {
+        [
+            &self.device,
+            &self.mtu,
+            &self.host,
+            &self.bypass,
+            &self.interval,
+            &self.dns_fakeip_range,
+            &self.mixed_port,
+            &self.socks_port,
+            &self.http_port,
+            &self.redir_port,
+            &self.tproxy_port,
+            &self.keep_alive_idle,
+            &self.keep_alive_interval,
+            &self.interface_name,
+        ]
+        .into_iter()
+        .flatten()
+        .cloned()
+        .collect()
+    }
+
+    fn areas(&self) -> Vec<Entity<TextareaState>> {
+        [
+            &self.dns_nameserver,
+            &self.dns_default_ns,
+            &self.dns_fakeip_filter,
+            &self.dns_proxy_ns,
+            &self.dns_direct_ns,
+            &self.skip_auth,
+            &self.lan_allowed,
+            &self.lan_disallowed,
+            &self.sniff_force_domain,
+            &self.sniff_skip_domain,
+            &self.sniff_skip_dst,
+            &self.sniff_skip_src,
+        ]
+        .into_iter()
+        .flatten()
+        .cloned()
+        .collect()
+    }
+}
+
 #[derive(Clone)]
 pub(crate) enum EditorTarget {
     Profile { id: String, name: String },
@@ -109,12 +156,24 @@ pub(crate) struct RuleEditState {
     /// Subscription rule strings the user has chosen to drop (override `delete`).
     pub(crate) delete: Vec<String>,
     /// "Add rule" form: type, payload, target policy, insert position.
-    pub(crate) type_select: Entity<SelectState<Vec<gpui::SharedString>>>,
+    pub(crate) kind: SharedString,
     pub(crate) payload: Entity<InputState>,
-    pub(crate) policy_select: Entity<SelectState<Vec<gpui::SharedString>>>,
+    pub(crate) policy: SharedString,
+    pub(crate) policies: Vec<SharedString>,
+    pub(crate) policy_search: Entity<InputState>,
     pub(crate) to_append: bool,
-    /// Keeps the payload placeholder in sync with the picked rule type.
-    _type_sub: Subscription,
+}
+
+type DialogBuild = Rc<dyn Fn(&mut NyxApp, &mut Window, &mut Context<NyxApp>) -> AnyElement>;
+
+/// The open modal: rebuilt from `NyxApp` every frame, so it reads live state.
+pub(crate) struct DialogSlot {
+    build: DialogBuild,
+    width: f32,
+    dismissable: bool,
+    serial: u64,
+    closing: bool,
+    focus: FocusHandle,
 }
 
 pub(crate) struct NyxApp {
@@ -122,7 +181,13 @@ pub(crate) struct NyxApp {
     pub(crate) route: Route,
     /// First-run welcome flow: `Some(step)` while active (0..=3), `None` once done.
     pub(crate) onboarding_step: Option<u8>,
-    pub(crate) rail_expanded: bool,
+    /// Where Settings' back row returns to.
+    pub(crate) prev_route: Route,
+    pub(crate) dialog: Option<DialogSlot>,
+    dialog_serial: u64,
+    pub(crate) context_menu: Option<moonglass::ContextMenu>,
+    context_serial: u64,
+    pub(crate) focus: FocusHandle,
     pub(crate) proxies_group: Option<gpui::SharedString>,
     pub(crate) proxies_search: Entity<InputState>,
     pub(crate) proxies_sort_latency: bool,
@@ -135,8 +200,11 @@ pub(crate) struct NyxApp {
     pub(crate) logs_scroll: ScrollHandle,
     /// Total log count last rendered — autoscroll fires when it grows.
     pub(crate) logs_seen: std::cell::Cell<usize>,
-    pub(crate) settings_sub: Option<SettingsSub>,
+    pub(crate) settings_sub: SettingsSub,
     pub(crate) sub_inputs: SubInputs,
+    /// A field of the open settings page was edited and not saved yet.
+    pub(crate) settings_dirty: bool,
+    settings_input_subs: Vec<Subscription>,
     pub(crate) recording_shortcut: Option<&'static str>,
     pub(crate) recorder_focus: gpui::FocusHandle,
     pub(crate) service_status: gpui::SharedString,
@@ -164,16 +232,12 @@ pub(crate) struct NyxApp {
     pub(crate) mrs_behavior: &'static str,
     pub(crate) connected_since: Option<std::time::Instant>,
     pub(crate) stats_open: bool,
-    pub(crate) lang_select: Entity<SelectState<Vec<gpui::SharedString>>>,
     pub(crate) update_info: Option<backend::updater::UpdateInfo>,
     pub(crate) update_checking: bool,
     pub(crate) update_installing: bool,
     /// Guards the one-time silent auto-check after config loads.
     auto_update_checked: bool,
-    _state_sub: Subscription,
-    _lang_sub: Subscription,
-    _conns_filter_sub: Subscription,
-    _proxies_search_sub: Subscription,
+    _subs: Vec<Subscription>,
 }
 
 pub(crate) fn fmt_bytes(n: u64) -> String {
@@ -232,37 +296,26 @@ fn parse_providers(value: &serde_json::Value, is_rule: bool) -> Vec<ProviderRow>
     out
 }
 
-/// Latency color: green (fast), amber (ok), red (slow), muted (untested).
-pub(crate) fn delay_color(delay: Option<u32>) -> u32 {
-    match delay {
-        None => MUTED,
-        Some(d) if d < 200 => GOOD,
-        Some(d) if d < 500 => WARN,
-        Some(_) => BAD,
-    }
-}
-
 impl NyxApp {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state = AppState::global(cx);
         let import_url = cx.new(|cx| InputState::new(window, cx).placeholder("https://…"));
-        let profile_add_name = cx.new(|cx| InputState::new(window, cx).placeholder("Name"));
+        let profile_add_name = cx.new(|cx| InputState::new(window, cx));
         let profile_interval = cx.new(|cx| InputState::new(window, cx).placeholder("0"));
-        let conns_filter = cx.new(|cx| InputState::new(window, cx));
-        let conns_filter_sub = cx.subscribe(
-            &conns_filter,
-            |_this, _input, _event: &gpui_component::input::InputEvent, cx| cx.notify(),
-        );
+        let conns_filter = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(t!("pages.connections.filter").to_string())
+        });
         let proxies_search = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder(t!("pages.proxies.searchPlaceholder").to_string())
         });
-        let proxies_search_sub = cx.subscribe(
-            &proxies_search,
-            |_this, _input, _event: &gpui_component::input::InputEvent, cx| cx.notify(),
-        );
-        // Re-render on shared-state change; track uptime for Home's timer.
-        let sub = cx.observe(&state, |this: &mut Self, observed, cx| {
+        let mut subs = vec![
+            cx.subscribe(&conns_filter, |_, _, _: &InputEvent, cx| cx.notify()),
+            cx.subscribe(&proxies_search, |_, _, _: &InputEvent, cx| cx.notify()),
+            cx.subscribe(&import_url, |_, _, _: &InputEvent, cx| cx.notify()),
+        ];
+        // Re-render on shared-state change; track uptime for the connection bar's timer.
+        subs.push(cx.observe(&state, |this: &mut Self, observed, cx| {
             let connected = {
                 let st = observed.read(cx);
                 st.tun_enabled || st.app_flag("sysProxy.enable")
@@ -279,19 +332,10 @@ impl NyxApp {
                 }
             }
             cx.notify();
-        });
-
-        use crate::app::state::LANGUAGES;
-        let current_lang = state.read(cx).language.clone();
-        let names: Vec<gpui::SharedString> =
-            LANGUAGES.iter().map(|(_, name)| (*name).into()).collect();
-        let cur_idx = LANGUAGES
-            .iter()
-            .position(|(code, _)| *code == current_lang.as_ref())
-            .unwrap_or(0);
-        let lang_select = cx
-            .new(|cx| SelectState::new(names, Some(IndexPath::default().row(cur_idx)), window, cx));
-        let lang_sub = cx.subscribe(&lang_select, Self::on_language_selected);
+        }));
+        subs.push(cx.observe_window_appearance(window, |_, window, cx| {
+            crate::ui::theme::apply_saved(Some(window), cx)
+        }));
 
         let onboarding_pending = !backend::config::app_config_bool("onboardingDone");
         state.update(cx, |s, _| s.onboarding_active = onboarding_pending);
@@ -300,25 +344,32 @@ impl NyxApp {
             state,
             route: Route::Home,
             onboarding_step: if onboarding_pending { Some(0) } else { None },
-            rail_expanded: false,
+            prev_route: Route::Home,
+            dialog: None,
+            dialog_serial: 0,
+            context_menu: None,
+            context_serial: 0,
+            focus: cx.focus_handle(),
             proxies_group: None,
             proxies_search,
             proxies_sort_latency: false,
             proxies_alive_only: false,
-            logs_filter: crate::ui::root::LogFilter::All,
+            logs_filter: LogFilter::All,
             conns_filter,
             conns_detail: None,
             conns_show_closed: false,
             logs_scroll: ScrollHandle::new(),
             logs_seen: std::cell::Cell::new(0),
-            settings_sub: None,
+            settings_sub: SettingsSub::General,
             sub_inputs: SubInputs::default(),
+            settings_dirty: false,
+            settings_input_subs: Vec::new(),
             recording_shortcut: None,
             recorder_focus: cx.focus_handle(),
-            service_status: gpui::SharedString::default(),
+            service_status: SharedString::default(),
             service_detail: None,
             service_managed: backend::core::service_managed(),
-            core_version_installed: gpui::SharedString::default(),
+            core_version_installed: SharedString::default(),
             service_busy: false,
             proxy_providers: Vec::new(),
             rule_providers: Vec::new(),
@@ -338,16 +389,116 @@ impl NyxApp {
             mrs_behavior: "domain",
             connected_since: None,
             stats_open: true,
-            lang_select,
             update_info: None,
             update_checking: false,
             update_installing: false,
             auto_update_checked: false,
-            _state_sub: sub,
-            _lang_sub: lang_sub,
-            _conns_filter_sub: conns_filter_sub,
-            _proxies_search_sub: proxies_search_sub,
+            _subs: subs,
         }
+    }
+
+    pub(crate) fn navigate(&mut self, route: Route, window: &mut Window, cx: &mut Context<Self>) {
+        self.editor_target = None;
+        self.editor = None;
+        self.rule_editor = None;
+        self.recording_shortcut = None;
+        self.conns_detail = None;
+        if route == Route::Settings && self.route != Route::Settings {
+            self.prev_route = self.route;
+            self.route = route;
+            self.open_settings_sub(SettingsSub::General, window, cx);
+            return;
+        }
+        self.route = route;
+        cx.notify();
+    }
+
+    /// Opens a modal rebuilt from `self` every frame; `dismissable` lets Escape and the backdrop close it.
+    pub(crate) fn open_dialog(
+        &mut self,
+        width: f32,
+        dismissable: bool,
+        build: impl Fn(&mut Self, &mut Window, &mut Context<Self>) -> AnyElement + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        self.dialog_serial += 1;
+        self.dialog = Some(DialogSlot {
+            build: Rc::new(build),
+            width,
+            dismissable,
+            serial: self.dialog_serial,
+            closing: false,
+            focus: cx.focus_handle(),
+        });
+        cx.notify();
+    }
+
+    /// Work in a dialog that must not be walked away from: an import or an update install.
+    fn dialog_locked(&self) -> bool {
+        self.profile_add_busy || self.update_installing
+    }
+
+    /// Escape and the mouse's back button: close the topmost thing, else step back a screen.
+    pub(crate) fn go_back(&mut self, cx: &mut Context<Self>) {
+        if self.context_menu.is_some() {
+            self.context_menu = None;
+            cx.notify();
+        } else if let Some(slot) = &self.dialog {
+            if slot.dismissable && !self.dialog_locked() {
+                self.close_dialog(cx);
+            }
+        } else if self.recording_shortcut.is_some() {
+            self.recording_shortcut = None;
+            cx.notify();
+        } else if self.rule_editor.is_some() {
+            self.close_rule_editor(cx);
+        } else if self.editor_target.is_some() {
+            self.close_editor(cx);
+        } else if self.conns_detail.is_some() {
+            self.conns_detail = None;
+            cx.notify();
+        } else if self.route == Route::Settings {
+            self.close_settings(cx);
+        }
+    }
+
+    pub(crate) fn close_dialog(&mut self, cx: &mut Context<Self>) {
+        let Some(slot) = self.dialog.as_mut() else {
+            return;
+        };
+        if slot.closing {
+            return;
+        }
+        slot.closing = true;
+        let serial = slot.serial;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(moonglass::motion::EXIT)
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if this.dialog.as_ref().is_some_and(|d| d.serial == serial) {
+                    this.dialog = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub(crate) fn open_context_menu(
+        &mut self,
+        position: gpui::Point<gpui::Pixels>,
+        entries: Vec<moonglass::MenuEntry>,
+        cx: &mut Context<Self>,
+    ) {
+        self.context_serial += 1;
+        self.context_menu = Some(moonglass::ContextMenu {
+            position,
+            entries,
+            serial: self.context_serial,
+        });
+        cx.notify();
     }
 
     /// Checks GitHub for a newer release; when not `silent`, also toasts the outcome.
@@ -370,15 +521,14 @@ impl NyxApp {
                         this.open_updater(cx);
                     }
                     Ok(None) if !silent => crate::app::actions::notify(
-                        gpui_component::notification::Notification::info(t!("updater.upToDate")),
+                        ToastKind::Info,
+                        t!("updater.upToDate").to_string(),
                         cx,
                     ),
                     Ok(None) => {}
                     Err(e) if !silent => crate::app::actions::notify(
-                        gpui_component::notification::Notification::error(format!(
-                            "{}: {e}",
-                            t!("updater.checkFailed")
-                        )),
+                        ToastKind::Error,
+                        format!("{}: {e}", t!("updater.checkFailed")),
                         cx,
                     ),
                     Err(e) => log::warn!("[updater] auto-check failed: {e}"),
@@ -401,8 +551,10 @@ impl NyxApp {
                 Err(_) => Err("update task was cancelled".to_string()),
             };
             match outcome {
-                // `true` → an external helper swaps the binary and relaunches (Windows).
-                Ok(true) => {}
+                // `true` → an elevated helper swaps the binary once we quit, then relaunches (Windows).
+                Ok(true) => {
+                    cx.update(crate::app::actions::shutdown_and_quit);
+                }
                 Ok(false) => {
                     cx.update(crate::app::actions::restart_app);
                 }
@@ -410,10 +562,8 @@ impl NyxApp {
                     let _ = this.update(cx, |this, cx| {
                         this.update_installing = false;
                         crate::app::actions::notify(
-                            gpui_component::notification::Notification::error(format!(
-                                "{}: {e}",
-                                t!("updater.installFailed")
-                            )),
+                            ToastKind::Error,
+                            format!("{}: {e}", t!("updater.installFailed")),
                             cx,
                         );
                         cx.notify();
@@ -424,72 +574,67 @@ impl NyxApp {
         .detach();
     }
 
-    pub(crate) fn open_view_dialog(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        build: fn(&mut Self, Dialog, &mut Window, &mut Context<Self>) -> Dialog,
-    ) {
+    pub(crate) fn open_updater(&self, cx: &mut Context<Self>) {
         let view = cx.entity();
-        open_centered_dialog(window, cx, move |dialog, window, cx| {
-            view.update(cx, |this, cx| build(this, dialog, window, cx))
+        cx.defer(move |cx| {
+            view.update(cx, |this, cx| {
+                this.open_dialog(
+                    460.,
+                    true,
+                    |this, window, cx| this.render_updater_dialog(window, cx),
+                    cx,
+                )
+            })
         });
     }
 
-    fn open_updater(&self, cx: &mut Context<Self>) {
-        let view = cx.entity();
-        crate::app::actions::with_main_window(cx, move |window, cx| {
-            open_centered_dialog(window, cx, move |dialog, window, cx| {
-                view.update(cx, |this, cx| {
-                    this.render_updater_dialog(dialog, window, cx)
-                })
-            });
-        });
-    }
-
-    pub(crate) fn open_reset_confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let view = cx.entity();
-        open_centered_dialog(window, cx, move |dialog, _, _| {
-            let view = view.clone();
-            nyx_dialog(
-                dialog,
-                420.,
-                t!("pages.settings.confirmReset").to_string(),
-                v_flex()
-                    .gap_2()
-                    .text_sm()
-                    .child(
-                        div()
-                            .text_color(rgb(MUTED))
-                            .child(t!("pages.settings.resetWarning").to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_color(rgb(RED_HI))
-                            .child(t!("pages.settings.cannotUndo").to_string()),
+    pub(crate) fn open_reset_confirm(&mut self, cx: &mut Context<Self>) {
+        self.open_dialog(
+            420.,
+            true,
+            |_, _, cx| {
+                let c = cx.theme().colors;
+                nyx_dialog(
+                    t!("pages.settings.confirmReset").to_string(),
+                    v_flex()
+                        .gap(px(6.))
+                        .child(
+                            div()
+                                .text_color(c.text2)
+                                .child(t!("pages.settings.resetWarning").to_string()),
+                        )
+                        .child(
+                            div()
+                                .text_color(moonglass::theme::danger())
+                                .child(t!("pages.settings.cannotUndo").to_string()),
+                        ),
+                    Some(
+                        h_flex()
+                            .gap(px(8.))
+                            .child(
+                                Button::new("reset-cancel")
+                                    .ghost()
+                                    .size(ButtonSize::Md)
+                                    .label(t!("common.cancel").to_string())
+                                    .on_click(cx.listener(|this, _, _, cx| this.close_dialog(cx))),
+                            )
+                            .child(
+                                Button::new("reset-confirm")
+                                    .danger()
+                                    .size(ButtonSize::Md)
+                                    .label(t!("pages.settings.reset").to_string())
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.close_dialog(cx);
+                                        this.confirm_reset(cx);
+                                    })),
+                            )
+                            .into_any_element(),
                     ),
-                Some(
-                    h_flex()
-                        .gap_2()
-                        .child(
-                            Button::new("reset-cancel")
-                                .ghost()
-                                .label(t!("common.cancel").to_string())
-                                .on_click(|_, window, cx| window.close_dialog(cx)),
-                        )
-                        .child(
-                            Button::new("reset-confirm")
-                                .danger()
-                                .label(t!("pages.settings.reset").to_string())
-                                .on_click(move |_, window, cx| {
-                                    window.close_dialog(cx);
-                                    view.update(cx, |this, cx| this.confirm_reset(cx));
-                                }),
-                        )
-                        .into_any_element(),
-                ),
-            )
-        });
+                    cx,
+                )
+            },
+            cx,
+        );
     }
 
     pub(crate) fn confirm_reset(&mut self, cx: &mut Context<Self>) {
@@ -500,20 +645,11 @@ impl NyxApp {
         .detach();
     }
 
-    fn on_language_selected(
-        &mut self,
-        _select: Entity<SelectState<Vec<gpui::SharedString>>>,
-        event: &SelectEvent<Vec<gpui::SharedString>>,
-        cx: &mut Context<Self>,
-    ) {
-        use crate::app::state::LANGUAGES;
-        let SelectEvent::Confirm(Some(name)) = event else {
-            return;
-        };
-        if let Some((code, _)) = LANGUAGES.iter().find(|(_, n)| *n == name.as_ref()) {
-            self.state.update(cx, |s, c| s.set_language(*code, c));
-            crate::app::tray::rebuild(cx);
-        }
+    pub(crate) fn select_language(&mut self, code: &str, cx: &mut Context<Self>) {
+        let code = code.to_string();
+        self.state.update(cx, |s, c| s.set_language(code, c));
+        crate::ui::set_labels(cx);
+        crate::app::tray::rebuild(cx);
     }
 }
 
@@ -629,12 +765,12 @@ impl NyxApp {
                 _ => false,
             };
             crate::app::bootstrap::refresh_runtime_data(cx).await;
-            let note = if ok {
-                gpui_component::notification::Notification::success(t!("pages.home.subUpdated"))
+            let (kind, text) = if ok {
+                (ToastKind::Success, t!("pages.home.subUpdated"))
             } else {
-                gpui_component::notification::Notification::error(t!("pages.home.subUpdateFailed"))
+                (ToastKind::Error, t!("pages.home.subUpdateFailed"))
             };
-            cx.update(|cx| crate::app::actions::notify(note, cx));
+            cx.update(|cx| crate::app::actions::notify(kind, text.to_string(), cx));
         })
         .detach();
     }
@@ -658,7 +794,8 @@ impl NyxApp {
 
     pub(crate) fn open_mrs_convert(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.mrs_input = None;
-        self.open_view_dialog(window, cx, Self::render_mrs_dialog);
+        let _ = window;
+        self.open_dialog(440., true, Self::render_mrs_dialog, cx);
     }
 
     pub(crate) fn mrs_set_behavior(&mut self, behavior: &'static str, cx: &mut Context<Self>) {
@@ -703,7 +840,7 @@ impl NyxApp {
                 behavior.to_string(),
             ))
             .await;
-            let note = match res {
+            let (kind, text) = match res {
                 Ok(Ok(content)) => {
                     let stem = input
                         .file_stem()
@@ -711,20 +848,20 @@ impl NyxApp {
                         .unwrap_or_else(|| "ruleset".to_string());
                     let out = input.with_file_name(format!("{stem}-{behavior}.txt"));
                     match std::fs::write(&out, content) {
-                        Ok(_) => gpui_component::notification::Notification::info(format!(
-                            "{}: {}",
-                            t!("pages.rules.convertDone"),
-                            out.display()
-                        )),
-                        Err(e) => gpui_component::notification::Notification::error(e.to_string()),
+                        Ok(_) => (
+                            ToastKind::Success,
+                            format!("{}: {}", t!("pages.rules.convertDone"), out.display()),
+                        ),
+                        Err(e) => (ToastKind::Error, e.to_string()),
                     }
                 }
-                Ok(Err(e)) => gpui_component::notification::Notification::error(e),
-                Err(_) => gpui_component::notification::Notification::error(
+                Ok(Err(e)) => (ToastKind::Error, e),
+                Err(_) => (
+                    ToastKind::Error,
                     t!("pages.rules.convertFailed").to_string(),
                 ),
             };
-            cx.update(|cx| crate::app::actions::notify(note, cx));
+            cx.update(|cx| crate::app::actions::notify(kind, text, cx));
         })
         .detach();
     }
@@ -740,208 +877,104 @@ async fn refresh_groups(cx: &mut gpui::AsyncApp) {
 }
 
 impl NyxApp {
-    fn render_content(
-        &self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement + use<> {
+    fn render_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let has_profiles = !self.state.read(cx).profiles.is_empty();
-        let route = if !has_profiles
-            && !matches!(self.route, Route::Home | Route::Profiles | Route::Settings)
-        {
+        let route = if !has_profiles && self.route != Route::Home {
             Route::Home
         } else {
             self.route
         };
-        let body = if self.rule_editor.is_some() {
-            self.render_rule_editor(window, cx).into_any_element()
-        } else if self.editor_target.is_some() {
-            self.render_editor(cx).into_any_element()
-        } else {
-            match route {
-                Route::Home => self.render_home(window, cx).into_any_element(),
-                Route::Proxies => self.render_proxies(window, cx).into_any_element(),
-                Route::Profiles => self.render_profiles(window, cx).into_any_element(),
-                Route::Rules => self.render_rules(cx).into_any_element(),
-                Route::Connections => self.render_connections(cx).into_any_element(),
-                Route::Logs => self.render_logs(cx).into_any_element(),
-                Route::Settings => self.render_settings(cx).into_any_element(),
-            }
-        };
-        v_flex()
-            .flex_1()
-            .min_w_0()
-            .h_full()
-            .text_color(rgb(TEXT))
-            .child(body)
+        if self.rule_editor.is_some() {
+            return self.render_rule_editor(window, cx);
+        }
+        if self.editor_target.is_some() {
+            return self.render_editor(cx).into_any_element();
+        }
+        match route {
+            Route::Home => self.render_home(window, cx),
+            Route::Proxies => self.render_proxies(window, cx).into_any_element(),
+            Route::Rules => self.render_rules(window, cx).into_any_element(),
+            Route::Connections => self.render_connections(window, cx).into_any_element(),
+            Route::Logs => self.render_logs(window, cx).into_any_element(),
+            Route::Settings => div().into_any_element(),
+        }
     }
 
-    #[allow(dead_code)]
-    fn render_placeholder(&self, route: Route) -> impl IntoElement + use<> {
-        let title = match route {
-            Route::Home => t!("sider.home"),
-            Route::Profiles => t!("sider.profileManagement"),
-            Route::Proxies => t!("sider.proxyGroup"),
-            Route::Rules => t!("sider.rules"),
-            Route::Connections => t!("sider.connection"),
-            Route::Logs => t!("sider.logs"),
-            Route::Settings => t!("common.settings"),
-        };
-        v_flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_2()
-            .child(div().text_xl().child(title.to_string()))
-            .child(
-                div()
-                    .text_color(rgb(MUTED))
-                    .child(t!("page.placeholder").to_string()),
-            )
-    }
-}
-
-impl NyxApp {
-    fn render_updater_dialog(
-        &mut self,
-        dialog: Dialog,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Dialog {
+    fn render_updater_dialog(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let c = cx.theme().colors;
         let (version, changelog) = self
             .update_info
             .clone()
             .map(|i| (i.version, i.changelog))
             .unwrap_or_default();
         let installing = self.update_installing;
-        let install_label = if installing {
-            t!("updater.installing")
-        } else {
-            t!("updater.update")
-        };
-
         nyx_dialog(
-            dialog,
-            440.,
             t!("updater.versionReady", version => version).to_string(),
             div()
                 .id("updater-changelog")
                 .max_h(px(380.))
                 .overflow_y_scroll()
-                .text_sm()
-                .text_color(rgb(MUTED))
-                .child(TextView::markdown("updater-changelog-md", changelog)),
+                .text_color(c.text2)
+                .child(gpui::base::text::TextView::markdown(
+                    "updater-changelog-md",
+                    changelog,
+                )),
             Some(
                 h_flex()
-                    .gap_2()
+                    .gap(px(8.))
                     .child(
                         Button::new("updater-later")
                             .ghost()
+                            .size(ButtonSize::Md)
                             .label(t!("updater.later").to_string())
                             .disabled(installing)
-                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                            .on_click(cx.listener(|this, _, _, cx| this.close_dialog(cx))),
                     )
                     .child(
                         Button::new("updater-install")
                             .primary()
-                            .label(install_label.to_string())
-                            .disabled(installing)
+                            .size(ButtonSize::Md)
+                            .icon(IconName::Download)
+                            .label(if installing {
+                                t!("updater.installing").to_string()
+                            } else {
+                                t!("updater.update").to_string()
+                            })
+                            .loading(installing)
                             .on_click(cx.listener(|this, _, _, cx| this.install_update(cx))),
                     )
                     .into_any_element(),
             ),
+            cx,
         )
-        .keyboard(!installing)
-        .overlay_closable(false)
     }
-}
 
-const DIALOG_PADDING: f32 = 20.;
-
-pub(crate) fn open_centered_dialog(
-    window: &mut Window,
-    cx: &mut App,
-    build: impl Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
-) {
-    let height = Rc::new(Cell::new(None::<Pixels>));
-    let anchor = Rc::new(Cell::new(None::<(Pixels, Pixels)>));
-    window.open_dialog(cx, move |dialog, window, cx| {
-        let measured = height.clone();
-        let top = height.get().map(|body| {
-            let pad = gpui_component::window_paddings(window);
-            let view = window.viewport_size().height - pad.top - pad.bottom;
-            let surface = body + px(DIALOG_PADDING * 2. + 2.);
-            let top = match anchor.get() {
-                Some((top, at_view)) if at_view == view => top,
-                _ => (view - surface) / 2.,
-            };
-            let top = top.min(view - surface - px(16.)).max(px(16.));
-            anchor.set(Some((top, view)));
-            top
+    fn focus_dialog(&self, window: &mut Window) {
+        let Some(slot) = self.dialog.as_ref().filter(|d| !d.closing) else {
+            return;
+        };
+        let focus = slot.focus.clone();
+        window.on_next_frame(move |window, cx| {
+            if !focus.contains_focused(window, cx) {
+                focus.focus(window, cx);
+            }
         });
-        build(dialog, window, cx)
-            .when_some(top, |d, top| d.margin_top(top))
-            .on_prepaint(move |bounds, window, _| {
-                if measured.replace(Some(bounds.size.height)) != Some(bounds.size.height) {
-                    window.refresh();
-                }
-            })
-    });
-}
-
-pub(crate) fn nyx_dialog(
-    dialog: Dialog,
-    width: f32,
-    title: impl IntoElement,
-    body: impl IntoElement,
-    footer: Option<gpui::AnyElement>,
-) -> Dialog {
-    dialog
-        .w(px(width))
-        .bg(rgb(CARD_BG))
-        .border_color(rgba(STROKE))
-        .rounded_xl()
-        .p(px(DIALOG_PADDING))
-        .close_button(footer.is_none())
-        .child(
-            v_flex()
-                .gap_3()
-                .child(DialogTitle::new().pr_6().text_color(rgb(TEXT)).child(title))
-                .child(body)
-                .children(footer.map(|f| h_flex().justify_end().child(f))),
-        )
-}
-
-impl Render for NyxApp {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let onboarding = self.onboarding_active().then(|| self.render_onboarding(cx));
-
-        let title_bar = (!cfg!(target_os = "linux")
-            || matches!(window.window_decorations(), Decorations::Client { .. }))
-        .then(|| self.render_title_bar());
-
-        v_flex()
-            .size_full()
-            .bg(rgb(TITLEBAR_BG))
-            .children(title_bar)
-            .child(
-                h_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .bg(content_bg())
-                    .child(self.render_rail(cx))
-                    .child(self.render_content(window, cx)),
-            )
-            .children(onboarding)
     }
-}
 
-impl NyxApp {
-    fn render_title_bar(&self) -> impl IntoElement + use<> {
-        let title_bar = TitleBar::new();
+    fn render_title_bar(&self, cx: &mut Context<Self>) -> TitleBar {
+        let update = self.update_info.as_ref().map(|_| {
+            Button::new("title-update")
+                .primary()
+                .icon(IconName::Download)
+                .label(t!("updater.update").to_string())
+                .on_click(cx.listener(|this, _, _, cx| this.open_updater(cx)))
+        });
+        let bar = TitleBar::new("Nyx")
+            .logo("brand/logo.png")
+            .actions(h_flex().gap(px(6.)).children(update));
         // Route the X through our close logic so it saves bounds; Ctrl+X quits instead.
         #[cfg(not(windows))]
-        let title_bar = title_bar.on_close_window(|_, window, cx| {
+        let bar = bar.on_close(|window, cx| {
             save_main_window_bounds(window);
             if window.modifiers().control {
                 crate::app::actions::shutdown_and_quit(cx);
@@ -949,17 +982,172 @@ impl NyxApp {
                 window.remove_window();
             }
         });
-        title_bar.child(
-            h_flex()
-                .w_full()
-                .pl_2()
-                .items_center()
-                .text_color(rgb(SUBTLE))
-                .text_size(px(12.5))
-                .font_semibold()
-                .child("Nyx"),
-        )
+        bar
     }
+}
+
+/// A modal's content: its title, `body`, and buttons; without `footer` it gets a close button.
+pub(crate) fn nyx_dialog(
+    title: impl IntoElement,
+    body: impl IntoElement,
+    footer: Option<AnyElement>,
+    cx: &mut Context<NyxApp>,
+) -> AnyElement {
+    let closable = footer.is_none();
+    v_flex()
+        .p(px(20.))
+        .gap(px(14.))
+        .child(
+            h_flex()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .font_weight(W_SEMIBOLD)
+                        .text_size(px(16.))
+                        .child(title),
+                )
+                .when(closable, |row| {
+                    row.child(
+                        Button::new("dialog-close")
+                            .ghost()
+                            .size(ButtonSize::Xs)
+                            .icon(IconName::Close)
+                            .on_click(cx.listener(|this, _, _, cx| this.close_dialog(cx))),
+                    )
+                }),
+        )
+        .child(body)
+        .children(footer.map(|f| h_flex().justify_end().child(f)))
+        .into_any_element()
+}
+
+impl Render for NyxApp {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        moonglass::theme::tick(window, cx);
+        let c = cx.theme().colors;
+        if window.focused(cx).is_none() {
+            self.focus.focus(window, cx);
+        }
+        self.focus_dialog(window);
+        let title_bar = self.render_title_bar(cx);
+        let settings = self.route == Route::Settings;
+        let has_profiles = !self.state.read(cx).profiles.is_empty();
+        let editing = self.editor_target.is_some() || self.rule_editor.is_some();
+        let bar =
+            (!settings && has_profiles && !editing).then(|| self.render_connection_bar(window, cx));
+        let route_key = SharedString::from(format!("route:{:?}", self.route));
+        let body = if settings {
+            moonglass::motion::enter(
+                route_key,
+                div().size_full().child(self.render_settings(window, cx)),
+                8.,
+                window,
+                cx,
+            )
+        } else {
+            let content = self.render_content(window, cx);
+            h_flex()
+                .size_full()
+                .items_start()
+                .child(self.render_sidebar(window, cx))
+                .child(moonglass::motion::enter(
+                    route_key,
+                    div().flex_1().min_w_0().h_full().child(content),
+                    8.,
+                    window,
+                    cx,
+                ))
+                .into_any_element()
+        };
+        let mut dialog = None;
+        if let Some(d) = self.dialog.as_ref() {
+            let (build, width, dismissable, serial, closing, focus) = (
+                d.build.clone(),
+                d.width,
+                d.dismissable && !self.dialog_locked(),
+                d.serial,
+                d.closing,
+                d.focus.clone(),
+            );
+            let content = build(self, window, cx);
+            let view = cx.entity().downgrade();
+            dialog = Some(
+                moonglass::modal_frame(
+                    serial,
+                    px(width),
+                    &focus,
+                    closing,
+                    dismissable,
+                    content,
+                    move |_, cx| {
+                        let _ = view.update(cx, |this, cx| this.close_dialog(cx));
+                    },
+                    window,
+                    cx,
+                )
+                .into_any_element(),
+            );
+        }
+        let mut context_menu = None;
+        if let Some(menu) = self.context_menu.clone() {
+            let view = cx.entity().downgrade();
+            context_menu = Some(moonglass::context_menu(
+                &menu,
+                move |_, cx| {
+                    let _ = view.update(cx, |this, cx| {
+                        this.context_menu = None;
+                        cx.notify();
+                    });
+                },
+                window,
+                cx,
+            ));
+        }
+        let toasts = moonglass::toast::render(if bar.is_some() { 88. } else { 16. }, window, cx);
+        let onboarding = self.onboarding_active().then(|| self.render_onboarding(cx));
+
+        v_flex()
+            .relative()
+            .size_full()
+            .key_context(KEY_CONTEXT)
+            .track_focus(&self.focus)
+            .on_action(cx.listener(|this, _: &Back, _, cx| this.go_back(cx)))
+            .bg(c.bg)
+            .ui_text(cx)
+            .child(title_bar)
+            .child(div().flex_1().min_h_0().child(body))
+            .children(bar)
+            .children(moonglass::chrome::resize_edges(window))
+            .when_some(dialog, |root, d| {
+                // The dialog is deferred above this layer; without it hover and scroll reach the page.
+                root.child(div().absolute().inset_0().occlude()).child(d)
+            })
+            .child(toasts)
+            .children(context_menu)
+            .children(onboarding)
+            .child(back_button(cx.entity().downgrade()))
+    }
+}
+
+/// Listens for the mouse's back button anywhere in the window.
+fn back_button(view: gpui::WeakEntity<NyxApp>) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| (),
+        move |_, _, window, _| {
+            window.on_mouse_event(move |e: &gpui::MouseDownEvent, phase, _, cx| {
+                if phase == gpui::DispatchPhase::Bubble
+                    && e.button == gpui::MouseButton::Navigate(gpui::NavigationDirection::Back)
+                {
+                    let _ = view.update(cx, |this, cx| this.go_back(cx));
+                }
+            });
+        },
+    )
+    .absolute()
+    .size_0()
 }
 
 pub(crate) fn save_main_window_bounds(window: &Window) {
@@ -981,31 +1169,32 @@ pub fn open_main_window(cx: &mut App, silent: bool) {
             origin: gpui::point(px(x as f32), px(y as f32)),
             size: size(px(w as f32), px(h as f32)),
         }),
-        _ => WindowBounds::centered(size(px(1000.0), px(700.0)), cx),
+        _ => WindowBounds::centered(size(px(1040.0), px(640.0)), cx),
     };
     cx.spawn(async move |cx| {
-        let options = WindowOptions {
-            titlebar: Some(TitleBar::title_bar_options()),
-            window_bounds: Some(window_bounds),
-            window_min_size: Some(size(px(800.0), px(600.0))),
-            // Wayland app id: matches nyx.desktop so the compositor finds the icon.
-            app_id: Some("nyx".to_owned()),
-            ..Default::default()
-        };
-
-        let handle = cx
-            .open_window(options, |window, cx| {
-                window.set_window_title("Nyx");
-                let view = cx.new(|cx| NyxApp::new(window, cx));
-                cx.new(|cx| Root::new(view, window, cx))
-            })
-            .expect("failed to open main window");
         cx.update(|cx| {
+            let options = WindowOptions {
+                window_bounds: Some(window_bounds),
+                window_min_size: Some(size(px(860.0), px(560.0))),
+                // Wayland app id: matches nyx.desktop so the compositor finds the icon.
+                app_id: Some("nyx".to_owned()),
+                ..moonglass::chrome::window_options()
+            };
+            let opened = gpui::open_window(options, cx, |window, cx| {
+                window.set_window_title("Nyx");
+                cx.new(|cx| NyxApp::new(window, cx))
+            });
+            let handle = match opened {
+                Ok((handle, _)) => handle,
+                Err(e) => {
+                    log::error!("cannot open the main window: {e}");
+                    return;
+                }
+            };
             crate::app::actions::set_main_window(handle, cx);
             // Close-to-tray; Ctrl+close disconnects and quits.
             let _ = handle.update(cx, |_root, window, cx| {
                 crate::app::window::remember(window);
-                crate::app::window::apply_saved_decorations(window);
                 #[cfg(not(windows))]
                 if silent {
                     crate::app::window::hide(window);
@@ -1062,7 +1251,7 @@ impl NyxApp {
             .update(cx, |s, c| s.set_value("", window, c));
         self.profile_add_busy = false;
         self.profile_add_error = None;
-        self.open_view_dialog(window, cx, Self::render_profile_add_dialog);
+        self.open_dialog(460., true, Self::render_profile_add_dialog, cx);
     }
 
     pub(crate) fn open_profile_edit_info(
@@ -1079,7 +1268,7 @@ impl NyxApp {
         self.profile_edit_id = Some(id.clone());
         self.profile_add_busy = false;
         self.profile_add_error = None;
-        self.open_view_dialog(window, cx, Self::render_profile_add_dialog);
+        self.open_dialog(460., true, Self::render_profile_add_dialog, cx);
         cx.spawn_in(window, async move |this, cx| {
             let Ok(Ok(item)) = runtime::spawn(backend::config::get_profile_item(id)).await else {
                 return;
@@ -1113,9 +1302,10 @@ impl NyxApp {
         if self.profile_add_busy {
             return;
         }
+        let _ = window;
         self.profile_edit_id = None;
         self.profile_add_error = None;
-        window.close_dialog(cx);
+        self.close_dialog(cx);
     }
 
     pub(crate) fn profile_add_set_local(&mut self, local: bool, cx: &mut Context<Self>) {
@@ -1315,7 +1505,7 @@ impl NyxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let editor = cx.new(|cx| EditorState::new(window, cx).language("yaml"));
+        let editor = moonglass::code::editor(moonglass::code::Flavor::Yaml, "", false, window, cx);
         self.editor = Some(editor.clone());
         self.editor_target = Some(EditorTarget::Profile {
             id: id.clone(),
@@ -1388,17 +1578,15 @@ impl NyxApp {
         let id = prof.id.to_string();
         let name = prof.name.to_string();
 
-        let types: Vec<gpui::SharedString> = crate::ui::pages::RULE_TYPES
-            .iter()
-            .map(|s| (*s).into())
-            .collect();
-        let type_select =
-            cx.new(|cx| SelectState::new(types, Some(IndexPath::default()), window, cx));
-        let first_example = crate::ui::pages::rule_example(crate::ui::pages::RULE_TYPES[0]);
-        let payload = cx.new(|cx| InputState::new(window, cx).placeholder(first_example));
+        let first = crate::ui::pages::RULE_TYPES[0];
+        let payload = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(crate::ui::pages::rule_example(first))
+        });
+        let policy_search =
+            cx.new(|cx| InputState::new(window, cx).placeholder(t!("common.search").to_string()));
 
-        // Policy dropdown: live groups + nodes, then built-in policies; default DIRECT.
-        let mut policies: Vec<gpui::SharedString> = Vec::new();
+        // Policy list: live groups + nodes, then built-in policies; default DIRECT.
+        let mut policies: Vec<SharedString> = Vec::new();
         let mut seen = std::collections::HashSet::new();
         {
             let st = self.state.read(cx);
@@ -1420,27 +1608,6 @@ impl NyxApp {
                 policies.push(p.into());
             }
         }
-        let direct_idx = policies.iter().position(|p| p.as_ref() == "DIRECT");
-        let policy_select = cx.new(|cx| {
-            SelectState::new(
-                policies,
-                direct_idx.map(|i| IndexPath::default().row(i)),
-                window,
-                cx,
-            )
-        });
-
-        let payload_for_sub = payload.clone();
-        let type_sub = cx.subscribe_in(
-            &type_select,
-            window,
-            move |_this, _sel, ev: &SelectEvent<Vec<gpui::SharedString>>, window, cx| {
-                if let SelectEvent::Confirm(Some(kind)) = ev {
-                    let example = crate::ui::pages::rule_example(kind.as_ref());
-                    payload_for_sub.update(cx, |s, c| s.set_placeholder(example, window, c));
-                }
-            },
-        );
 
         self.rule_editor = Some(RuleEditState {
             profile_id: id.clone(),
@@ -1448,11 +1615,12 @@ impl NyxApp {
             prepend: Vec::new(),
             append: Vec::new(),
             delete: Vec::new(),
-            type_select,
+            kind: first.into(),
             payload,
-            policy_select,
+            policy: "DIRECT".into(),
+            policies,
+            policy_search,
             to_append: true,
-            _type_sub: type_sub,
         });
         cx.notify();
 
@@ -1481,23 +1649,35 @@ impl NyxApp {
         }
     }
 
+    pub(crate) fn rule_editor_set_kind(
+        &mut self,
+        kind: SharedString,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(re) = self.rule_editor.as_mut() {
+            let example = crate::ui::pages::rule_example(kind.as_ref());
+            re.payload
+                .update(cx, |s, c| s.set_placeholder(example, window, c));
+            re.kind = kind;
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn rule_editor_set_policy(&mut self, policy: SharedString, cx: &mut Context<Self>) {
+        if let Some(re) = self.rule_editor.as_mut() {
+            re.policy = policy;
+            cx.notify();
+        }
+    }
+
     pub(crate) fn rule_editor_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(re) = self.rule_editor.as_ref() else {
             return;
         };
-        let kind = re
-            .type_select
-            .read(cx)
-            .selected_value()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "DOMAIN".to_string());
+        let kind = re.kind.to_string();
         let payload = re.payload.read(cx).value().trim().to_string();
-        let policy = re
-            .policy_select
-            .read(cx)
-            .selected_value()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+        let policy = re.policy.to_string();
         if policy.is_empty() {
             return;
         }
@@ -1576,49 +1756,59 @@ impl NyxApp {
 
 impl NyxApp {
     fn render_editor(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let editor = self.editor.clone();
+        let c = cx.theme().colors;
         let (title, readonly) = match &self.editor_target {
             Some(EditorTarget::Profile { name, .. }) => (name.clone(), false),
             Some(EditorTarget::RuntimeReadonly) => ("Runtime config".to_string(), true),
             None => (String::new(), true),
         };
-
         let header = h_flex()
-            .items_center()
-            .justify_between()
-            .child(div().text_lg().text_color(rgb(TEXT)).child(title))
+            .flex_none()
+            .gap(px(12.))
+            .px(px(18.))
+            .py(px(14.))
+            .border_b_1()
+            .border_color(c.border)
             .child(
-                h_flex()
-                    .gap_2()
-                    .when(!readonly, |this| {
-                        this.child(
-                            Button::new("editor-save")
-                                .label(t!("common.save").to_string())
-                                .on_click(cx.listener(|this, _, _, cx| this.save_editor(cx))),
-                        )
-                    })
-                    .child(
-                        Button::new("editor-close")
-                            .label(t!("common.close").to_string())
-                            .on_click(cx.listener(|this, _, _, cx| this.close_editor(cx))),
-                    ),
-            );
-
-        let body = match editor {
-            Some(state) => {
-                let input = Editor::new(&state).h_full().w_full().disabled(readonly);
+                Button::new("editor-back")
+                    .ghost()
+                    .icon(IconName::ArrowLeft)
+                    .tooltip(t!("common.back").to_string())
+                    .on_click(cx.listener(|this, _, _, cx| this.close_editor(cx))),
+            )
+            .child(
                 div()
                     .flex_1()
-                    .min_h_0()
-                    .border_1()
-                    .border_color(rgb(CARD_BORDER))
-                    .rounded_lg()
-                    .child(input)
-                    .into_any_element()
-            }
+                    .min_w_0()
+                    .truncate()
+                    .font_weight(FontWeight::BOLD)
+                    .text_size(px(17.))
+                    .child(title),
+            )
+            .when(!readonly, |row| {
+                row.child(
+                    Button::new("editor-save")
+                        .primary()
+                        .label(t!("common.save").to_string())
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.save_editor(cx);
+                            crate::app::actions::notify(
+                                ToastKind::Success,
+                                t!("common.saved").to_string(),
+                                cx,
+                            );
+                        })),
+                )
+            });
+        let body = match self.editor.clone() {
+            Some(state) => div()
+                .flex_1()
+                .min_h_0()
+                .child(moonglass::code::CodeEditor::new(&state))
+                .into_any_element(),
             None => div().into_any_element(),
         };
-        v_flex().size_full().p_4().gap_3().child(header).child(body)
+        v_flex().size_full().child(header).child(body)
     }
 }
 
@@ -1845,25 +2035,49 @@ impl NyxApp {
             }
             _ => {}
         }
+        let mut subs = Vec::new();
+        for field in inputs.fields() {
+            subs.push(cx.subscribe(&field, |this, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    this.settings_dirty = true;
+                    cx.notify();
+                }
+            }));
+        }
+        for area in inputs.areas() {
+            subs.push(cx.subscribe(&area, |this, _, ev: &InputEvent, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    this.settings_dirty = true;
+                    cx.notify();
+                }
+            }));
+        }
+        self.settings_input_subs = subs;
+        self.settings_dirty = false;
         self.sub_inputs = inputs;
-        self.settings_sub = Some(sub);
+        self.settings_sub = sub;
+        self.recording_shortcut = None;
+        // Keep what was shown last while the refresh runs, so reopening a page does not blink.
         if matches!(sub, SettingsSub::Mihomo) {
-            self.service_status = gpui::SharedString::default();
-            self.service_detail = None;
-            self.core_version_installed = gpui::SharedString::default();
             self.refresh_service_info(cx);
         }
         if matches!(sub, SettingsSub::Resources) {
-            self.proxy_providers.clear();
-            self.rule_providers.clear();
             self.refresh_providers(cx);
         }
         cx.notify();
     }
 
-    pub(crate) fn close_settings_sub(&mut self, cx: &mut Context<Self>) {
-        self.settings_sub = None;
+    /// Leaves Settings for the screen it was opened from.
+    pub(crate) fn close_settings(&mut self, cx: &mut Context<Self>) {
+        self.route = if self.prev_route == Route::Settings {
+            Route::Home
+        } else {
+            self.prev_route
+        };
+        self.settings_sub = SettingsSub::General;
         self.sub_inputs = SubInputs::default();
+        self.settings_input_subs.clear();
+        self.settings_dirty = false;
         self.recording_shortcut = None;
         cx.notify();
     }
@@ -1918,8 +2132,10 @@ impl NyxApp {
     }
 
     pub(crate) fn save_settings_sub(&mut self, cx: &mut Context<Self>) {
+        self.settings_dirty = false;
+        cx.notify();
         match self.settings_sub {
-            Some(SettingsSub::Tun) => {
+            SettingsSub::Tun => {
                 let device = self
                     .sub_inputs
                     .device
@@ -1939,7 +2155,7 @@ impl NyxApp {
                 }
                 self.patch_tun(serde_json::Value::Object(patch), cx);
             }
-            Some(SettingsSub::SysProxy) => {
+            SettingsSub::SysProxy => {
                 let host = self
                     .sub_inputs
                     .host
@@ -1961,7 +2177,7 @@ impl NyxApp {
                     cx,
                 );
             }
-            Some(SettingsSub::Advanced) => {
+            SettingsSub::Advanced => {
                 if let Some(n) = self
                     .sub_inputs
                     .interval
@@ -1971,7 +2187,7 @@ impl NyxApp {
                     self.set_app_flag(serde_json::json!({ "networkDetectionInterval": n }), cx);
                 }
             }
-            Some(SettingsSub::Dns) => {
+            SettingsSub::Dns => {
                 let lines = |inp: &Option<Entity<TextareaState>>| -> Vec<String> {
                     inp.as_ref()
                         .map(|e| e.read(cx).value().to_string())
@@ -2013,7 +2229,7 @@ impl NyxApp {
                 );
                 self.patch_dns(serde_json::Value::Object(dns), cx);
             }
-            Some(SettingsSub::Mihomo) => {
+            SettingsSub::Mihomo => {
                 let num = |inp: &Option<Entity<InputState>>| -> Option<u64> {
                     inp.as_ref()
                         .and_then(|e| e.read(cx).value().trim().parse::<u64>().ok())
@@ -2062,7 +2278,7 @@ impl NyxApp {
                 );
                 self.patch_core(serde_json::Value::Object(patch), cx);
             }
-            Some(SettingsSub::Sniffer) => {
+            SettingsSub::Sniffer => {
                 let lines = |inp: &Option<Entity<TextareaState>>| -> Vec<String> {
                     inp.as_ref()
                         .map(|e| e.read(cx).value().to_string())
@@ -2094,10 +2310,7 @@ impl NyxApp {
             _ => return,
         }
         cx.defer(|cx| {
-            crate::app::actions::notify(
-                gpui_component::notification::Notification::success(t!("common.saved")),
-                cx,
-            );
+            crate::app::actions::notify(ToastKind::Success, t!("common.saved").to_string(), cx);
         });
     }
 
@@ -2116,12 +2329,14 @@ impl NyxApp {
             let proxies = runtime::spawn(backend::api::get_proxy_providers()).await;
             let rules = runtime::spawn(backend::api::get_rule_providers()).await;
             let _ = this.update(cx, |this, cx| {
-                if let Ok(Ok(v)) = proxies {
-                    this.proxy_providers = parse_providers(&v, false);
-                }
-                if let Ok(Ok(v)) = rules {
-                    this.rule_providers = parse_providers(&v, true);
-                }
+                this.proxy_providers = match proxies {
+                    Ok(Ok(v)) => parse_providers(&v, false),
+                    _ => Vec::new(),
+                };
+                this.rule_providers = match rules {
+                    Ok(Ok(v)) => parse_providers(&v, true),
+                    _ => Vec::new(),
+                };
                 cx.notify();
             });
         })
@@ -2197,23 +2412,29 @@ impl NyxApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let editor = cx.new(|cx| EditorState::new(window, cx).language("yaml"));
-        let title = gpui::SharedString::from(name.clone());
+        let editor = moonglass::code::editor(moonglass::code::Flavor::Yaml, "", true, window, cx);
+        let title = SharedString::from(name.clone());
         let view_editor = editor.clone();
-        open_centered_dialog(window, cx, move |dialog, _, _| {
-            nyx_dialog(
-                dialog,
-                720.,
-                div().truncate().child(title.clone()),
-                div()
-                    .h(px(460.))
-                    .border_1()
-                    .border_color(rgb(CARD_BORDER))
-                    .rounded_lg()
-                    .child(Editor::new(&view_editor).h_full().w_full().disabled(true)),
-                None,
-            )
-        });
+        self.open_dialog(
+            760.,
+            true,
+            move |_, _, cx| {
+                let c = cx.theme().colors;
+                nyx_dialog(
+                    title.clone(),
+                    div()
+                        .h(px(460.))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(c.border)
+                        .overflow_hidden()
+                        .child(moonglass::code::CodeEditor::new(&view_editor)),
+                    None,
+                    cx,
+                )
+            },
+            cx,
+        );
         cx.spawn_in(window, async move |_this, cx| {
             let content =
                 match runtime::spawn(backend::config::read_provider_content(name, is_rule)).await {
@@ -2241,12 +2462,12 @@ impl NyxApp {
             }
             let ok = matches!(res, Ok(Ok(())));
             cx.update(|cx| {
-                let note = if ok {
-                    gpui_component::notification::Notification::info(t!("pages.settings.resOk"))
+                let (kind, text) = if ok {
+                    (ToastKind::Success, t!("pages.settings.resOk"))
                 } else {
-                    gpui_component::notification::Notification::error(t!("pages.settings.resFail"))
+                    (ToastKind::Error, t!("pages.settings.resFail"))
                 };
-                crate::app::actions::notify(note, cx);
+                crate::app::actions::notify(kind, text.to_string(), cx);
             });
             let _ = this.update(cx, |this, cx| {
                 this.resources_busy = false;
@@ -2308,12 +2529,7 @@ impl NyxApp {
             if let Ok(Err(e)) = &res {
                 log::warn!("[service] {action} failed: {e}");
                 let detail = e.detail.clone();
-                cx.update(|cx| {
-                    crate::app::actions::notify(
-                        gpui_component::notification::Notification::error(detail),
-                        cx,
-                    );
-                });
+                cx.update(|cx| crate::app::actions::notify(ToastKind::Error, detail, cx));
             }
             match action {
                 "stop" | "uninstall" if matches!(res, Ok(Ok(()))) => {
@@ -2351,12 +2567,7 @@ impl NyxApp {
             if let Ok(Err(e)) = &res {
                 log::warn!("[core] install {channel} failed: {e}");
                 let msg = format!("{e}");
-                cx.update(|cx| {
-                    crate::app::actions::notify(
-                        gpui_component::notification::Notification::error(msg),
-                        cx,
-                    );
-                });
+                cx.update(|cx| crate::app::actions::notify(ToastKind::Error, msg, cx));
             }
             let _ = runtime::spawn(backend::core::restart()).await;
             crate::app::bootstrap::refresh_runtime_data(cx).await;

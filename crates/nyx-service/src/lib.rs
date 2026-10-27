@@ -2,6 +2,10 @@ mod control;
 mod host;
 mod logging;
 mod protocol;
+#[cfg(windows)]
+mod update;
+#[cfg(windows)]
+pub use update::apply_update;
 
 pub use control::{
     Status, install, is_managed, ping, restart_service, start_core, start_service, status,
@@ -17,6 +21,9 @@ pub(crate) const ARG_INSTALL: &str = "--nyx-service-install";
 pub(crate) const ARG_UNINSTALL: &str = "--nyx-service-uninstall";
 pub(crate) const ARG_CONTROL: &str = "--nyx-service-control";
 pub(crate) const ARG_OWNER: &str = "--nyx-service-owner";
+/// `--nyx-apply-update <new exe> <installed exe> <app pid>`: the elevated half of a Windows update.
+#[cfg(windows)]
+pub(crate) const ARG_UPDATE: &str = "--nyx-apply-update";
 
 /// "prompt dismissed" and "authorisation refused".
 pub(crate) const HELPER_FAILURE: i32 = 9;
@@ -40,6 +47,10 @@ pub fn maybe_run_service_mode() -> Option<i32> {
         return Some(report(control_here(
             &flag_value(ARG_CONTROL).unwrap_or_default(),
         )));
+    }
+    #[cfg(windows)]
+    if has(ARG_UPDATE) {
+        return Some(report(update::apply_here(&args)));
     }
     None
 }

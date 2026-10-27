@@ -1,3 +1,4 @@
+use gpui::prelude::FluentBuilder;
 use gpui::{AnyElement, IntoElement, ParentElement, SharedString, Styled, div, img, px};
 
 /// A display-name segment: plain text, or a flag drawn as an SVG (gpui paints
@@ -60,18 +61,30 @@ pub(crate) fn has_flag(name: &str) -> bool {
 }
 
 pub(crate) fn render_name(name: &str) -> AnyElement {
+    render(name, true)
+}
+
+/// Like [`render_name`] but on one line: the text is cut with an ellipsis instead of wrapping.
+pub(crate) fn render_line(name: &str) -> AnyElement {
+    render(name, false)
+}
+
+fn render(name: &str, wrap: bool) -> AnyElement {
     if !has_flag(name) {
-        return name.to_string().into_any_element();
+        return div().truncate().child(name.to_string()).into_any_element();
     }
-    let mut row = gpui_component::h_flex()
+    let mut row = moonglass::h_flex()
+        .min_w_0()
         .items_center()
-        .flex_wrap()
-        .gap(px(5.));
+        .gap(px(5.))
+        .when(wrap, |row| row.flex_wrap());
     for seg in segments(name) {
         row = match seg {
-            Seg::Text(t) => row.child(t),
+            Seg::Text(t) if wrap => row.child(t),
+            Seg::Text(t) => row.child(div().min_w_0().truncate().child(t)),
             Seg::Flag(code) if !code.is_empty() => row.child(
                 img(SharedString::from(format!("flags/{code}.svg")))
+                    .flex_none()
                     .h(px(11.))
                     .w(px(15.))
                     .rounded(px(2.)),
@@ -79,7 +92,7 @@ pub(crate) fn render_name(name: &str) -> AnyElement {
             Seg::Flag(_) => row,
         };
     }
-    div().child(row).into_any_element()
+    div().min_w_0().child(row).into_any_element()
 }
 
 /// Lowercase codes we ship a flag SVG for. Generated from `assets/flags/`.

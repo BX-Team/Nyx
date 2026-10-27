@@ -1,15 +1,15 @@
-use gpui::{App, AppContext, Global, Window, WindowHandle};
-use gpui_component::{Root, WindowExt, notification::Notification};
+use gpui::{AnyWindowHandle, App, AppContext, Global, SharedString, Window};
+use moonglass::toast::{self, ToastKind};
 use serde_json::json;
 
 use crate::app::runtime;
 use crate::app::state::AppState;
 use crate::backend;
 
-struct MainWindow(WindowHandle<Root>);
+struct MainWindow(AnyWindowHandle);
 impl Global for MainWindow {}
 
-pub fn set_main_window(handle: WindowHandle<Root>, cx: &mut App) {
+pub fn set_main_window(handle: AnyWindowHandle, cx: &mut App) {
     cx.set_global(MainWindow(handle));
 }
 
@@ -17,14 +17,14 @@ pub fn with_main_window(cx: &mut App, f: impl FnOnce(&mut Window, &mut App)) {
     let Some(handle) = cx.try_global::<MainWindow>().map(|m| m.0) else {
         return;
     };
-    let _ = cx.update_window(handle.into(), |_, window, cx| f(window, cx));
+    let _ = cx.update_window(handle, |_, window, cx| f(window, cx));
 }
 
-pub fn notify(note: Notification, cx: &mut App) {
+pub fn notify(kind: ToastKind, text: impl Into<SharedString>, cx: &mut App) {
     if AppState::global(cx).read(cx).onboarding_active {
         return;
     }
-    with_main_window(cx, |window, cx| window.push_notification(note, cx));
+    toast::show(kind, text, cx);
 }
 
 /// Brings the main window up, recreating it if it was closed to the tray.

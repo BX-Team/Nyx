@@ -12,6 +12,8 @@ common:
   copied: Copied
   remote: Remote
   local: Local
+  clear: Clear
+  search: Search…
 sider:
   home: Home
   profileManagement: Profile Management
@@ -23,6 +25,8 @@ sider:
   logs: Logs
   modeRule: Rules
   modeGlobal: Global
+  sections: Sections
+  profiles: Profiles
 page:
   placeholder: This page will be ported in a later milestone.
 languages:
@@ -59,6 +63,14 @@ pages:
     emptyCta: Add profile
     modeTun: TUN
     modeSysProxy: System proxy
+    currentNode: Current node
+    traffic: Traffic
+    sessionTotal: Since the core started
+    subscription: Subscription
+    expiresIn: "until %{date} · %{n} d"
+    remainingValue: "%{value} left"
+    connect: Connect
+    disconnect: Disconnect
   proxies:
     testGroup: Test
     refresh: Refresh
@@ -67,6 +79,7 @@ pages:
     searchPlaceholder: Search nodes…
     sortByLatency: By latency
     aliveOnly: Alive only
+    nodeCount: "%{n} nodes"
   rules:
     edit: Edit rule overrides
     convertMrs: Convert MRS ruleset
@@ -112,6 +125,7 @@ pages:
     expires: Expires
     active: ACTIVE
     days: "%{n} days"
+    newProfile: New profile
   connections:
     processes: Processes
     filter: Filter
@@ -152,10 +166,10 @@ pages:
     autostart: Autostart
     silentStart: Silent start
     autoCheckUpdate: Automatic update check
-    appearance: Appearance settings
-    advanced: Advanced settings
-    shortcuts: Hotkey settings
-    dns: DNS settings
+    appearance: Appearance
+    advanced: Advanced
+    shortcuts: Hotkeys
+    dns: DNS
     mihomo: Mihomo core
     mixedPort: Mixed port
     socksPort: SOCKS port
@@ -224,6 +238,7 @@ pages:
     resView: View
     resOk: Update started
     resFail: Update failed
+    resCoreDown: The core is not running. Connect first to see the providers and update the geo data.
     dnsEnhancedMode: Enhanced mode
     dnsFakeIpRange: Fake-IP range
     dnsIpv6: IPv6
@@ -259,7 +274,6 @@ pages:
     spBypass: Bypass
     alwaysOnTop: Always on top
     disableTray: Disable tray icon
-    systemWindowFrame: System window frame
     trayNodeInfo: Show node info in tray
     takeOverDns: Take over DNS
     takeOverSniffer: Take over sniffer
@@ -268,6 +282,38 @@ pages:
     overrideHint: When off, the active subscription's values are used (or defaults if it provides none). Turn on to force these settings.
     networkDetection: Network change detection
     detectInterval: Detection interval (s)
+    general: General
+    about: About
+    connectivity: Connection
+    startup: Startup
+    window: Window
+    ports: Ports
+    network: Network
+    behavior: Behavior
+    access: Access lists
+    themeMode: Theme
+    themeSystem: System
+    themeLight: Light
+    themeDark: Dark
+    darkTheme: Dark theme
+    lightTheme: Light theme
+    coreChannel: Channel
+    unsaved: You have unsaved changes
+    discard: Discard
+    updates: Updates
+    updateThis: "Nyx %{version} is installed"
+    updateAvailable: "Nyx %{version} is available"
+    updateShow: Show update
+    tagline: A desktop client for the Mihomo proxy core
+    source: Source code
+    copyInfo: Copy info
+    commit: Commit
+    build: Build
+    system: System
+    toolkit: Interface
+    renderer: Graphics
+    license: License
+    software: software
     scToggleWindow: Toggle window
     scRuleMode: Switch to Rule mode
     scGlobalMode: Switch to Global mode
@@ -306,13 +352,13 @@ onboarding:
   step: Step %{n} of %{total}
   profileTitle: Add a profile
   profileBody: Import a subscription URL or a local config file — this is your proxy source.
-  profileHint: Use the “Add” button at the top right.
+  profileHint: Use “+ New profile” in the sidebar on the left.
   serviceTitle: Install the service
   serviceBody: "Nyx runs the mihomo core through a system service — that is what gives TUN mode the network privileges it needs. Installing it asks for your password once."
   serviceHint: "Open Settings → Mihomo → System service and install it."
   proxyTitle: Turn on the proxy
-  proxyBody: Flip the main switch on the Home screen to route your traffic.
-  proxyHint: Use the main toggle on Home.
+  proxyBody: Press Connect in the bar at the bottom of the window to route your traffic.
+  proxyHint: Use the Connect button at the bottom right.
   skip: Skip
   next: Next
   start: Get started
@@ -332,4 +378,5 @@ core:
     configInvalid: The profile was rejected by the core
     serviceUnavailable: The Nyx service is unavailable
     timeout: The core did not start in time
+    orphaned: A core from an earlier run is still running
     other: The core could not be started

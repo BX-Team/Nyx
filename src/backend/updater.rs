@@ -173,46 +173,6 @@ fn finalize_windows_update(zip_bytes: &[u8]) -> Result<bool, String> {
         return Err("update archive did not contain nyx.exe".to_string());
     }
 
-    let install_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    spawn_elevated_swap(&new_exe, &install_exe, &tmp_dir)?;
+    nyx_service::apply_update(&new_exe)?;
     Ok(true)
-}
-
-#[cfg(windows)]
-fn spawn_elevated_swap(
-    new_exe: &std::path::Path,
-    install_exe: &std::path::Path,
-    tmp_dir: &std::path::Path,
-) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-
-    let script = format!(
-        "@echo off\r\nchcp 65001 >nul\r\nsc stop \"{svc}\" >nul 2>&1\r\ntaskkill /F /PID {pid} >nul 2>&1\r\nset /a n=0\r\n:retry\r\ncopy /Y \"{new}\" \"{inst}\" >nul 2>&1\r\nif not errorlevel 1 goto done\r\nset /a n+=1\r\nif %n% geq 30 goto done\r\ntimeout /t 1 /nobreak >nul\r\ngoto retry\r\n:done\r\nsc start \"{svc}\" >nul 2>&1\r\nstart \"\" explorer.exe \"{inst}\"\r\n",
-        svc = nyx_service::SERVICE_NAME,
-        pid = std::process::id(),
-        new = new_exe.display(),
-        inst = install_exe.display(),
-    );
-    let bat = tmp_dir.join("nyx_update.bat");
-    std::fs::write(&bat, script).map_err(|e| e.to_string())?;
-
-    let ps = format!(
-        "Start-Process -FilePath '{}' -Verb RunAs -WindowStyle Hidden",
-        bat.display().to_string().replace('\'', "''")
-    );
-    std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            &ps,
-        ])
-        .creation_flags(0x08000000)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
 }

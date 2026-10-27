@@ -1,23 +1,29 @@
-use gpui::prelude::FluentBuilder;
 use gpui::{
-    Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, div, px, rgb, rgba,
+    App, Context, Hsla, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+    Styled, div, px,
 };
-use gpui_component::{Icon, StyledExt, h_flex, v_flex};
+use moonglass::theme::ActiveTheme;
+use moonglass::{Button, IconName, Tabs, h_flex, v_flex};
 use rust_i18n::t;
 
 use crate::app::state::LogLine;
-use crate::ui::root::{
-    AMBER, BLUE, CARD_BG, CARD_BORDER, GREEN, LogFilter, MUTED2, MUTED4, NyxApp, PANEL_BG, RED,
-    SUBTLE, TEXT,
-};
+use crate::ui::pages::header;
+use crate::ui::root::{LogFilter, NyxApp};
 
-fn level_style(level: &str) -> (&'static str, u32, u32) {
+const FILTERS: [LogFilter; 4] = [
+    LogFilter::All,
+    LogFilter::Info,
+    LogFilter::Warning,
+    LogFilter::Error,
+];
+
+fn level_style(level: &str, cx: &App) -> (&'static str, Hsla) {
+    let c = cx.theme().colors;
     match level {
-        "warning" | "warn" => ("WARN", AMBER, 0xE6C98A),
-        "error" | "err" => ("ERR", RED, 0xEE9D95),
-        "debug" | "dbg" => ("DBG", BLUE, MUTED2),
-        _ => ("INFO", GREEN, 0xCDD8E3),
+        "warning" | "warn" => ("WARN", c.warn),
+        "error" | "err" => ("ERR", moonglass::theme::danger()),
+        "debug" | "dbg" => ("DBG", c.muted),
+        _ => ("INFO", c.accent),
     }
 }
 
@@ -31,7 +37,12 @@ fn matches(filter: LogFilter, level: &str) -> bool {
 }
 
 impl NyxApp {
-    pub(crate) fn render_logs(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    pub(crate) fn render_logs(
+        &self,
+        _window: &mut gpui::Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let c = cx.theme().colors;
         let filter = self.logs_filter;
         let st = self.state.read(cx);
         // Cap rendered rows (no virtualization) — newest 400 after filtering.
@@ -54,132 +65,78 @@ impl NyxApp {
             self.logs_scroll.scroll_to_bottom();
         }
 
-        let header = h_flex()
-            .items_center()
-            .justify_between()
-            .px(px(22.))
-            .pt(px(18.))
-            .pb(px(14.))
-            .child(
-                div()
-                    .text_xl()
-                    .font_bold()
-                    .text_color(rgb(TEXT))
-                    .child(t!("sider.logs").to_string()),
-            )
+        let view = cx.entity().downgrade();
+        let head = header(t!("sider.logs").to_string(), None, cx)
             .child(
                 h_flex()
-                    .gap_2()
-                    .items_center()
-                    .child(self.logs_segmented(cx))
-                    .child(
-                        h_flex()
-                            .id("logs-clear")
-                            .h(px(32.))
-                            .px(px(12.))
-                            .gap_2()
-                            .items_center()
-                            .rounded(px(8.))
-                            .bg(rgb(CARD_BG))
-                            .border_1()
-                            .border_color(rgb(CARD_BORDER))
-                            .text_color(rgb(SUBTLE))
-                            .cursor_pointer()
-                            .child(Icon::empty().path("icons/trash-2.svg").size(px(14.)))
-                            .child(div().text_xs().child(t!("pages.logs.clear").to_string()))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.state.update(cx, |s, c| s.clear_logs(c));
-                            })),
-                    ),
+                    .flex_none()
+                    .p(px(2.))
+                    .rounded(px(8.))
+                    .border_1()
+                    .border_color(c.border)
+                    .bg(c.bg)
+                    .child(Tabs::new(
+                        "logs-filter",
+                        vec![
+                            t!("pages.logs.all").into(),
+                            "Info".into(),
+                            "Warn".into(),
+                            "Error".into(),
+                        ],
+                        FILTERS.iter().position(|f| *f == filter).unwrap_or(0),
+                        move |ix, _, cx| {
+                            let _ = view.update(cx, |this, cx| {
+                                this.logs_filter = FILTERS[ix];
+                                cx.notify();
+                            });
+                        },
+                    )),
+            )
+            .child(
+                Button::new("logs-clear")
+                    .outline()
+                    .icon(IconName::Trash)
+                    .label(t!("pages.logs.clear").to_string())
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.state.update(cx, |s, c| s.clear_logs(c));
+                    })),
             );
 
-        let console = v_flex()
-            .flex_1()
-            .min_h_0()
-            .mx(px(14.))
-            .mb(px(16.))
-            .rounded(px(12.))
-            .bg(rgb(PANEL_BG))
-            .border_1()
-            .border_color(rgb(CARD_BORDER))
-            .id("logs-scroll")
-            .overflow_y_scroll()
-            .track_scroll(&self.logs_scroll)
-            .children(
-                lines
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, l)| log_row(l, i % 2 == 1)),
-            );
-
-        v_flex().size_full().child(header).child(console)
-    }
-
-    fn logs_segmented(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let cur = self.logs_filter;
-        let pill = |label: String, f: LogFilter, cx: &mut Context<Self>| {
-            div()
-                .id(SharedString::from(format!("logf-{label}")))
-                .px(px(11.))
+        let mono = cx.theme().mono.clone();
+        let rows = lines.into_iter().map(|l| {
+            let (label, color) = level_style(l.level.as_ref(), cx);
+            h_flex()
+                .items_start()
+                .gap(px(12.))
+                .px(px(18.))
                 .py(px(5.))
-                .rounded(px(6.))
-                .text_xs()
-                .cursor_pointer()
-                .when(cur == f, |this| {
-                    this.bg(rgb(GREEN)).text_color(rgb(0x0B1014))
-                })
-                .when(cur != f, |this| this.text_color(rgb(SUBTLE)))
-                .child(label)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.logs_filter = f;
-                    cx.notify();
-                }))
-        };
-        h_flex()
-            .p(px(3.))
-            .gap(px(2.))
-            .rounded(px(9.))
-            .bg(rgb(CARD_BG))
-            .border_1()
-            .border_color(rgb(CARD_BORDER))
-            .child(pill(t!("pages.logs.all").to_string(), LogFilter::All, cx))
-            .child(pill("Info".to_string(), LogFilter::Info, cx))
-            .child(pill("Warn".to_string(), LogFilter::Warning, cx))
-            .child(pill("Error".to_string(), LogFilter::Error, cx))
-    }
-}
+                .child(div().flex_none().text_color(c.muted).child(l.time.clone()))
+                .child(div().w(px(36.)).flex_none().text_color(color).child(label))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_color(c.text2)
+                        .child(crate::ui::flags::render_name(l.message.as_ref())),
+                )
+        });
 
-fn log_row(l: LogLine, striped: bool) -> impl IntoElement {
-    let (chip, chip_bg, msg_color) = level_style(l.level.as_ref());
-    h_flex()
-        .gap_3()
-        .px(px(16.))
-        .py(px(8.))
-        .items_start()
-        .when(striped, |this| this.bg(rgba(0xFFFFFF04)))
-        .child(
-            div()
-                .flex_none()
-                .text_xs()
-                .text_color(rgb(MUTED4))
-                .child(l.time.clone()),
+        v_flex().size_full().child(head).child(
+            div().flex_1().min_h_0().p(px(18.)).child(
+                v_flex()
+                    .id("logs-scroll")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.logs_scroll)
+                    .py(px(8.))
+                    .rounded(px(10.))
+                    .border_1()
+                    .border_color(c.border)
+                    .bg(c.panel)
+                    .font_family(mono)
+                    .text_size(px(12.))
+                    .children(rows),
+            ),
         )
-        .child(
-            div()
-                .flex_none()
-                .px(px(6.))
-                .rounded(px(4.))
-                .bg(rgb(chip_bg))
-                .text_color(rgb(0x0B1014))
-                .text_xs()
-                .child(chip),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .text_xs()
-                .text_color(rgb(msg_color))
-                .child(crate::ui::flags::render_name(l.message.as_ref())),
-        )
+    }
 }

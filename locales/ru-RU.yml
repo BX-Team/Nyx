@@ -12,6 +12,8 @@ common:
   copied: Скопировано
   remote: Удалённо
   local: Локально
+  clear: Очистить
+  search: Поиск…
 sider:
   home: Главная
   profileManagement: Профили
@@ -23,6 +25,8 @@ sider:
   logs: Логи
   modeRule: Правила
   modeGlobal: Глобальный
+  sections: Разделы
+  profiles: Профили
 page:
   placeholder: Эта страница будет перенесена на следующем этапе.
 languages:
@@ -59,6 +63,14 @@ pages:
     emptyCta: Добавить профиль
     modeTun: TUN
     modeSysProxy: Системный прокси
+    currentNode: Текущий узел
+    traffic: Трафик
+    sessionTotal: С запуска ядра
+    subscription: Подписка
+    expiresIn: "до %{date} · %{n} дн."
+    remainingValue: "осталось %{value}"
+    connect: Подключить
+    disconnect: Отключить
   proxies:
     testGroup: Тест
     refresh: Обновить
@@ -67,6 +79,7 @@ pages:
     searchPlaceholder: Поиск узлов…
     sortByLatency: По задержке
     aliveOnly: Только живые
+    nodeCount: "Узлов: %{n}"
   rules:
     edit: Редактировать правила
     convertMrs: Конвертировать MRS-набор
@@ -112,6 +125,7 @@ pages:
     expires: Истекает
     active: АКТИВНЫЙ
     days: "%{n} дн."
+    newProfile: Новый профиль
   connections:
     processes: Процессов
     filter: Фильтр
@@ -152,10 +166,10 @@ pages:
     autostart: Автозапуск
     silentStart: Тихий запуск
     autoCheckUpdate: Автоматическая проверка обновлений
-    appearance: Настройки внешнего вида
-    advanced: Дополнительные настройки
-    shortcuts: Настройки горячих клавиш
-    dns: Настройки DNS
+    appearance: Внешний вид
+    advanced: Дополнительно
+    shortcuts: Горячие клавиши
+    dns: DNS
     mihomo: Ядро Mihomo
     mixedPort: Смешанный порт
     socksPort: SOCKS порт
@@ -224,6 +238,7 @@ pages:
     resView: Просмотр
     resOk: Обновление запущено
     resFail: Ошибка обновления
+    resCoreDown: Ядро не запущено. Подключитесь, чтобы увидеть провайдеры и обновить гео-данные.
     dnsEnhancedMode: Расширенный режим
     dnsFakeIpRange: Диапазон Fake-IP
     dnsIpv6: IPv6
@@ -259,7 +274,6 @@ pages:
     spBypass: Исключения
     alwaysOnTop: Поверх всех окон
     disableTray: Отключить значок в трее
-    systemWindowFrame: Системная рамка окна
     trayNodeInfo: Показывать узел в трее
     takeOverDns: Перехват DNS
     takeOverSniffer: Перехват сниффера
@@ -268,6 +282,38 @@ pages:
     overrideHint: Когда выключено, используются значения активной подписки (или значения по умолчанию, если их нет). Включите, чтобы принудительно применить эти настройки.
     networkDetection: Определение смены сети
     detectInterval: Интервал проверки (с)
+    general: Основные
+    about: О программе
+    connectivity: Подключение
+    startup: Запуск
+    window: Окно
+    ports: Порты
+    network: Сеть
+    behavior: Поведение
+    access: Списки доступа
+    themeMode: Тема
+    themeSystem: Системная
+    themeLight: Светлая
+    themeDark: Тёмная
+    darkTheme: Тёмная тема
+    lightTheme: Светлая тема
+    coreChannel: Канал
+    unsaved: Есть несохранённые изменения
+    discard: Отменить
+    updates: Обновления
+    updateThis: "Установлен Nyx %{version}"
+    updateAvailable: "Вышел Nyx %{version}"
+    updateShow: Показать обновление
+    tagline: Клиент для прокси-ядра Mihomo
+    source: Исходный код
+    copyInfo: Скопировать сведения
+    commit: Коммит
+    build: Сборка
+    system: Система
+    toolkit: Интерфейс
+    renderer: Графика
+    license: Лицензия
+    software: программная
     scToggleWindow: Показать/скрыть окно
     scRuleMode: Режим Rule
     scGlobalMode: Режим Global
@@ -306,13 +352,13 @@ onboarding:
   step: Шаг %{n} из %{total}
   profileTitle: Добавьте профиль
   profileBody: Импортируйте ссылку на подписку или локальный файл конфигурации — это источник ваших прокси.
-  profileHint: Нажмите кнопку «Добавить» справа вверху.
+  profileHint: Нажмите «+ Новый профиль» в боковой панели слева.
   serviceTitle: Установите сервис
   serviceBody: "Nyx запускает ядро mihomo через системную службу — именно она даёт режиму TUN нужные сетевые права. Установка один раз попросит пароль."
   serviceHint: "Откройте Настройки → Mihomo → Системная служба и установите её."
   proxyTitle: Включите прокси
-  proxyBody: Переключите главный тумблер на главном экране, чтобы направить трафик.
-  proxyHint: Используйте главный переключатель на «Главной».
+  proxyBody: Нажмите «Подключить» на панели внизу окна, чтобы направить трафик через прокси.
+  proxyHint: Кнопка «Подключить» — справа внизу.
   skip: Пропустить
   next: Далее
   start: Начать
@@ -332,4 +378,5 @@ core:
     configInvalid: Ядро отклонило профиль
     serviceUnavailable: Служба Nyx недоступна
     timeout: Ядро не успело запуститься
+    orphaned: Ядро от прошлого запуска всё ещё работает
     other: Не удалось запустить ядро

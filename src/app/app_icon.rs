@@ -108,8 +108,8 @@ fn extract(path: &str) -> Option<RenderImage> {
 
             if scanned != 0 {
                 // Older icons leave alpha zeroed; treat fully-transparent as opaque.
-                if buf.chunks_exact(4).all(|p| p[3] == 0) {
-                    for p in buf.chunks_exact_mut(4) {
+                if buf.as_chunks::<4>().0.iter().all(|p| p[3] == 0) {
+                    for p in buf.as_chunks_mut::<4>().0 {
                         p[3] = 255;
                     }
                 }

@@ -59,6 +59,7 @@ pub fn failure_key(kind: FailureKind) -> &'static str {
         FailureKind::ConfigInvalid => "core.failure.configInvalid",
         FailureKind::ServiceUnavailable => "core.failure.serviceUnavailable",
         FailureKind::Timeout => "core.failure.timeout",
+        FailureKind::Orphaned => "core.failure.orphaned",
         FailureKind::Other => "core.failure.other",
     }
 }

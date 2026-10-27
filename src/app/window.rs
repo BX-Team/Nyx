@@ -1,29 +1,5 @@
 use gpui::Window;
 
-/// Asks for client-side decorations unless the user wants the system frame.
-/// gpui's X11 backend defaults to server-side, which would stack the
-/// compositor's title bar on ours; it downgrades the request when no
-/// compositor is present, so `NyxApp::render` follows `window_decorations()`.
-pub fn request_decorations(window: &Window, system_frame: bool) {
-    #[cfg(target_os = "linux")]
-    window.request_decorations(if system_frame {
-        gpui::WindowDecorations::Server
-    } else {
-        gpui::WindowDecorations::Client
-    });
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = (window, system_frame);
-    }
-}
-
-pub fn apply_saved_decorations(window: &Window) {
-    request_decorations(
-        window,
-        crate::backend::config::app_config_bool("useWindowFrame"),
-    );
-}
-
 #[cfg(windows)]
 use std::sync::atomic::{AtomicIsize, Ordering};
 

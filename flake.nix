@@ -88,6 +88,9 @@
           # Heavy GPU/UI crate graph: skip the (nonexistent) test suite.
           doCheck = false;
 
+          # build.rs cannot ask git inside the sandbox; the About page shows this commit.
+          NYX_REV = self.shortRev or self.dirtyShortRev or "unknown";
+
           postInstall = ''
             install -Dm644 installer/linux/nyx.desktop \
               $out/share/applications/nyx.desktop

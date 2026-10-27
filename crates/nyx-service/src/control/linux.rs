@@ -25,6 +25,8 @@ const WANTS_DIR: &str = "multi-user.target.wants";
 const MANAGED_MARKER: &str = "/etc/nyx/service-managed";
 
 const CONNECT_GRACE: Duration = Duration::from_secs(10);
+/// How long a host the unit reports active gets to answer, e.g. while Restart= brings it back.
+const SETTLE_GRACE: Duration = Duration::from_secs(3);
 
 const UNIT_TEMPLATE: &str = r#"[Unit]
 Description=Nyx Service (mihomo core supervisor)
@@ -69,8 +71,12 @@ pub async fn status() -> Result<Status, String> {
     if !unit_is_active() {
         return Ok(Status::Stopped);
     }
-    match ping().await {
-        Ok(_) => Ok(Status::Running),
+    if ping().await.is_ok() {
+        return Ok(Status::Running);
+    }
+    let settled = wait_for_socket(SETTLE_GRACE).await;
+    match settled.and(ping().await.map(|_| ())) {
+        Ok(()) => Ok(Status::Running),
         Err(reason) => Ok(Status::Stale { reason }),
     }
 }
@@ -145,7 +151,15 @@ pub async fn start_core(spec: &CoreSpec) -> Result<u32, String> {
     match status().await? {
         Status::NotInstalled => return Err("the Nyx service is not installed".into()),
         Status::Running => {}
-        _ => install().await?,
+        // A stopped unit only needs starting; rewriting it would ask for a password for nothing.
+        Status::Stopped => start_service().await?,
+        Status::Stale { reason } if is_managed() => {
+            return Err(format!(
+                "the Nyx service from your system configuration is not answering ({reason}); \
+                 check `systemctl status {UNIT_NAME}`"
+            ));
+        }
+        Status::Stale { .. } => install().await?,
     }
     match request(&Request::StartCore(spec.clone())).await? {
         Response::Started { pid } => Ok(pid),
