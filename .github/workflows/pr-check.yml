@@ -189,7 +189,7 @@ jobs:
         shell: bash
         run: |
           sed -i "0,/^version = \".*\"$/s//version = \"$VERSION\"/" Cargo.toml
-          sed -i '/^name = "nyx"$/,/^version = / s/^version = ".*/version = "'"$VERSION"'"/' Cargo.lock
+          sed -i -E '/^name = "nyx(-service|-sysproxy)?"$/{n;s/^version = ".*/version = "'"$VERSION"'"/}' Cargo.lock
           grep -q "^version = \"$VERSION\"$" Cargo.toml
 
       - name: Build the release binary

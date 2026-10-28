@@ -1,6 +1,6 @@
 [package]
 name = "nyx-service"
-version = "1.0.0"
+version.workspace = true
 description = "Privileged mihomo supervisor for Nyx (Windows SCM / systemd)"
 edition = "2024"
 license = "GPL-3.0-or-later"

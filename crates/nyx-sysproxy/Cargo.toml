@@ -1,6 +1,6 @@
 [package]
 name = "nyx-sysproxy"
-version = "1.0.0"
+version.workspace = true
 description = "Get/set the OS system proxy on Windows and Linux"
 edition = "2024"
 license = "MIT"

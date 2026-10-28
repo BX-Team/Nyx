@@ -1,348 +1,105 @@
-name: Publish Release
+name: Release
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
-      version:
-        description: Version to release (e.g. 2.1.0)
+      tag:
+        description: Existing tag to build again and attach to its release (e.g. v1.2.0)
         required: true
         type: string
-      description:
-        description: "Optional summary for the top of the release notes. Use \\n for a line break."
-        required: false
-        default: ""
-        type: string
-      prerelease:
-        description: Mark the release as a pre-release
-        default: false
-        type: boolean
-      draft:
-        description: Leave the release as a draft instead of publishing it
-        default: false
-        type: boolean
 
 permissions: {}
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
-
-env:
-  CARGO_INCREMENTAL: 0
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: short
 
 jobs:
   prepare:
-    name: Resolve the version
+    name: Resolve the release
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     outputs:
-      version: ${{ steps.resolve.outputs.version }}
-      rpm_version: ${{ steps.resolve.outputs.rpm_version }}
       tag: ${{ steps.resolve.outputs.tag }}
-      previous: ${{ steps.resolve.outputs.previous }}
+      version: ${{ steps.resolve.outputs.version }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
     steps:
-      - name: Check out the repository
+      - name: Check out the tag
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
 
-      - name: Validate the version and find the previous tag
+      - name: Check that the tag and the manifest agree
         id: resolve
         env:
-          VERSION: ${{ inputs.version }}
-        shell: bash
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-            echo "::error::'$VERSION' is not a semantic version"
+          version="${TAG#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$TAG' is not a v<semver> tag"
             exit 1
           fi
-          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            echo "::error::tag v$VERSION already exists"
+          if ! grep -qx "version = \"$version\"" Cargo.toml; then
+            echo "::error::Cargo.toml at $TAG does not carry version $version; was it tagged off the release PR merge?"
             exit 1
           fi
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
           {
-            echo "version=$VERSION"
-            echo "rpm_version=${VERSION//-/\~}"
-            echo "tag=v$VERSION"
-            echo "previous=$(git tag --list 'v*' --sort=-v:refname | head -n1)"
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
           } >> "$GITHUB_OUTPUT"
 
-  format:
-    name: Formatting
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install the Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Check Rust formatting
-        run: cargo fmt --all --check
-
-  lint:
-    name: Lint (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux
-            os: ubuntu-latest
-          - name: windows
-            os: windows-latest
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install the Linux dependencies
-        if: runner.os == 'Linux'
+      - name: Make sure the draft release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          PRERELEASE: ${{ steps.resolve.outputs.prerelease }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev libxdo-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
-            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libfontconfig1-dev libfreetype6-dev \
-            libvulkan-dev mesa-vulkan-drivers
+          # The bot opens the draft before it pushes the tag; this covers a tag pushed by hand.
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+              --prerelease="$PRERELEASE" --title "Nyx $VERSION" --notes ""
+          fi
 
-      - name: Install the Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          key: lint-${{ matrix.name }}
-
-      - name: Lint with clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install the Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev libxdo-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
-            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libfontconfig1-dev libfreetype6-dev \
-            libvulkan-dev mesa-vulkan-drivers
-
-      - name: Install the Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          key: test-linux
-
-      - name: Run the tests
-        run: cargo test --workspace --locked
-
-  tag:
-    name: Tag the release
-    needs: [prepare, format, lint, test]
-    runs-on: ubuntu-latest
+  package:
+    name: Package
+    needs: [prepare]
     permissions:
       contents: write
-    outputs:
-      sha: ${{ steps.push.outputs.sha }}
-    steps:
-      - name: Check out the repository
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Set the version in Cargo.toml, Cargo.lock and flake.nix
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        shell: bash
-        run: |
-          sed -i "0,/^version = \".*\"$/s//version = \"$VERSION\"/" Cargo.toml
-          sed -i '/^name = "nyx"$/,/^version = / s/^version = ".*/version = "'"$VERSION"'"/' Cargo.lock
-          sed -i '/pname = "nyx";/,/version = / s/version = "[^"]*";/version = "'"$VERSION"'";/' flake.nix
-          grep -q "^version = \"$VERSION\"$" Cargo.toml
-          grep -q "version = \"$VERSION\";" flake.nix
-
-      - name: Commit the bump and push the tag
-        id: push
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-          TAG: ${{ needs.prepare.outputs.tag }}
-        shell: bash
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Cargo.toml Cargo.lock flake.nix
-          git commit -m "chore(release): bump version to $VERSION"
-          git tag -a "$TAG" -m "$VERSION"
-          git push origin HEAD:"${GITHUB_REF_NAME}"
-          git push origin "$TAG"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Open the draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare.outputs.tag }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-        shell: bash
-        run: |
-          gh release create "$TAG" \
-            --draft \
-            --title "Nyx $VERSION" \
-            --notes "Assets are still uploading."
-
-  build:
-    name: Build (${{ matrix.name }})
-    needs: [prepare, tag]
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux
-            os: ubuntu-latest
-          - name: windows
-            os: windows-latest
-    steps:
-      - name: Check out the tagged commit
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.tag.outputs.sha }}
-          persist-credentials: false
-
-      - name: Install the Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libgtk-3-dev libxdo-dev \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
-            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libfontconfig1-dev libfreetype6-dev \
-            libvulkan-dev mesa-vulkan-drivers
-
-      - name: Install the Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          key: build-${{ matrix.name }}
-
-      - name: Build the release binary
-        run: cargo build --release --locked
-
-      - name: Install the packaging tools
-        if: runner.os == 'Linux'
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deb,cargo-generate-rpm
-
-      - name: Package for Linux
-        if: runner.os == 'Linux'
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-          RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
-        shell: bash
-        run: |
-          mkdir -p dist
-          tar -C target/release -czf "dist/Nyx-x86_64-linux.tar.gz" nyx
-          cargo deb -p nyx --no-build --output "dist/Nyx_${VERSION}_amd64.deb"
-          cargo generate-rpm -s "version = \"$RPM_VERSION\""
-          cp target/generate-rpm/*.rpm "dist/Nyx-${RPM_VERSION}.x86_64.rpm"
-
-      - name: Package for Arch
-        if: runner.os == 'Linux'
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        shell: bash
-        run: |
-          cp target/release/nyx           installer/arch/nyx
-          cp installer/linux/nyx.desktop  installer/arch/nyx.desktop
-          cp assets/brand/logo.png        installer/arch/nyx.png
-          docker run --rm -v "$PWD/installer/arch:/pkg" -e VER="$VERSION" \
-            archlinux:latest bash -c '
-              pacman -Sy --noconfirm base-devel >/dev/null
-              useradd -m builder
-              cp -r /pkg /home/builder/pkg && chown -R builder /home/builder/pkg
-              cd /home/builder/pkg
-              sed -i "s/^pkgver=.*/pkgver=${VER//-/_}/" PKGBUILD
-              sudo -u builder env PKGEXT=.pkg.tar.xz makepkg -f --nodeps
-              cp *.pkg.tar.xz /pkg/
-            '
-          cp installer/arch/*.pkg.tar.xz "dist/Nyx-${VERSION}-x86_64.pkg.tar.xz"
-
-      - name: Package for Windows
-        if: runner.os == 'Windows'
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive -Path "target/release/nyx.exe" -DestinationPath "dist/Nyx-x86_64-windows.zip" -Force
-          choco install nsis -y --no-progress
-          $exe = (Resolve-Path "target/release/nyx.exe").Path
-          & "C:\Program Files (x86)\NSIS\makensis.exe" `
-            "/DAPPVERSION=$env:VERSION" "/DSOURCEEXE=$exe" `
-            installer/windows/nyx.nsi
-          Copy-Item "installer/windows/Nyx_${env:VERSION}_x64-setup.exe" dist/
-
-      - name: Upload the assets to the draft release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ needs.prepare.outputs.tag }}
-        shell: bash
-        run: gh release upload "$TAG" dist/* --clobber
+    uses: ./.github/workflows/package.yml
+    with:
+      ref: ${{ needs.prepare.outputs.tag }}
+      release: ${{ needs.prepare.outputs.tag }}
 
   cachix:
-    name: Push to Cachix
-    needs: [tag]
-    if: ${{ ! inputs.prerelease }}
-    runs-on: ubuntu-latest
+    name: Push to Cachix (${{ matrix.system }})
+    needs: [prepare]
+    if: needs.prepare.outputs.prerelease != 'true'
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: x86_64-linux
+            os: ubuntu-latest
     steps:
-      - name: Check out the tagged commit
+      - name: Check out the tag
         uses: actions/checkout@v7
         with:
-          ref: ${{ needs.tag.outputs.sha }}
+          ref: ${{ needs.prepare.outputs.tag }}
           persist-credentials: false
 
       - name: Install Nix
         uses: cachix/install-nix-action@v31
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
 
       - name: Set up Cachix
         uses: cachix/cachix-action@v17
@@ -350,41 +107,33 @@ jobs:
           name: bx-team
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
-      - name: Build and push the flake package
+      - name: Build and push the flake packages
         run: nix build --print-build-logs .#nyx
 
   publish:
     name: Publish the release
-    needs: [prepare, tag, build]
+    needs: [prepare, package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Check out the tagged commit
+      - name: Check out the tag
         uses: actions/checkout@v7
         with:
-          ref: ${{ needs.tag.outputs.sha }}
-          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.tag }}
           persist-credentials: false
 
       - name: Verify the release assets
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare.outputs.tag }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-          RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
-        shell: bash
         run: |
-          have="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+          have="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
           printf 'attached:\n%s\n\n' "$have"
           missing=0
           for asset in \
-            "Nyx-x86_64-linux.tar.gz" \
-            "Nyx_${VERSION}_amd64.deb" \
-            "Nyx-${RPM_VERSION}.x86_64.rpm" \
-            "Nyx-${VERSION}-x86_64.pkg.tar.xz" \
-            "Nyx-x86_64-windows.zip" \
-            "Nyx_${VERSION}_x64-setup.exe"; do
+            Nyx-x86_64-linux.tar.gz nyx-amd64.deb nyx-x86_64.rpm nyx-x86_64.pkg.tar.xz \
+            Nyx-x86_64-windows.zip Nyx-Setup-x86_64.exe; do
             if ! printf '%s\n' "$have" | grep -qxF "$asset"; then
               echo "::error::missing release asset '$asset'"
               missing=1
@@ -392,72 +141,36 @@ jobs:
           done
           exit "$missing"
 
-      - name: Build the changelog
-        id: changelog
-        uses: mikepenz/release-changelog-builder-action@v6
-        with:
-          configuration: .github/changelog_configuration.json
-          mode: COMMIT
-          fromTag: ${{ needs.prepare.outputs.previous }}
-          toTag: ${{ needs.prepare.outputs.tag }}
+      - name: Add the downloads to the notes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compose the release body
-        env:
-          DESCRIPTION: ${{ inputs.description }}
-          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
-        shell: bash
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          if [ -n "$(printf '%s' "$DESCRIPTION" | tr -d '[:space:]')" ]; then
-            {
-              echo '## 📑 Changelog'
-              echo
-              # %b so a '\n' typed into the dispatch field becomes a real line
-              # break — GitHub renders that input as a single-line box.
-              printf '%b\n' "$DESCRIPTION"
-              echo
-              printf '%s\n' "$CHANGELOG" | sed 's/^## /### /'
-            } >body.md
-          else
-            printf '%s\n' "$CHANGELOG" >body.md
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' > notes.md
+          # Rebuilding a published release must not append the table a second time.
+          if ! grep -q '^## 📦 Downloads' notes.md; then
+            export TAG
+            if [ -s notes.md ]; then printf '\n' >> notes.md; fi
+            # shellcheck disable=SC2016 # the list names the variables envsubst may replace
+            envsubst '$TAG' < .github/release/notes.md >> notes.md
           fi
 
       - name: Publish the GitHub release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.prepare.outputs.tag }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-          DRAFT: ${{ inputs.draft }}
-          PRERELEASE: ${{ inputs.prerelease }}
-        shell: bash
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
-          gh release edit "$TAG" \
-            --title "Nyx $VERSION" \
-            --notes-file body.md \
-            --draft="$DRAFT" \
-            --prerelease="$PRERELEASE" \
-            --latest="$([ "$PRERELEASE" = 'true' ] && echo false || echo true)"
-
-      - name: Write the result to the run summary
-        env:
-          TAG: ${{ needs.prepare.outputs.tag }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-          RPM_VERSION: ${{ needs.prepare.outputs.rpm_version }}
-          URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.prepare.outputs.tag }}
-        shell: bash
-        run: |
-          {
-            echo "## [$TAG]($URL)"
-            echo
-            echo '| Asset | Platform |'
-            echo '| --- | --- |'
-            echo "| \`Nyx_${VERSION}_x64-setup.exe\` | Windows installer |"
-            echo "| \`Nyx-x86_64-windows.zip\` | Windows portable |"
-            echo "| \`Nyx-x86_64-linux.tar.gz\` | Linux portable |"
-            echo "| \`Nyx_${VERSION}_amd64.deb\` | Debian/Ubuntu |"
-            echo "| \`Nyx-${RPM_VERSION}.x86_64.rpm\` | Fedora/RHEL |"
-            echo "| \`Nyx-${VERSION}-x86_64.pkg.tar.xz\` | Arch |"
-            echo
-            cat body.md
-          } >> "$GITHUB_STEP_SUMMARY"
+          if grep -qF '<!-- release:hold -->' notes.md; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --notes-file notes.md \
+              --prerelease="$PRERELEASE"
+            echo "::notice::$TAG is held as a draft by /release draft; publish it on GitHub once it is checked."
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --notes-file notes.md \
+              --draft=false \
+              --prerelease="$PRERELEASE" \
+              --latest="$([ "$PRERELEASE" = true ] && echo false || echo true)"
+          fi
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"

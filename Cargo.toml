@@ -1,9 +1,12 @@
 [workspace]
 members = ["crates/*"]
 
+[workspace.package]
+version = "2.1.0"
+
 [package]
 name = "nyx"
-version = "2.1.0"
+version.workspace = true
 description = "Nyx — Mihomo/Clash GUI"
 authors = ["BX Team"]
 edition = "2024"

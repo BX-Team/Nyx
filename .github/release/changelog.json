@@ -1,6 +1,4 @@
 {
-  "template": "#{{CHANGELOG}}",
-  "commit_template": "- [`#{{SHORT_MERGE_SHA}}`](https://github.com/BX-Team/Nyx/commit/#{{MERGE_SHA}}) #{{TITLE}}",
   "categories": [
     {
       "title": "## 🚀 Features",
@@ -40,16 +38,6 @@
       "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\w ])+([\\s\\S]*)",
       "on_property": "title",
       "target": "$1"
-    }
-  ],
-  "custom_placeholders": [
-    {
-      "name": "SHORT_MERGE_SHA",
-      "source": "MERGE_SHA",
-      "transformer": {
-        "pattern": "^([0-9a-f]{7})[0-9a-f]*$",
-        "target": "$1"
-      }
     }
   ]
 }

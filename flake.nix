@@ -70,7 +70,7 @@
 
         nyx = rustPlatform.buildRustPackage {
           pname = "nyx";
-          version = "2.1.0";
+          inherit ((lib.importTOML ./Cargo.toml).workspace.package) version;
 
           src = pkgs.lib.cleanSource ./.;
 

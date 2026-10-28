@@ -1,0 +1,173 @@
+name: Package
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to build
+        required: true
+        type: string
+      release:
+        description: Tag of the draft release the files are attached to
+        required: false
+        default: ""
+        type: string
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+
+jobs:
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Install the Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libxdo-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+            libfontconfig1-dev libfreetype6-dev \
+            libvulkan-dev mesa-vulkan-drivers desktop-file-utils
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: package-linux
+
+      - name: Install the packaging tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deb,cargo-generate-rpm
+
+      - name: Read the version
+        id: version
+        shell: bash
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "nyx") | .version')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "rpm=${version//-/\~}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the release binary
+        run: cargo build --release --locked
+
+      - name: Archive, deb and rpm
+        env:
+          RPM: ${{ steps.version.outputs.rpm }}
+        run: |
+          mkdir -p out
+          desktop-file-validate installer/linux/nyx.desktop
+          tar -C target/release -czf out/Nyx-x86_64-linux.tar.gz nyx
+          cargo deb -p nyx --no-build --output out/nyx-amd64.deb
+          cargo generate-rpm -s "version = \"$RPM\""
+          cp target/generate-rpm/*.rpm out/nyx-x86_64.rpm
+
+      - name: Arch package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          pkg=installer/arch
+          cp target/release/nyx installer/linux/nyx.desktop "$pkg/"
+          cp assets/brand/logo.png "$pkg/nyx.png"
+          docker run --rm -v "$PWD/$pkg:/pkg" -e VER="$VERSION" archlinux:latest bash -euc '
+            pacman -Sy --noconfirm --needed base-devel >/dev/null
+            useradd -m builder
+            cp -r /pkg /home/builder/pkg && chown -R builder /home/builder/pkg
+            cd /home/builder/pkg
+            sed -i "s/^pkgver=.*/pkgver=${VER//-/_}/" PKGBUILD
+            sudo -u builder env PKGEXT=.pkg.tar.xz makepkg -f --nodeps
+            cp ./*.pkg.tar.xz /pkg/
+          '
+          cp "$pkg"/nyx-[0-9]*-x86_64.pkg.tar.xz out/nyx-x86_64.pkg.tar.xz
+
+      - name: Upload the workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nyx-linux
+          path: out/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Attach to the release
+        if: inputs.release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release }}
+        run: gh release upload "$TAG" out/* --clobber --repo "$GITHUB_REPOSITORY"
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: package-windows
+
+      - name: Read the version
+        id: version
+        shell: bash
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "nyx") | .version')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build the release binary
+        run: cargo build --release --locked
+
+      - name: Archive and installer
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Compress-Archive -Path target/release/nyx.exe -DestinationPath out/Nyx-x86_64-windows.zip -Force
+          choco install nsis -y --no-progress
+          $exe = (Resolve-Path target/release/nyx.exe).Path
+          $version = $env:VERSION -replace '-.*$', ''
+          & "C:\Program Files (x86)\NSIS\makensis.exe" "/DAPPVERSION=$version" "/DSOURCEEXE=$exe" installer\windows\nyx.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item "installer/windows/Nyx_${version}_x64-setup.exe" out/Nyx-Setup-x86_64.exe
+
+      - name: Upload the workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: nyx-windows
+          path: out/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Attach to the release
+        if: inputs.release != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release }}
+        shell: bash
+        run: gh release upload "$TAG" out/* --clobber --repo "$GITHUB_REPOSITORY"
