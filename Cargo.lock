@@ -4449,6 +4449,8 @@ dependencies = [
 [[package]]
 name = "moonglass"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "447116f5b096109591cb2326e4e98ab26b90c8bbcb61b757a7cf0884a62bec7d"
 dependencies = [
  "gpui-kit",
  "tracing",
