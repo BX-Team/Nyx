@@ -4739,7 +4739,7 @@ dependencies = [
 
 [[package]]
 name = "nyx"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "anyhow",
  "auto-launch",
@@ -4781,7 +4781,7 @@ dependencies = [
 
 [[package]]
 name = "nyx-service"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "chrono",
  "libc",
@@ -4795,7 +4795,7 @@ dependencies = [
 
 [[package]]
 name = "nyx-sysproxy"
-version = "2.1.0"
+version = "2.2.0"
 dependencies = [
  "dirs 7.0.0",
  "log",
